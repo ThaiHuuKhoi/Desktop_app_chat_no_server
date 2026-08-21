@@ -1,16 +1,195 @@
-Thiet ke ky thuat chi tiet — chat-p2p-java
+Tài liệu kỹ thuật — chitchatter & thiết kế chat-p2p-java
 
-# THIẾT KẾ KỸ THUẬT CHI TIẾT: CHAT-P2P-JAVA
+# TÀI LIỆU KỸ THUẬT: CHITCHATTER → CHAT-P2P-JAVA
 
-*Tài liệu này là bản thiết kế thi công (implementation spec), viết để code thẳng theo — không còn ở mức "ý tưởng" như đề cương. Mọi tên lớp, tên phương thức, định dạng dữ liệu nêu ở đây là thứ sẽ gõ ra trong IDE. Đọc trước [Tai-lieu-ky-thuat-Chitchatter.md](Tai-lieu-ky-thuat-Chitchatter.md) (cơ chế thật của bản gốc) và [De-cuong-Chat-P2P-Java.md](De-cuong-Chat-P2P-Java.md) (mục tiêu đồ án). Đối chiếu code hiện có trong repo: `common/`, `crypto/`, `p2p-core/`, `signaling-server/`, `client-javafx/`.*
+*Tài liệu kỹ thuật hợp nhất — gồm 2 phần: **Phần I** phân tích mã nguồn thật của `chitchatter-develop` (không suy đoán từ README) để hiểu đúng cơ chế của từng chức năng; **Phần II** là bản thiết kế thi công (implementation spec) cho `chat-p2p-java` dựa trên phân tích đó — viết để code thẳng theo, mọi tên lớp/phương thức/định dạng dữ liệu nêu ra là thứ sẽ gõ trong IDE. Đọc cùng với [De-cuong-Chat-P2P-Java.md](De-cuong-Chat-P2P-Java.md) (mục tiêu đồ án) và [Phan-cong-cong-viec.md](Phan-cong-cong-viec.md) (chia việc). Đối chiếu code hiện có trong repo: `common/`, `crypto/`, `p2p-core/`, `signaling-server/`, `client-javafx/`.*
 
-**Phạm vi**: làm đủ 12 chức năng của chitchatter, xác thực peer theo kiểu **tự động bằng chữ ký số** (giống bản gốc, không phải fingerprint thủ công như đề cương gốc), làm dần từng chức năng theo thứ tự phụ thuộc kỹ thuật ở mục 9.
+**Phạm vi thi công**: làm đủ 12 chức năng của chitchatter, xác thực peer theo kiểu **tự động bằng chữ ký số** (giống bản gốc, không phải fingerprint thủ công như đề cương gốc), làm dần từng chức năng theo thứ tự phụ thuộc kỹ thuật ở Phần II, mục 9.
 
 ---
 
+# PHẦN I — PHÂN TÍCH KIẾN TRÚC VÀ CHỨC NĂNG CỦA CHITCHATTER
+
+## 1. Tổng quan kiến trúc
+
+Chitchatter là ứng dụng web **thuần client** (React + Vite), **không có API server bắt buộc**. Toàn bộ logic nghiệp vụ chạy trong trình duyệt của từng người dùng; các máy chủ bên ngoài chỉ đóng 3 vai trò hạ tầng dùng chung, không phụ thuộc riêng vào chitchatter:
+
+1. **BitTorrent tracker công khai** (qua thư viện `trystero`) — dùng làm kênh "signaling" để hai peer cùng phòng tìm thấy nhau và trao đổi SDP/ICE.
+2. **TURN relay server công khai** (cấu hình trong `rtcConfig`) — dự phòng khi không thể kết nối trực tiếp.
+3. **GitHub Pages** — chỉ host static asset (HTML/JS/CSS), không có vai trò runtime.
+
+Không có máy chủ nào nhìn thấy nội dung chat: sau khi 2 peer tìm thấy nhau qua tracker, họ mở thẳng một `RTCPeerConnection` (WebRTC) — kênh dữ liệu (data channel) này được **mã hoá bằng DTLS ở tầng giao thức**, trình duyệt tự lo, ứng dụng không cần tự viết thêm mã hoá cho nội dung.
+
+```
+Peer A (trình duyệt)                                   Peer B (trình duyệt)
+      |                                                       |
+      |  (1) joinRoom(roomId) -> Trystero băm room key,       |
+      |      quảng cáo trên BitTorrent tracker công khai      |
+      |------------------------> Tracker <--------------------|
+      |                                                       |
+      |  (2) Tracker giúp trao đổi SDP offer/answer + ICE      |
+      |      candidate (không thấy nội dung, chỉ metadata kết  |
+      |      nối); TURN relay dự phòng nếu NAT chặn trực tiếp  |
+      |<===================== (qua tracker) ==================>|
+      |                                                       |
+      |  (3) RTCPeerConnection trực tiếp, DataChannel mã hoá   |
+      |      bằng DTLS (trình duyệt tự làm)                    |
+      |<======================================================>|
+      |   - PEER_METADATA (public key + chữ ký danh tính)      |
+      |   - MESSAGE / MEDIA_MESSAGE / MESSAGE_TRANSCRIPT        |
+      |   - TYPING_STATUS_CHANGE, FILE_OFFER                   |
+      |   - AUDIO_CHANGE / VIDEO_CHANGE / SCREEN_SHARE          |
+      |     (kèm MediaStream qua addStream, kênh riêng)         |
+```
+
+## 2. Stack công nghệ thật
+
+| Thành phần | Công nghệ | Ghi chú |
+|---|---|---|
+| UI framework | React + TypeScript, Vite | SPA, routing bằng `react-router-dom` |
+| P2P / signaling | [`trystero`](https://github.com/dmotz/trystero) (chiến lược mặc định: BitTorrent tracker) | Bọc `RTCPeerConnection`, tự động ICE, expose API `joinRoom` |
+| Truyền file | [`secure-file-transfer`](https://github.com/jeremyckahn/secure-file-transfer) (nền WebTorrent) | File mã hoá thành torrent, chia sẻ qua `magnetURI` |
+| Mã hoá/ký danh tính | Web Crypto API (`window.crypto.subtle`), thuật toán `RSASSA-PKCS1-v1_5` + SHA-256 | Chỉ dùng để **ký/xác thực danh tính**, không mã hoá nội dung tin nhắn (xem mục 6) |
+| Lưu trữ cục bộ | `localforage` (wrapper IndexedDB) | Chỉ lưu **cài đặt người dùng** (kể cả cặp khoá), **không lưu tin nhắn** |
+| Markdown | `react-markdown` (+ syntax highlight) | Render nội dung tin nhắn |
+| Deploy | GitHub Pages (tĩnh) | Không có backend runtime bắt buộc |
+
+## 3. Phòng chat (Room)
+
+- **Room ID**: chuỗi bất kỳ do người dùng đặt hoặc UUID sinh ngẫu nhiên (`pages/Home`). Route: `/public/:roomId` hoặc `/private/:roomId` (`config/routes.ts`).
+- **Phòng công khai** (`PublicRoom`): `PeerRoom` khởi tạo với `password: roomId` — tức Trystero băm room key trực tiếp từ tên phòng. Ai biết tên phòng là vào được.
+- **Phòng riêng tư** (`PrivateRoom`): người dùng nhập thêm **mật khẩu**. Mật khẩu **không bao giờ được gửi qua mạng ở dạng thô** — được băm cục bộ:
+  ```
+  secret = base64(SHA-256(`${roomId}_${password}`))
+  ```
+  `secret` này mới là giá trị được dùng làm `password` thật cho Trystero (`services/Encryption.encodePassword`), và có thể nhúng vào URL dạng `#secret=...` để chia sẻ (giữ trong URL *hash*, không gửi lên server nào vì hash fragment không nằm trong HTTP request). Ai không biết password gốc thì không tính ra được `secret`, và không đoán được room key thật của Trystero → không tham gia được swarm.
+- **Nhiều peer trong 1 phòng**: Trystero thiết lập **mesh đầy đủ** — mỗi peer mở `RTCPeerConnection` riêng với *từng* peer khác trong phòng (không qua trung gian). `PeerRoom.getPeers()` trả danh sách toàn bộ kết nối hiện có.
+
+## 4. Lớp kết nối P2P — `PeerRoom` (`lib/PeerRoom/PeerRoom.ts`)
+
+`PeerRoom` là lớp bọc mỏng quanh `Room` của Trystero, chuẩn hoá thành các API mà UI dùng:
+
+- `onPeerJoin(hookType, fn)` / `onPeerLeave(hookType, fn)` — nhiều "consumer" (nhắn tin, video, file...) cùng đăng ký nhận sự kiện peer vào/ra qua một `Map<PeerHookType, handler>`, tránh ghi đè lẫn nhau.
+- `makeAction<T>(peerAction, namespace)` — tạo một **kênh hành động** kiểu `[sender, receiver, progress, detach]` trên nền `room.makeAction(actionName)` của Trystero. Đây là cơ chế **đa kênh logic trên cùng 1 data channel WebRTC**: mỗi `actionName = "${namespace}.${PeerAction}"` (vd. `"g.0"` cho MESSAGE trong nhóm, `"dm.0"` cho MESSAGE trong direct message) là một luồng gửi/nhận độc lập.
+- `addStream` / `removeStream` — gắn/gỡ `MediaStream` (webcam, mic, screen share) vào kết nối, tách biệt hoàn toàn khỏi các "action" dữ liệu ở trên (WebRTC xử lý media track khác cơ chế với data channel message).
+- `getPeerConnectionTypes()` — gọi `RTCPeerConnection.getStats()`, soi `candidate-pair` đã thành công để suy ra kết nối là **DIRECT** hay **RELAY** (qua TURN) — dùng cho UI chẩn đoán kết nối.
+
+### `PeerAction` — danh sách đầy đủ 9 loại hành động (`models/network.ts`)
+
+| PeerAction | Namespace dùng | Mục đích |
+|---|---|---|
+| `MESSAGE` | group hoặc dm | Tin nhắn văn bản |
+| `MEDIA_MESSAGE` | group | Tin nhắn media nhúng trực tiếp (ảnh/audio/video nhỏ) |
+| `MESSAGE_TRANSCRIPT` | group | Gửi lại toàn bộ lịch sử chat cho peer mới (backfilling) |
+| `PEER_METADATA` | group | userId, tên hiển thị, public key, chữ ký danh tính |
+| `AUDIO_CHANGE` | group | Thông báo bật/tắt mic |
+| `VIDEO_CHANGE` | group | Thông báo bật/tắt webcam |
+| `SCREEN_SHARE` | group | Thông báo bật/tắt chia sẻ màn hình |
+| `FILE_OFFER` | group | Gửi `magnetURI` của file đang chia sẻ (hoặc `null` để thu hồi) |
+| `TYPING_STATUS_CHANGE` | group hoặc dm | Trạng thái đang gõ |
+
+`ActionNamespace` chỉ có 2 giá trị: `GROUP` ("g") và `DIRECT_MESSAGE` ("dm") — direct message thực chất là **cùng cơ chế action, khác namespace và lọc theo `targetPeerId`**, không phải kết nối riêng.
+
+## 5. Xác thực danh tính peer (không phải mã hoá nội dung)
+
+Khi có peer mới vào phòng (`onPeerJoin`), **tự động** (không cần người dùng bấm gì):
+
+1. Bên A gửi `PEER_METADATA`: `{ userId, customUsername, publicKeyString, identitySignatureBase64 }`.
+   - `identitySignatureBase64` = ký chuỗi thách thức `"${roomId}_${userId}"` bằng **private key RSASSA-PKCS1-v1_5** của A (khoá này được sinh 1 lần và lưu bền trong `localforage`, không đổi giữa các phiên).
+2. Bên B nhận được, `parseCryptoKeyString` để lấy lại `CryptoKey` từ chuỗi base64, rồi `verifySignature(publicKey, signature, "${roomId}_${userId}")`.
+3. Khớp → `PeerVerificationState.VERIFIED`; không khớp → `UNVERIFIED`. Không có bước người dùng tự so khớp fingerprint bằng mắt.
+
+**Quan trọng**: cơ chế này **chứng minh** "người đang nói chuyện với bạn nắm giữ đúng private key ứng với public key đã công bố trong phiên trước" — chống mạo danh lặp lại danh tính giữa các lần join. Nó **không** chống được nghe lén nội dung (đã có DTLS lo) và **không** tự nó chống MITM ở lần gặp đầu tiên tuyệt đối (nếu kẻ tấn công chèn được vào ngay từ đầu và tự xưng danh tính mới, verify vẫn "khớp" vì nó tự ký bằng khoá của chính nó) — đây là hạn chế "trust on first use" cố hữu của mọi hệ không có PKI tập trung, kể cả Signal/PGP.
+
+## 6. Mã hoá nội dung — đính chính quan trọng
+
+Chitchatter **không tự mã hoá nội dung tin nhắn ở tầng ứng dụng**. Bảo mật nội dung đến từ:
+- **DTLS** của WebRTC data channel (bắt buộc theo chuẩn WebRTC, trình duyệt tự thương lượng khi thiết lập `RTCPeerConnection`).
+- Với **file**: `secure-file-transfer` có mã hoá riêng (dùng khoá suy ra từ tên phòng) trước khi biến file thành torrent — vì file được lan truyền qua giao thức BitTorrent/WebTorrent công khai (không riêng tư như data channel), nên **bắt buộc phải mã hoá ở tầng ứng dụng** cho phần này.
+
+→ Java không có WebRTC/DTLS có sẵn, nên chat-p2p-java **phải tự làm phần mà chitchatter được trình duyệt lo miễn phí** — đây là lý do đề cương chọn tự cài ECDH + AES-GCM cho toàn bộ kênh dữ liệu (không chỉ riêng file), rộng hơn phạm vi mã hoá thật của chitchatter.
+
+## 7. Nhắn tin & trạng thái gõ
+
+- Gửi tin: tạo `UnsentMessage{id, authorId, text, timeSent}` → hiển thị optimistic ngay → gửi qua action `MESSAGE` → tự gắn `timeReceived` cho bản của mình.
+- Nhận tin: gắn `timeReceived = now()`, phát âm thanh / notification desktop nếu tab không active (`services/Notification`, `services/Audio`), tắt cờ "đang gõ" của người gửi.
+- Đa dòng: Shift+Enter trong `MessageForm` (không có gì đặc biệt ở tầng mạng).
+- Markdown: chỉ là render phía nhận (`react-markdown`), dữ liệu gửi đi vẫn là text thô.
+- Typing status: debounce 2s (`useDebounce`), gửi qua action `TYPING_STATUS_CHANGE` với payload `{ isTyping }`, có thể nhắm riêng 1 peer (direct message) hoặc broadcast (group).
+- **Conversation backfilling**: chỉ áp dụng phòng **công khai**. Khi peer mới vào, nếu `messageLog` hiện có, gửi luôn qua action `MESSAGE_TRANSCRIPT` cho peer đó — nhưng **chỉ khi `messageLog.length === 0`** ở phía nhận (tránh ghi đè nếu đã có sẵn dữ liệu).
+
+## 8. Direct message
+
+Không phải kết nối riêng — dùng chung `RTCPeerConnection` mesh sẵn có, chỉ khác:
+- `namespace = ActionNamespace.DIRECT_MESSAGE` thay vì `GROUP`.
+- Gửi kèm `{ target: targetPeerId }` để Trystero chỉ gửi tới 1 peer thay vì broadcast.
+- `messageLog` được tách riêng theo từng `targetPeerId` (`ShellMessageLog.directMessageLog: Record<peerId, MessageLog>`), không lẫn với chat nhóm.
+
+## 9. Video / Audio call & Screen share
+
+Cả 3 dùng chung cơ chế `PeerRoom.addStream(mediaStream, { metadata })`:
+- **Webcam**: `getUserMedia({ video: {...} })`, gắn `metadata: { type: StreamType.WEBCAM }`.
+- **Mic**: tương tự nhưng audio, quản lý qua `AudioChannelState` riêng (`useRoomAudio`).
+- **Screen share**: `getDisplayMedia`, `metadata: { type: StreamType.SCREEN_SHARE }`.
+
+Khi 1 stream được add, tất cả peer trong phòng nhận `room.onPeerStream(stream, peerId, metadata)` — phân biệt loại stream bằng `metadata.type` để hiển thị đúng chỗ (`peerVideoStreams` vs `peerScreenStreams`). Có action riêng (`AUDIO_CHANGE`/`VIDEO_CHANGE`/`SCREEN_SHARE`) chỉ để đồng bộ **trạng thái hiển thị** (icon bật/tắt trên peer list), không mang media — media đi qua track/stream thật của WebRTC, không qua kênh action.
+
+**Đây là phần phụ thuộc nặng nhất vào hạ tầng có sẵn của trình duyệt** (codec H.264/VP8/Opus, `RTCPeerConnection` transceiver, `getUserMedia`/`getDisplayMedia`) — Java không có tương đương built-in, phải dùng thư viện ngoài (vd. JavaCV/FFmpeg cho codec, thư viện capture riêng cho webcam/screen) nếu muốn làm.
+
+## 10. Chia sẻ file
+
+Khác hẳn cơ chế message ở trên — **không đi qua WebRTC DataChannel của Trystero** mà qua **WebTorrent** (giao thức BitTorrent chạy được trong trình duyệt qua WebRTC data channel *của WebTorrent*, độc lập với data channel của Trystero):
+
+1. `fileTransfer.offer(files, roomId)` (gói `secure-file-transfer`) — mã hoá file, biến thành torrent, trả về `magnetURI`.
+2. Gửi `magnetURI` cho các peer qua action `FILE_OFFER` (đây mới là thứ đi qua kênh Trystero — chỉ là con trỏ, không phải nội dung file).
+3. Bên nhận dùng `magnetURI` để tải torrent qua WebTorrent client riêng, rồi giải mã (khoá suy ra từ tên phòng, tương tự cơ chế password ở mục 3).
+4. File ảnh/audio/video nhỏ có thể hiển thị **inline** trong khung chat (`isAllInlineMedia`), khác với file thường chỉ hiện nút tải.
+5. Rời phòng / đổi file → gửi `FILE_OFFER` với `magnetURI = null` để thu hồi (`fileTransfer.rescind`).
+
+→ Vì Java không có WebTorrent, chat-p2p-java sẽ cần tự thiết kế cơ chế truyền file (chia chunk qua chính kênh P2P đã có, mã hoá từng chunk bằng AES-GCM) — **đơn giản hơn** kiến trúc 2 tầng (Trystero + WebTorrent) của bản gốc, phù hợp vì không cần chia sẻ file kiểu "swarm" công khai.
+
+## 11. Cài đặt cá nhân & lưu trữ cục bộ
+
+`localforage` (IndexedDB) chỉ lưu **đúng 1 key**: `userSettings` (`models/storage.ts`), gồm: `colorMode`, `userId`, `customUsername`, `publicKey`/`privateKey` (cặp khoá ký danh tính — sinh 1 lần, tồn tại lâu dài qua các phiên), `playSoundOnNewMessage`, `showNotificationOnNewMessage`, `showActiveTypingStatus`, `isEnhancedConnectivityEnabled`, `selectedSound`.
+
+**Không có gì khác được lưu** — đặc biệt **tin nhắn và metadata phòng không bao giờ persist**, đúng tinh thần "ephemeral" (rời phòng/đóng tab là mất sạch lịch sử chat, chỉ cấu hình cá nhân còn lại).
+
+## 12. Chẩn đoán kết nối (Enhanced Connectivity)
+
+`lib/ConnectionTest` kiểm tra 2 việc trước/trong khi vào phòng:
+- **Có kết nối được tới tracker hay không** (`TrackerConnection: SEARCHING/SUCCESS/FAILURE`) — phát hiện sớm nếu mạng chặn WebSocket tới tracker.
+- **Có TURN server khả dụng hay không** (`hasTURNServer`) — thử một `RTCPeerConnection` với `iceServers` cấu hình, xem có sinh được `relay` candidate không.
+
+Kết quả hiển thị ở UI (`EnhancedConnectivityControl`) giúp người dùng tự chẩn đoán vì sao không kết nối được — **đây chính là ý tưởng của "đo tỉ lệ thiết lập kết nối P2P thành công"** trong mục 5 (Kế hoạch đánh giá) của đề cương, chitchatter làm ở phía client, còn đề cương định làm ở tầng đo hiệu năng riêng.
+
+## 13. Nhúng ứng dụng (SDK / iframe)
+
+`models/sdk.ts` định nghĩa giao thức `postMessage` giữa trang cha và `<iframe>` nhúng chitchatter: trang cha gửi `CONFIG` (màu theme, tên phòng, user id/name...) qua `window.postMessage`, chitchatter lắng nghe và tự cấu hình theo — có kiểm tra `origin` khớp domain cha để tránh giả mạo. **Không liên quan tới core P2P/chat**, thuộc nhóm tính năng UI/tích hợp, ngoài phạm vi đề cương.
+
+## 14. Bảng ánh xạ sang kiến trúc Java (tổng hợp nhanh — xem đối chiếu đầy đủ ở Phần II, mục 12)
+
+| Thành phần chitchatter | Cơ chế thật | Tương đương cần xây ở chat-p2p-java |
+|---|---|---|
+| Trystero (`joinRoom`, tracker) | BitTorrent tracker làm signaling, tự động ICE | `signaling-server` (Spring Boot/WebSocket) đã xây — vai trò tương đương, tự viết vì Java không có tracker công khai kiểu này |
+| `RTCPeerConnection` + DataChannel (DTLS) | WebRTC built-in trình duyệt | `p2p-core.P2pDataChannel` (ice4j + socket, **chưa xây**) + `crypto` (ECDH/AES-GCM tự viết vì không có DTLS) |
+| `PeerRoom.makeAction` (đa kênh logic trên 1 data channel) | Đặt tên action, phân namespace | `Envelope`/`EnvelopeCodec` (Phần II, mục 3) |
+| `PEER_METADATA` + chữ ký RSASSA | Xác thực danh tính tự động | `IdentitySignatureService` bằng ECDSA (Phần II, mục 5) |
+| `secure-file-transfer` + WebTorrent | Mã hoá + phân phối file qua BitTorrent | Tự thiết kế: chia chunk qua `DataChannel` sẵn có, mã hoá từng chunk bằng `AesGcmCipher` (Phần II, mục 8.4) |
+| `getUserMedia`/`getDisplayMedia` + media track WebRTC | Video/audio call, screen share | Motion-JPEG + PCM thô qua kênh dữ liệu sẵn có (Phần II, mục 8.5) |
+| `localforage` (IndexedDB) | Lưu cặp khoá + cài đặt | `Preferences` API hoặc file JSON cục bộ (Phần II, mục 8.6) |
+| `lib/ConnectionTest` | Kiểm tra tracker/TURN khả dụng | Tương đương ở tầng đo hiệu năng của đề cương (mục 9: tỉ lệ kết nối P2P thành công) |
+
+## 15. Ghi chú áp dụng cho chat-p2p-java
+
+Mục tiêu là làm **đủ 12 chức năng** của chitchatter, **triển khai từng chức năng một** theo thứ tự phụ thuộc kỹ thuật hợp lý (transport P2P thật → mã hoá nội dung → nhắn tin nhóm/DM → xác thực tự động kiểu chitchatter → file → nâng cao/media), và **xác thực peer sẽ đổi sang kiểu tự động (chữ ký số)** giống chitchatter thay vì thủ công như đề cương gốc. Chi tiết thi công ở Phần II ngay dưới đây.
+
+---
+
+# PHẦN II — THIẾT KẾ THI CÔNG CHI TIẾT: CHAT-P2P-JAVA
+
 ## 1. Nguyên tắc thiết kế xuyên suốt
 
-1. **Không có DTLS như WebRTC** → mọi byte đi qua `DataChannel.send()` (trừ bản thân handshake khoá) đều phải được mã hoá AES-GCM ở tầng ứng dụng trước khi gửi. Đây là khác biệt cốt lõi so với chitchatter (mục 6 của tài liệu phân tích).
+1. **Không có DTLS như WebRTC** → mọi byte đi qua `DataChannel.send()` (trừ bản thân handshake khoá) đều phải được mã hoá AES-GCM ở tầng ứng dụng trước khi gửi. Đây là khác biệt cốt lõi so với chitchatter (Phần I, mục 6).
 2. **Một `DataChannel` = một kết nối 1-1 với một peer.** Phòng có N peer → N kết nối `DataChannel` song song (mesh đầy đủ, giống Trystero), quản lý tập trung bởi một lớp mới: `RoomSession` (thiết kế ở mục 4).
 3. **Không có `PeerRoom.makeAction` đa kênh của Trystero** → tự đóng gói bằng một **envelope chung** duy nhất trên mỗi `DataChannel`, phân loại bằng trường `type` (tương đương `PeerAction`). Thiết kế ở mục 3.
 4. **Signaling server chỉ relay, không đọc nội dung** — giữ nguyên nguyên tắc đã có, không đổi.
@@ -44,7 +223,7 @@ Thiet ke ky thuat chi tiet — chat-p2p-java
 
 ## 3. Giao thức tầng dữ liệu P2P — `Envelope`
 
-### 3.1 `EnvelopeType` (tương đương `PeerAction` của chitchatter, xem mục 4 tài liệu phân tích)
+### 3.1 `EnvelopeType` (tương đương `PeerAction` của chitchatter, xem Phần I, mục 4)
 
 Thêm vào `common/model` (file mới `EnvelopeType.java`):
 
@@ -191,7 +370,7 @@ public final class IdentitySignatureService {
 
 ### 5.2 Thông điệp thách thức & luồng xác thực
 
-Giữ nguyên công thức của chitchatter: `challenge = roomId + "_" + userId` (mục 5, tài liệu phân tích). Khi B nhận `PEER_IDENTITY` từ A:
+Giữ nguyên công thức của chitchatter: `challenge = roomId + "_" + userId` (Phần I, mục 5). Khi B nhận `PEER_IDENTITY` từ A:
 
 ```java
 boolean verified = IdentitySignatureService.verify(
@@ -204,11 +383,11 @@ Không cần dialog "So sánh fingerprint" nữa — `PeerListCell` (đã có) c
 
 ### 5.3 Lưu ý bảo mật cần ghi vào báo cáo
 
-Đúng như mục 5 tài liệu phân tích: cơ chế này chống **mạo danh lặp lại** (ai đó tự nhận là "Khôi" ở lần join thứ 2 mà không có đúng private key sẽ bị phát hiện), **không** chống tuyệt đối MITM ở lần gặp đầu tiên. Đây là hạn chế đã biết, cần nêu rõ trong báo cáo (mục "Đánh giá bảo mật") thay vì giấu đi.
+Đúng như Phần I, mục 5: cơ chế này chống **mạo danh lặp lại** (ai đó tự nhận là "Khôi" ở lần join thứ 2 mà không có đúng private key sẽ bị phát hiện), **không** chống tuyệt đối MITM ở lần gặp đầu tiên. Đây là hạn chế đã biết, cần nêu rõ trong báo cáo (mục "Đánh giá bảo mật") thay vì giấu đi.
 
 ## 6. Kết nối P2P thật — hoàn thiện `P2pDataChannel` bằng ice4j
 
-*(Việc lớn nhất còn thiếu, mục 14 của tài liệu phân tích — chi tiết hoá thành các bước code được ở đây)*
+*(Việc lớn nhất còn thiếu, Phần I mục 14 — chi tiết hoá thành các bước code được ở đây)*
 
 ### 6.1 Mở rộng giao thức signaling để mang thêm ICE credentials
 
@@ -280,7 +459,7 @@ public class P2pDataChannel implements DataChannel {
 }
 ```
 
-**Lưu ý quan trọng về bảo mật tầng transport**: vì không dùng DTLS như WebRTC, `P2pDataChannel` **truyền UDP thô** — đây chính là lý do mục 1.1 (mọi payload phải tự mã hoá AES-GCM ở tầng `Envelope` trước khi gọi `send()`) là **bắt buộc**, không phải tuỳ chọn. Ghi rõ điều này trong báo cáo ở phần so sánh với WebRTC.
+**Lưu ý quan trọng về bảo mật tầng transport**: vì không dùng DTLS như WebRTC, `P2pDataChannel` **truyền UDP thô** — đây chính là lý do mục 1 nguyên tắc #1 (mọi payload phải tự mã hoá AES-GCM ở tầng `Envelope` trước khi gọi `send()`) là **bắt buộc**, không phải tuỳ chọn. Ghi rõ điều này trong báo cáo ở phần so sánh với WebRTC.
 
 ### 6.4 `WebSocketSignalingClient` — hoàn thiện thay vì stub
 
@@ -410,14 +589,14 @@ Java không có WebRTC/codec built-in. Đề xuất phương án **đơn giản 
 
 - **Vì sao chọn cách này thay vì JavaCV/FFmpeg**: JavaCV kéo theo native binding nặng (OpenCV/FFmpeg build cho từng OS), rủi ro build fail cao trên máy chấm đồ án, không đáng đánh đổi khi mục tiêu là chứng minh khái niệm ("proof of concept") chứ không phải chất lượng video sản xuất. Motion-JPEG qua chính kênh dữ liệu đã có sẵn (`Envelope`/`DataChannel`) **tái dùng toàn bộ hạ tầng mã hoá + P2P đã xây**, không cần mở thêm kênh media riêng như WebRTC — đơn giản hơn nhiều so với bản gốc.
 - UI phía nhận: `ImageView` cập nhật theo từng `MEDIA_FRAME` nhận được (giống hiển thị 1 GIF thủ công), đặt trong `PeerVideoDisplay` (tương đương `PeerVideo.tsx`).
-- `AUDIO_CHANGE`/`VIDEO_CHANGE`/`SCREEN_SHARE_CHANGE` chỉ đồng bộ trạng thái icon bật/tắt trên `PeerListCell`, không mang dữ liệu media (giống bản gốc, xem mục 9 tài liệu phân tích).
+- `AUDIO_CHANGE`/`VIDEO_CHANGE`/`SCREEN_SHARE_CHANGE` chỉ đồng bộ trạng thái icon bật/tắt trên `PeerListCell`, không mang dữ liệu media (giống bản gốc, xem Phần I, mục 9).
 - **Ghi chú khối lượng công việc**: đây là nhóm chức năng nặng nhất trong 12 chức năng — nên làm **sau cùng**, sau khi đã có kênh P2P + mã hoá + chat/file ổn định (xem thứ tự ở mục 9).
 
 ### 8.6 Cài đặt cá nhân, theme sáng/tối, lưu trữ cục bộ
 
 - Thay `localforage`/IndexedDB bằng **`java.util.prefs.Preferences`** (built-in JDK, lưu vào registry trên Windows / file trên Linux/macOS — không cần thư viện ngoài) *hoặc* đơn giản hơn: 1 file JSON tại `System.getProperty("user.home") + "/.chat-p2p-java/settings.json"` (dễ debug, dễ demo, dễ giải thích trong báo cáo hơn Preferences API "ẩn" trong registry).
 - `UserSettingsService` (module `client-javafx` hoặc `common`): load lúc khởi động app (trước khi hiện `HomeView`), save khi đổi cài đặt hoặc lúc thoát app.
-- Nội dung lưu, đối chiếu `UserSettings` của chitchatter (mục 11 tài liệu phân tích): `colorMode`, `userId` (UUID cố định), `customUsername`, `identityKeyPair` (Base64 của `PublicKey`/`PrivateKey` — encode bằng `getEncoded()`, decode bằng `X509EncodedKeySpec`/`PKCS8EncodedKeySpec`), `playSoundOnNewMessage`, `showNotificationOnNewMessage`, `showActiveTypingStatus`.
+- Nội dung lưu, đối chiếu `UserSettings` của chitchatter (Phần I, mục 11): `colorMode`, `userId` (UUID cố định), `customUsername`, `identityKeyPair` (Base64 của `PublicKey`/`PrivateKey` — encode bằng `getEncoded()`, decode bằng `X509EncodedKeySpec`/`PKCS8EncodedKeySpec`), `playSoundOnNewMessage`, `showNotificationOnNewMessage`, `showActiveTypingStatus`.
 - Theme sáng/tối: 2 file CSS (`app-light.css` hiện có đổi tên, thêm `app-dark.css`), `ChatApplication`/`RoomController` chọn `scene.getStylesheets()` theo `UserSettings.colorMode`.
 
 ### 8.7 Nhúng ứng dụng (SDK/iframe)
@@ -477,7 +656,7 @@ Java không có WebRTC/codec built-in. Đề xuất phương án **đơn giản 
 
 ### 12.3 Phòng công khai / phòng riêng tư
 
-- **(a) Bản gốc** (mục 3 tài liệu phân tích): phòng công khai dùng `password = roomId` (ai biết tên phòng là vào được). Phòng riêng tư: `secret = base64(SHA-256("${roomId}_${password}"))`, `secret` này mới là "khoá phòng" thật đưa cho Trystero — nếu không đúng password gốc thì không tính ra đúng `secret`, không đoán được khoá phòng thật, không vào được swarm dù có biết tên phòng hiển thị.
+- **(a) Bản gốc** (Phần I, mục 3): phòng công khai dùng `password = roomId` (ai biết tên phòng là vào được). Phòng riêng tư: `secret = base64(SHA-256("${roomId}_${password}"))`, `secret` này mới là "khoá phòng" thật đưa cho Trystero — nếu không đúng password gốc thì không tính ra đúng `secret`, không đoán được khoá phòng thật, không vào được swarm dù có biết tên phòng hiển thị.
 - **(b) Vì sao không port thẳng**: khái niệm này **không phụ thuộc WebRTC/trình duyệt** — hoàn toàn có thể tái tạo y hệt trong Java, chỉ cần đổi chỗ áp dụng (Trystero swarm key → `roomId` gửi cho `signaling-server`).
 - **(c) Giải pháp Java** (thiết kế mới, bổ sung cho mục 6): giữ 2 khái niệm tách biệt —
   - `displayRoomId`: tên phòng người dùng gõ/thấy trên UI (`home.fxml`).
@@ -505,31 +684,31 @@ Java không có WebRTC/codec built-in. Đề xuất phương án **đơn giản 
 
 ### 12.6 Xác thực danh tính peer
 
-- **(a) Bản gốc** (mục 5 tài liệu phân tích): tự động, ký bằng RSASSA-PKCS1-v1_5 (RSA-2048) trên chuỗi `"${roomId}_${userId}"`, verify bằng public key nhận qua `PEER_METADATA`.
+- **(a) Bản gốc** (Phần I, mục 5): tự động, ký bằng RSASSA-PKCS1-v1_5 (RSA-2048) trên chuỗi `"${roomId}_${userId}"`, verify bằng public key nhận qua `PEER_METADATA`.
 - **(b) Vì sao không port y nguyên**: RSA-2048 vẫn dùng được trong JCA (`KeyPairGenerator.getInstance("RSA")`), **có thể port y hệt nếu muốn** — đây là 1 trong số ít chỗ có thể copy gần như nguyên xi thuật toán. Lý do đổi sang ECDSA (mục 5.1) là lựa chọn thiết kế (gọn hơn, tái dùng cùng đường cong `secp256r1` đã có sẵn cho ECDH), **không phải bắt buộc kỹ thuật**.
 - **(c) Giải pháp Java**: `IdentitySignatureService` dùng `SHA256withECDSA` thay vì `SHA256withRSA`, giữ nguyên 100% công thức chuỗi thách thức và luồng gửi/verify qua `PEER_IDENTITY` (mục 5.2). Nếu muốn bám sát tuyệt đối bản gốc, chỉ cần đổi `KeyPairGenerator.getInstance("EC", ...)` thành `getInstance("RSA")` với `keySize=2048` và đổi `Signature.getInstance("SHA256withECDSA")` thành `"SHA256withRSA"` — phần còn lại của luồng không đổi gì.
 
 ### 12.7 Truyền file
 
-- **(a) Bản gốc** (mục 10 tài liệu phân tích): 2 tầng — `secure-file-transfer` mã hoá file thành torrent (khoá suy từ tên phòng), phân phối qua **WebTorrent** (giao thức BitTorrent chạy trong trình duyệt), chỉ có `magnetURI` (con trỏ) đi qua kênh Trystero.
+- **(a) Bản gốc** (Phần I, mục 10): 2 tầng — `secure-file-transfer` mã hoá file thành torrent (khoá suy từ tên phòng), phân phối qua **WebTorrent** (giao thức BitTorrent chạy trong trình duyệt), chỉ có `magnetURI` (con trỏ) đi qua kênh Trystero.
 - **(b) Vì sao không port thẳng**: không có WebTorrent client thuần Java trưởng thành/dễ tích hợp tương đương; và bản chất WebTorrent tồn tại để **phân phối tới nhiều người xem chưa chắc đã có kết nối trực tiếp với nhau** (swarm) — trong khi chat-p2p-java gửi file trực tiếp 1-1 qua kênh đã có sẵn, không cần mô hình swarm.
 - **(c) Giải pháp Java**: bỏ hẳn tầng "torrent hoá", gửi file trực tiếp qua chunk trên `DataChannel` đã mã hoá sẵn (mục 8.4, `FileSender`/`FileReceiver`) — **kiến trúc đơn giản hơn bản gốc**, đánh đổi là không tận dụng được cơ chế phân phối song song kiểu swarm (không cần thiết với quy mô phòng nhỏ của đồ án).
 
 ### 12.8 Video call, audio call, screen share
 
-- **(a) Bản gốc** (mục 9 tài liệu phân tích): `getUserMedia`/`getDisplayMedia` lấy `MediaStream`, gắn thẳng vào `RTCPeerConnection` qua `addStream` — mã hoá + nén (H.264/VP8/Opus) + truyền đều do WebRTC engine của trình duyệt lo, tách biệt hoàn toàn khỏi data channel.
+- **(a) Bản gốc** (Phần I, mục 9): `getUserMedia`/`getDisplayMedia` lấy `MediaStream`, gắn thẳng vào `RTCPeerConnection` qua `addStream` — mã hoá + nén (H.264/VP8/Opus) + truyền đều do WebRTC engine của trình duyệt lo, tách biệt hoàn toàn khỏi data channel.
 - **(b) Vì sao không port thẳng**: JVM không có encoder/decoder codec video/audio chuẩn built-in, không có khái niệm "media track" tách biệt khỏi data channel như WebRTC.
 - **(c) Giải pháp Java** (mục 8.5): tận dụng lại chính hạ tầng `Envelope`/`DataChannel` đã xây cho chat/file (không có kênh media riêng như bản gốc) — capture bằng `webcam-capture`/`Robot`/`TargetDataLine` (đều là API JVM hoặc thư viện Java thuần, không cần native binding nặng), nén JPEG cho hình, PCM thô cho tiếng, gửi như `Envelope(MEDIA_FRAME, ...)` bình thường. **Đánh đổi tường minh**: chất lượng/độ trễ kém hơn hẳn codec chuyên dụng, nhưng khả thi trong thời gian đồ án và không phụ thuộc build native.
 
 ### 12.9 Lưu trữ cục bộ
 
-- **(a) Bản gốc**: `localforage` (wrapper IndexedDB), chỉ lưu 1 object `userSettings` (mục 11 tài liệu phân tích) — bao gồm cả cặp khoá danh tính.
+- **(a) Bản gốc**: `localforage` (wrapper IndexedDB), chỉ lưu 1 object `userSettings` (Phần I, mục 11) — bao gồm cả cặp khoá danh tính.
 - **(b) Vì sao không port thẳng**: IndexedDB là API trình duyệt, không tồn tại trong JVM.
 - **(c) Giải pháp Java** (mục 8.6): `Preferences` API hoặc file JSON cục bộ — vai trò và nội dung lưu **giống hệt** bản gốc (cùng lưu đúng 1 "gói cài đặt", cùng nguyên tắc không lưu tin nhắn), chỉ khác cơ chế lưu trữ vật lý.
 
 ### 12.10 Nhúng ứng dụng (SDK/iframe)
 
-- **(a) Bản gốc**: `postMessage` giữa trang cha và `<iframe>` nhúng chitchatter (mục 13 tài liệu phân tích).
+- **(a) Bản gốc**: `postMessage` giữa trang cha và `<iframe>` nhúng chitchatter (Phần I, mục 13).
 - **(b) Vì sao không port**: `<iframe>` là khái niệm trình duyệt, ứng dụng desktop JavaFX không có "trang cha" nào để nhúng vào.
 - **(c) Giải pháp Java**: **không có giải pháp thay thế** — loại hẳn khỏi phạm vi thi công (không tính là 1 trong 12 chức năng cần làm ở app desktop), khác về bản chất với các mục 12.1-12.9 (những mục đó đều có giải pháp thay thế, mục này thì không áp dụng được).
 
