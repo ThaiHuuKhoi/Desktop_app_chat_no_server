@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>com.datn.chatp2p</groupId>
+    <artifactId>chat-p2p-java</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>p2p-core</artifactId>
+  <packaging>jar</packaging>
+  <name>chat-p2p-java :: p2p-core</name>
+  <description>
+    Cac cai dat cua interface DataChannel: LoopbackDataChannel (gia lap, dung
+    ngay) va P2pDataChannel (khung viec, se hoan thien bang ice4j o tuan 7-9),
+    cung SignalingClient. Phu trach: Thanh vien A (Phan-cong-cong-viec.md muc 2).
+  </description>
+
+  <dependencies>
+    <dependency>
+      <groupId>com.datn.chatp2p</groupId>
+      <artifactId>common</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+</project>

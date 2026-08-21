@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>com.datn.chatp2p</groupId>
+    <artifactId>chat-p2p-java</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>client-javafx</artifactId>
+  <packaging>jar</packaging>
+  <name>chat-p2p-java :: client-javafx</name>
+  <description>
+    Giao dien desktop JavaFX (De-cuong-Chat-P2P-Java.md muc 5): man hinh
+    tao/tham gia phong, khung chat, danh sach peer, xac thuc fingerprint.
+    Ban demo nay chay tren LoopbackDataChannel (p2p-core) voi mot "peer mo
+    phong" tu dong tra loi, ma hoa that bang module crypto - se thay bang
+    P2pDataChannel that o tuan tich hop. Phu trach: Thanh vien B.
+  </description>
+
+  <dependencies>
+    <dependency>
+      <groupId>com.datn.chatp2p</groupId>
+      <artifactId>common</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.datn.chatp2p</groupId>
+      <artifactId>crypto</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.datn.chatp2p</groupId>
+      <artifactId>p2p-core</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>org.openjfx</groupId>
+      <artifactId>javafx-controls</artifactId>
+      <version>${javafx.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.openjfx</groupId>
+      <artifactId>javafx-fxml</artifactId>
+      <version>${javafx.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.openjfx</groupId>
+        <artifactId>javafx-maven-plugin</artifactId>
+        <version>0.0.8</version>
+        <configuration>
+          <mainClass>com.datn.chatp2p.client.ChatApplication</mainClass>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

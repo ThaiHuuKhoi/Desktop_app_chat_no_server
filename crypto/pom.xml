@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>com.datn.chatp2p</groupId>
+    <artifactId>chat-p2p-java</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>crypto</artifactId>
+  <packaging>jar</packaging>
+  <name>chat-p2p-java :: crypto</name>
+  <description>
+    Trao khoa phien (ECDH) va ma hoa/giai ma noi dung (AES-GCM) bang Java
+    Cryptography Architecture (JCA) - De-cuong-Chat-P2P-Java.md muc 5.
+    Phu trach: Thanh vien B (Phan-cong-cong-viec.md muc 2).
+  </description>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+</project>

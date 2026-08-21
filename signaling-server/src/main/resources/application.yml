@@ -1,0 +1,10 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: chat-p2p-signaling-server
+
+logging:
+  level:
+    com.datn.chatp2p: INFO

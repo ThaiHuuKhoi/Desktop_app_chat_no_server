@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>com.datn.chatp2p</groupId>
+    <artifactId>chat-p2p-java</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>signaling-server</artifactId>
+  <packaging>jar</packaging>
+  <name>chat-p2p-java :: signaling-server</name>
+  <description>
+    Signaling server toi gian (Spring Boot + WebSocket): chi quan ly phong va
+    relay SDP/ICE candidate giua cac peer, khong bao gio doc/luu noi dung chat
+    - De-cuong-Chat-P2P-Java.md muc 5-6. Phu trach: Thanh vien A.
+  </description>
+
+  <dependencies>
+    <dependency>
+      <groupId>com.datn.chatp2p</groupId>
+      <artifactId>common</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-websocket</artifactId>
+    </dependency>
+    <!-- spring-boot-starter-websocket khong tu keo Jackson (khac voi starter-web);
+         can khai bao rieng de JacksonAutoConfiguration cung cap ObjectMapper bean. -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <finalName>signaling-server</finalName>
+    <plugins>
+      <plugin>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+        <version>${spring-boot.version}</version>
+        <executions>
+          <!-- Parent cua module nay khong phai spring-boot-starter-parent, nen
+               goal repackage khong tu duoc gan vao phase package - phai khai
+               bao tuong minh de "mvn package" ra duoc fat jar chay duoc bang
+               "java -jar". -->
+          <execution>
+            <goals>
+              <goal>repackage</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

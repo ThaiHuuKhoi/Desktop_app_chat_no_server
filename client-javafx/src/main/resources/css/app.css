@@ -1,0 +1,128 @@
+/*
+ * Stylesheet toi gian cho giao dien Chat P2P Java.
+ * Phong theo bang mau sang/gon cua chitchatter (khong sao chep code, chi lay
+ * cam hung ve mau sac trung tinh + bong bong tin nhan ro rang).
+ */
+
+.home-root {
+    -fx-background-color: #f5f6fa;
+}
+
+.app-title {
+    -fx-font-size: 26px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #2c3e50;
+}
+
+.app-subtitle {
+    -fx-font-size: 12px;
+    -fx-text-fill: #7f8c8d;
+    -fx-text-alignment: center;
+}
+
+.error-label {
+    -fx-text-fill: #c0392b;
+}
+
+.primary-button {
+    -fx-background-color: #2f6feb;
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+    -fx-padding: 8 18 8 18;
+    -fx-background-radius: 6;
+}
+
+.primary-button:hover {
+    -fx-background-color: #2558c4;
+}
+
+.room-root {
+    -fx-background-color: #ffffff;
+}
+
+.room-header {
+    -fx-background-color: #2c3e50;
+}
+
+.room-title {
+    -fx-text-fill: white;
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+}
+
+.peer-panel {
+    -fx-background-color: #f5f6fa;
+    -fx-border-color: #e1e4e8;
+    -fx-border-width: 0 1 0 0;
+}
+
+.section-title {
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #7f8c8d;
+}
+
+.peer-avatar {
+    -fx-fill: #2f6feb;
+}
+
+.peer-avatar-initial {
+    -fx-fill: white;
+    -fx-font-weight: bold;
+}
+
+.peer-name {
+    -fx-font-weight: bold;
+    -fx-font-size: 12px;
+}
+
+.peer-fingerprint {
+    -fx-font-family: monospace;
+    -fx-font-size: 9px;
+    -fx-text-fill: #95a5a6;
+}
+
+.peer-verify-button {
+    -fx-font-size: 10px;
+    -fx-padding: 2 8 2 8;
+}
+
+.peer-verified-badge {
+    -fx-text-fill: #27ae60;
+    -fx-font-size: 10px;
+    -fx-font-weight: bold;
+}
+
+.chat-panel {
+    -fx-background-color: #ffffff;
+}
+
+.transcript {
+    -fx-background-color: transparent;
+    -fx-padding: 8;
+}
+
+.message-input-bar {
+    -fx-background-color: #f5f6fa;
+    -fx-border-color: #e1e4e8;
+    -fx-border-width: 1 0 0 0;
+}
+
+.message-meta {
+    -fx-font-size: 9px;
+    -fx-text-fill: #95a5a6;
+}
+
+.message-text {
+    -fx-font-size: 13px;
+}
+
+.message-bubble-mine {
+    -fx-background-color: #d6e4ff;
+    -fx-background-radius: 12;
+}
+
+.message-bubble-other {
+    -fx-background-color: #eef0f3;
+    -fx-background-radius: 12;
+}
