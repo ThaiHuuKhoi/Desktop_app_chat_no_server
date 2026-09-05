@@ -4,7 +4,7 @@ Báo cáo thực hiện — Nhiệm vụ A (Mạng & Kết nối)
 
 *Tài liệu này ghi lại **từng bước đã thực hiện** cho các phần việc thuộc Thành viên A (xem [Phan-cong-cong-viec.md](Phan-cong-cong-viec.md) mục 2), dùng làm bản nháp cho Chương 4 — Cài đặt của báo cáo đồ án. Chỉ ghi phần đã code xong và chạy được thật; các mục còn lại của nhiệm vụ A (P2P core/ice4j, mesh, đo hiệu năng — xem Tai-lieu-ky-thuat.md Phần C.2) sẽ được bổ sung tiếp vào tài liệu này khi hoàn thành.*
 
-**Trạng thái tại thời điểm viết:** đã hoàn thành toàn bộ chuỗi mạng cốt lõi — signaling server (có tự động kết nối lại khi mất mạng, đã rà soát chịu lỗi), ICE thật (`ice4j`, có đo hiệu năng), kênh dữ liệu P2P thật, đa kênh logic + trao khoá phiên, và `RoomSession` quản lý nhiều peer — đã xác nhận chạy đúng **cả qua signaling server thật** (không chỉ giả lập), 9 test liên quan đã tự chạy bằng IntelliJ và **PASS**. Trong quá trình đó phát hiện và sửa 3 bug thật: 1 race condition trong `RoomRegistry`, 2 lỗ hổng chịu lỗi trong `SignalingWebSocketHandler` (JSON hỏng làm crash kết nối, 1 peer lỗi chặn thông báo cho các peer khác). Còn thiếu: xác thực danh tính tự động (`PEER_IDENTITY`, cần `IdentitySignatureService` của B), TURN dự phòng, đo hiệu năng tổng hợp qua mạng thật, và kiểm thử qua 2 máy thật khác NAT.
+**Trạng thái tại thời điểm viết:** đã hoàn thành toàn bộ chuỗi mạng cốt lõi — signaling server + client (Tầng 1, **coi như đã hoàn thiện chịu lỗi cả 2 phía**), ICE thật (`ice4j`, có đo hiệu năng), kênh dữ liệu P2P thật, đa kênh logic + trao khoá phiên, và `RoomSession` quản lý nhiều peer — đã xác nhận chạy đúng **cả qua signaling server thật** (không chỉ giả lập), 10 test liên quan đã tự chạy bằng IntelliJ và **PASS**. Trong quá trình đó phát hiện và sửa 4 bug thật: 1 race condition trong `RoomRegistry`, 2 lỗ hổng chịu lỗi trong `SignalingWebSocketHandler` (JSON hỏng làm crash kết nối, 1 peer lỗi chặn thông báo cho các peer khác), và 1 lỗ hổng đối xứng ở `RoomSession` (1 peer lỗi trong `PEER_LIST` chặn kết nối tới các peer khác). Còn thiếu: xác thực danh tính tự động (`PEER_IDENTITY`, cần `IdentitySignatureService` của B), TURN dự phòng, đo hiệu năng tổng hợp qua mạng thật, và kiểm thử qua 2 máy thật khác NAT.
 
 ---
 
@@ -24,8 +24,8 @@ Báo cáo thực hiện — Nhiệm vụ A (Mạng & Kết nối)
 - Chạy qua WebSocket endpoint `/ws`, đóng gói fat jar chạy bằng `java -jar` (đã né bug path tiếng Việt làm hỏng `spring-boot:run`).
 
 **Chịu lỗi ở tầng signaling** (Tai-lieu-ky-thuat.md Phần H.1 — rà soát và vá lại, không phải viết mới):
-- `handleTextMessage`: 1 client gửi JSON sai định dạng → bắt riêng, log WARN, bỏ qua đúng bản tin đó — **không** để lỗi lan ra ngoài làm Spring tự đóng luôn kết nối của chính client đó.
-- `send()`: gửi tới 1 session thất bại (socket đang đóng dở) → bắt riêng `IOException` cho **từng session**, không để lỗi 1 người làm dừng cả vòng lặp `broadcastToOthers` — các peer còn lại trong phòng vẫn phải nhận được `PEER_JOINED`/`PEER_LEFT` bình thường. Đây chính là nguyên nhân của cảnh báo "Unhandled exception after connection closed" từng thấy trong log lúc test `RoomSessionRealSignalingServerTest` ở phiên trước.
+- **Phía server** (`SignalingWebSocketHandler`): `handleTextMessage` bắt riêng lỗi JSON sai định dạng (log WARN, bỏ qua đúng bản tin đó, không để Spring tự đóng kết nối của client); `send()` bắt riêng `IOException` cho **từng session**, không để lỗi 1 người làm dừng cả vòng lặp `broadcastToOthers` — các peer còn lại vẫn nhận được `PEER_JOINED`/`PEER_LEFT` bình thường. Đây chính là nguyên nhân của cảnh báo "Unhandled exception after connection closed" từng thấy trong log lúc test `RoomSessionRealSignalingServerTest` ở phiên trước.
+- **Phía client** (`RoomSession`, đối xứng với fix phía server): `handlePeerList` lặp qua từng peer trong `PEER_LIST` gọi `connectAsOfferer` — bọc `try/catch` cho **từng peer**, báo lỗi qua `onConnectionFailed(peerId, error)` đã có sẵn, dọn dẹp `IceP2pConnectionEstablisher` dở dang (`cleanupFailedEstablisher`) — 1 peer lỗi (hết cổng UDP, gửi OFFER thất bại...) không còn chặn việc kết nối tới các peer khác trong cùng danh sách. `handleOffer`/`handleAnswer` cũng được bọc tương tự (JSON/candidate sai định dạng không làm crash luồng xử lý bản tin).
 
 ### Tầng 2 — Thiết lập kết nối trực tiếp (ICE, xuyên NAT) — mới viết trong phiên gần đây, dùng `ice4j`
 
@@ -100,7 +100,7 @@ Lúc viết test cho phần chịu lỗi ở trên, thử dùng Mockito trước
 
 ### Đã kiểm chứng thật (không chỉ "viết xong")
 
-9 test đã tự chạy bằng IntelliJ và **PASS**:
+10 test đã tự chạy bằng IntelliJ và **PASS**:
 - `LoopbackDataChannelTest`, `P2pDataChannelTest` — kênh dữ liệu.
 - `IceP2pConnectionEstablisherTest` — 2 `Agent` ice4j thật trên localhost, ICE chạy đúng RFC 8445, gửi/nhận dữ liệu thành công qua kênh vừa thiết lập; xác nhận `IceConnectionStats` báo đúng `usingRelay=false` trên localhost (không có TURN).
 - `EnvelopeCodecTest` — mã hoá/giải mã đúng, sai khoá hoặc dữ liệu bị sửa đều thất bại đúng cách.
@@ -109,6 +109,9 @@ Lúc viết test cho phần chịu lỗi ở trên, thử dùng Mockito trước
 - `RoomSessionRealSignalingServerTest` — **cùng kịch bản trên nhưng qua `WebSocketSignalingClient` + 1 `signaling-server` thật** (tự boot bằng `SpringApplicationBuilder`, không phải giả lập) — sau khi sửa 2 bug ở trên, chạy đúng end-to-end.
 - `WebSocketSignalingClientReconnectTest` — server "sập" thật (đóng thẳng context, không phải client tự ngắt) → xác nhận client tự chuyển `RECONNECTING` → server sống lại trên đúng cổng cũ → xác nhận client tự kết nối lại + tự JOIN lại (kiểm chứng bằng cách cho 1 peer khác vào phòng sau đó và xác nhận client cũ thấy được peer mới).
 - `SignalingWebSocketHandlerErrorHandlingTest` — JSON hỏng/thiếu `type` không làm throw; 1 session đang "lỗi" đứng trước 1 session khoẻ mạnh trong danh sách broadcast không chặn được thông báo tới session khoẻ mạnh.
+- `RoomSessionErrorHandlingTest` — đối xứng phía client: giả lập gửi OFFER tới 1 peer thất bại, xác nhận `onConnectionFailed` báo đúng lỗi cho peer đó **và** vẫn kết nối thành công với peer còn lại trong cùng `PEER_LIST`.
+
+**Tầng 1 (Signaling) coi như đã hoàn thiện chịu lỗi** — cả 2 phía (server relay, client phản ứng với bản tin signaling) đều cô lập lỗi đúng theo nguyên tắc H.1: 1 lỗi cục bộ (JSON hỏng, session/peer đang gặp sự cố) không được lan sang ảnh hưởng các peer/bản tin khác.
 
 ### Chưa làm (mảnh còn thiếu để hoàn chỉnh nhiệm vụ A)
 
