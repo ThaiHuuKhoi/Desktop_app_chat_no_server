@@ -4,7 +4,7 @@ Báo cáo thực hiện — Nhiệm vụ A (Mạng & Kết nối)
 
 *Tài liệu này ghi lại **từng bước đã thực hiện** cho các phần việc thuộc Thành viên A (xem [Phan-cong-cong-viec.md](Phan-cong-cong-viec.md) mục 2), dùng làm bản nháp cho Chương 4 — Cài đặt của báo cáo đồ án. Chỉ ghi phần đã code xong và chạy được thật; các mục còn lại của nhiệm vụ A (P2P core/ice4j, mesh, đo hiệu năng — xem Tai-lieu-ky-thuat.md Phần C.2) sẽ được bổ sung tiếp vào tài liệu này khi hoàn thành.*
 
-**Trạng thái tại thời điểm viết:** đã hoàn thành toàn bộ chuỗi mạng cốt lõi — signaling server + client (Tầng 1, **coi như đã hoàn thiện chịu lỗi cả 2 phía**), ICE thật (`ice4j`, có đo hiệu năng), kênh dữ liệu P2P thật, đa kênh logic + trao khoá phiên, và `RoomSession` quản lý nhiều peer (đã xác nhận mesh **≥3 peer** hoạt động đúng, không chỉ 2 peer) — đã xác nhận chạy đúng **cả qua signaling server thật** (không chỉ giả lập), 11 test liên quan đã tự chạy bằng IntelliJ và **PASS**. Trong quá trình đó phát hiện và sửa 4 bug thật: 1 race condition trong `RoomRegistry`, 2 lỗ hổng chịu lỗi trong `SignalingWebSocketHandler` (JSON hỏng làm crash kết nối, 1 peer lỗi chặn thông báo cho các peer khác), và 1 lỗ hổng đối xứng ở `RoomSession` (1 peer lỗi trong `PEER_LIST` chặn kết nối tới các peer khác). Còn thiếu: xác thực danh tính tự động (`PEER_IDENTITY`, cần `IdentitySignatureService` của B), TURN dự phòng, đo hiệu năng tổng hợp qua mạng thật, và kiểm thử qua 2 máy thật khác NAT.
+**Trạng thái tại thời điểm viết:** đã hoàn thành toàn bộ chuỗi mạng cốt lõi — signaling server + client (Tầng 1, **coi như đã hoàn thiện chịu lỗi cả 2 phía**), ICE thật (`ice4j`, có đo hiệu năng), kênh dữ liệu P2P thật, đa kênh logic + trao khoá phiên, và `RoomSession` quản lý nhiều peer (đã xác nhận mesh **≥3 peer** hoạt động đúng, không chỉ 2 peer) — đã xác nhận chạy đúng **cả qua signaling server thật**, kể cả **30 người dùng kết nối đồng thời** (không chỉ giả lập/tuần tự), 12 test liên quan đã tự chạy bằng IntelliJ và **PASS**. Trong quá trình đó phát hiện và sửa 5 bug thật: 1 race condition trong `RoomRegistry`, 3 lỗ hổng chịu lỗi trong `SignalingWebSocketHandler` (JSON hỏng làm crash kết nối, 1 peer lỗi chặn thông báo cho các peer khác, và 1 bug thread-safety khi nhiều peer join đồng thời làm Tomcat ném `IllegalStateException`), và 1 lỗ hổng đối xứng ở `RoomSession` (1 peer lỗi trong `PEER_LIST` chặn kết nối tới các peer khác). Còn thiếu: xác thực danh tính tự động (`PEER_IDENTITY`, cần `IdentitySignatureService` của B), TURN dự phòng, đo hiệu năng tổng hợp qua mạng thật, và kiểm thử qua 2 máy thật khác NAT.
 
 ---
 
@@ -26,6 +26,16 @@ Báo cáo thực hiện — Nhiệm vụ A (Mạng & Kết nối)
 **Chịu lỗi ở tầng signaling** (Tai-lieu-ky-thuat.md Phần H.1 — rà soát và vá lại, không phải viết mới):
 - **Phía server** (`SignalingWebSocketHandler`): `handleTextMessage` bắt riêng lỗi JSON sai định dạng (log WARN, bỏ qua đúng bản tin đó, không để Spring tự đóng kết nối của client); `send()` bắt riêng `IOException` cho **từng session**, không để lỗi 1 người làm dừng cả vòng lặp `broadcastToOthers` — các peer còn lại vẫn nhận được `PEER_JOINED`/`PEER_LEFT` bình thường. Đây chính là nguyên nhân của cảnh báo "Unhandled exception after connection closed" từng thấy trong log lúc test `RoomSessionRealSignalingServerTest` ở phiên trước.
 - **Phía client** (`RoomSession`, đối xứng với fix phía server): `handlePeerList` lặp qua từng peer trong `PEER_LIST` gọi `connectAsOfferer` — bọc `try/catch` cho **từng peer**, báo lỗi qua `onConnectionFailed(peerId, error)` đã có sẵn, dọn dẹp `IceP2pConnectionEstablisher` dở dang (`cleanupFailedEstablisher`) — 1 peer lỗi (hết cổng UDP, gửi OFFER thất bại...) không còn chặn việc kết nối tới các peer khác trong cùng danh sách. `handleOffer`/`handleAnswer` cũng được bọc tương tự (JSON/candidate sai định dạng không làm crash luồng xử lý bản tin).
+
+**Bug thứ 2 phát hiện qua load test thật** (30 peer join đồng thời — xem mục "Khả năng chịu tải" bên dưới): Tomcat's `WebSocketSession.sendMessage()` **không an toàn khi 2 thread cùng ghi đồng thời trên CÙNG 1 session** — ném `IllegalStateException: state [TEXT_PARTIAL_WRITING]`, khác hẳn `IOException` nên fix ở trên **không hề bắt được**, exception vẫn lọt ra ngoài làm Spring tự đóng session, gây cascade lỗi tiếp theo. **Đã sửa:** bọc `send()` bằng `synchronized(session)` — khoá trên chính đối tượng session (không phải khoá toàn cục), chỉ serialize ghi trên cùng 1 session, các session khác vẫn gửi song song bình thường; bắt thêm cả `IllegalStateException`.
+
+### Khả năng chịu tải của Tầng 1 (Signaling) — tách biệt khỏi giới hạn N² của mesh
+
+Câu hỏi "tầng 1 chịu được bao nhiêu người dùng cùng lúc" **khác với** câu hỏi "1 phòng chat P2P chứa được bao nhiêu người" (giới hạn N² ở mục "Khả năng mở rộng" của Tầng 5, chỉ áp dụng cho mesh/ICE) — vì signaling chỉ là relay JSON nhẹ qua WebSocket, không cần cổng UDP/ICE Agent nên chịu tải được nhiều hơn hẳn.
+
+`WebSocketSignalingClientCapacityTest`: mô phỏng **30 người dùng thật kết nối đồng thời** (mỗi người 1 thread riêng, gọi `connect()` gần như cùng lúc) vào 1 `signaling-server` thật — xác nhận tất cả kết nối thành công **và** không ai bị "thất lạc" (mỗi người biết đúng 29 người còn lại, không thiếu/dư do race condition). Kết quả đo được: **30 peer join đồng thời mất 761ms** trên máy test (1 lần chạy, không phải benchmark chính thức). Chính lúc chạy test này đã phát hiện ra bug thread-safety ở trên — lần chạy đầu **thất bại** (nhiều session bị đóng do lỗi ghi đồng thời), sau khi sửa mới pass.
+
+**Kết luận trung thực:** với sửa lỗi này, tầng Signaling đã xử lý đúng ít nhất 30 người dùng đồng thời trên 1 máy test. Đây **không phải** con số giới hạn tối đa thật của hệ thống — chưa thử với số lượng lớn hơn (100+), và số liệu 761ms chỉ đo trên máy phát triển, không phải môi trường production. Nếu cần con số chính xác hơn cho báo cáo, nên tăng dần số peer trong test này (50 → 100 → 200...) tới khi thấy dấu hiệu quá tải thật (timeout, lỗi), thay vì đoán.
 
 ### Tầng 2 — Thiết lập kết nối trực tiếp (ICE, xuyên NAT) — mới viết trong phiên gần đây, dùng `ice4j`
 
@@ -102,7 +112,7 @@ Lúc viết test cho phần chịu lỗi ở trên, thử dùng Mockito trước
 
 ### Đã kiểm chứng thật (không chỉ "viết xong")
 
-11 test đã tự chạy bằng IntelliJ và **PASS**:
+12 test đã tự chạy bằng IntelliJ và **PASS**:
 - `LoopbackDataChannelTest`, `P2pDataChannelTest` — kênh dữ liệu.
 - `IceP2pConnectionEstablisherTest` — 2 `Agent` ice4j thật trên localhost, ICE chạy đúng RFC 8445, gửi/nhận dữ liệu thành công qua kênh vừa thiết lập; xác nhận `IceConnectionStats` báo đúng `usingRelay=false` trên localhost (không có TURN).
 - `EnvelopeCodecTest` — mã hoá/giải mã đúng, sai khoá hoặc dữ liệu bị sửa đều thất bại đúng cách.
@@ -113,6 +123,7 @@ Lúc viết test cho phần chịu lỗi ở trên, thử dùng Mockito trước
 - `SignalingWebSocketHandlerErrorHandlingTest` — JSON hỏng/thiếu `type` không làm throw; 1 session đang "lỗi" đứng trước 1 session khoẻ mạnh trong danh sách broadcast không chặn được thông báo tới session khoẻ mạnh.
 - `RoomSessionErrorHandlingTest` — đối xứng phía client: giả lập gửi OFFER tới 1 peer thất bại, xác nhận `onConnectionFailed` báo đúng lỗi cho peer đó **và** vẫn kết nối thành công với peer còn lại trong cùng `PEER_LIST`.
 - `RoomSessionThreePeerMeshTest` — mesh 3 peer thật (P1→P2→P3), xác nhận cả 3 cặp tự kết nối đúng (mỗi peer 2 kết nối) và broadcast từ 1 người tới đúng cả 2 người còn lại.
+- `WebSocketSignalingClientCapacityTest` — 30 người dùng thật kết nối **đồng thời** (mỗi người 1 thread riêng) qua 1 `signaling-server` thật, xác nhận tất cả kết nối thành công và không ai bị thất lạc do race condition (đã phát hiện + sửa bug thread-safety `IllegalStateException` khi viết test này).
 
 **Tầng 1 (Signaling) coi như đã hoàn thiện chịu lỗi** — cả 2 phía (server relay, client phản ứng với bản tin signaling) đều cô lập lỗi đúng theo nguyên tắc H.1: 1 lỗi cục bộ (JSON hỏng, session/peer đang gặp sự cố) không được lan sang ảnh hưởng các peer/bản tin khác.
 
