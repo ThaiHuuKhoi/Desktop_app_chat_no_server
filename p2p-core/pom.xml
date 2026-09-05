@@ -52,5 +52,15 @@
       <artifactId>junit-jupiter</artifactId>
       <scope>test</scope>
     </dependency>
+    <!-- CHI test-scope: de RoomSessionRealSignalingServerTest tu boot 1 instance
+         signaling-server THAT (SpringApplication.run that tren cong ngau nhien),
+         khac voi RoomSessionTest (dung LoopbackSignalingClient gia lap). Khong
+         anh huong toi jar chinh cua p2p-core - signaling-server van khong phai
+         dependency runtime cua p2p-core. -->
+    <dependency>
+      <groupId>com.datn.chatp2p</groupId>
+      <artifactId>signaling-server</artifactId>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 </project>

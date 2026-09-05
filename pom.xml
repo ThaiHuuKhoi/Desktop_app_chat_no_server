@@ -86,6 +86,11 @@
         <artifactId>p2p-core</artifactId>
         <version>${project.version}</version>
       </dependency>
+      <dependency>
+        <groupId>com.datn.chatp2p</groupId>
+        <artifactId>signaling-server</artifactId>
+        <version>${project.version}</version>
+      </dependency>
     </dependencies>
   </dependencyManagement>
 
