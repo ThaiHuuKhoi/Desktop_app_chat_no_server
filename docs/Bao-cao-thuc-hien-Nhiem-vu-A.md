@@ -4,7 +4,7 @@ Báo cáo thực hiện — Nhiệm vụ A (Mạng & Kết nối)
 
 *Tài liệu này ghi lại **từng bước đã thực hiện** cho các phần việc thuộc Thành viên A (xem [Phan-cong-cong-viec.md](Phan-cong-cong-viec.md) mục 2), dùng làm bản nháp cho Chương 4 — Cài đặt của báo cáo đồ án. Chỉ ghi phần đã code xong và chạy được thật; các mục còn lại của nhiệm vụ A (P2P core/ice4j, mesh, đo hiệu năng — xem Tai-lieu-ky-thuat.md Phần C.2) sẽ được bổ sung tiếp vào tài liệu này khi hoàn thành.*
 
-**Trạng thái tại thời điểm viết:** đã hoàn thành toàn bộ chuỗi mạng cốt lõi — signaling server, ICE thật (`ice4j`), kênh dữ liệu P2P thật, đa kênh logic + trao khoá phiên, và `RoomSession` quản lý nhiều peer — đã xác nhận chạy đúng **cả qua signaling server thật** (không chỉ giả lập), 7 test liên quan đã tự chạy bằng IntelliJ và **PASS**. Trong quá trình đó phát hiện và sửa 1 bug race condition thật trong `RoomRegistry` (tưởng đã "xong" từ Giai đoạn 1). Còn thiếu: xác thực danh tính tự động (`PEER_IDENTITY`, cần `IdentitySignatureService` của B), TURN dự phòng, đo hiệu năng, và kiểm thử qua 2 máy thật khác NAT.
+**Trạng thái tại thời điểm viết:** đã hoàn thành toàn bộ chuỗi mạng cốt lõi — signaling server (có tự động kết nối lại khi mất mạng), ICE thật (`ice4j`, có đo hiệu năng), kênh dữ liệu P2P thật, đa kênh logic + trao khoá phiên, và `RoomSession` quản lý nhiều peer — đã xác nhận chạy đúng **cả qua signaling server thật** (không chỉ giả lập), 8 test liên quan đã tự chạy bằng IntelliJ và **PASS**. Trong quá trình đó phát hiện và sửa 1 bug race condition thật trong `RoomRegistry` (tưởng đã "xong" từ Giai đoạn 1). Còn thiếu: xác thực danh tính tự động (`PEER_IDENTITY`, cần `IdentitySignatureService` của B), TURN dự phòng, đo hiệu năng tổng hợp qua mạng thật, và kiểm thử qua 2 máy thật khác NAT.
 
 ---
 
@@ -78,6 +78,8 @@ Báo cáo thực hiện — Nhiệm vụ A (Mạng & Kết nối)
 - **`DataChannel`** (`common`): 3 method `send/onReceive/close` — cả `LoopbackDataChannel` (giả lập của B) lẫn `P2pDataChannel` (thật của A) đều implement đúng interface này, B không cần đổi code khi ghép kênh thật vào.
 - **`SignalingClient`** (`p2p-core`): hợp đồng cho việc kết nối/tham gia phòng qua signaling — `WebSocketSignalingClient` là cài đặt thật, dùng `java.net.http.HttpClient` (có sẵn JDK) mở WebSocket tới `signaling-server`, serialize/deserialize `SignalMessage` bằng Jackson, dispatch theo `SignalType` tới đúng handler đã đăng ký (`onOffer`, `onAnswer`,...).
 
+**Tự động kết nối lại** (`WebSocketSignalingClient`, Tai-lieu-ky-thuat.md Phần H.3): nếu WebSocket đóng **bất thường** (server sập, mất mạng — khác với tự gọi `disconnect()`), tự lên lịch thử lại với backoff tăng dần (1s → 2s → 4s... tối đa 30s); kết nối lại thành công thì **tự gửi lại JOIN** để vào lại đúng phòng, không cần lớp gọi (`RoomSession`) tự xử lý gì. Có `onConnectionStateChanged(handler)` riêng (không thuộc interface `SignalingClient` chung, vì không phải cài đặt nào — ví dụ bản giả lập dùng để test — cũng cần khái niệm reconnect) để lớp trên biết lúc nào đang "mất kết nối, đang thử lại" (dùng cho UI sau này).
+
 ### Bug thật phát hiện khi test qua signaling-server thật (không phải giả lập)
 
 `RoomSessionTest` (dùng `LoopbackSignalingClient` giả lập) chạy đúng, nhưng khi đổi sang test với `WebSocketSignalingClient` + 1 `signaling-server` thật (`RoomSessionRealSignalingServerTest`, tự boot server thật trên cổng ngẫu nhiên bằng `SpringApplicationBuilder`) thì **treo, không kết nối được**.
@@ -90,13 +92,14 @@ Nguyên nhân: `RoomRegistry.join()` (module `signaling-server`, tưởng đã "
 
 ### Đã kiểm chứng thật (không chỉ "viết xong")
 
-7 test đã tự chạy bằng IntelliJ và **PASS**:
+8 test đã tự chạy bằng IntelliJ và **PASS**:
 - `LoopbackDataChannelTest`, `P2pDataChannelTest` — kênh dữ liệu.
 - `IceP2pConnectionEstablisherTest` — 2 `Agent` ice4j thật trên localhost, ICE chạy đúng RFC 8445, gửi/nhận dữ liệu thành công qua kênh vừa thiết lập; xác nhận `IceConnectionStats` báo đúng `usingRelay=false` trên localhost (không có TURN).
 - `EnvelopeCodecTest` — mã hoá/giải mã đúng, sai khoá hoặc dữ liệu bị sửa đều thất bại đúng cách.
 - `PeerConnectionTest` — 2 `PeerConnection` tự trao khoá ECDH xong rồi gửi/nhận đúng 1 `Envelope` mã hoá.
 - `RoomSessionTest` — 2 `RoomSession` (Alice vào trước, Bob vào sau) tự nhận đúng vai trò chủ động/trả lời, chạy ICE thật + trao khoá ECDH thật + gửi/nhận `Envelope` mã hoá thật, dùng `LoopbackSignalingClient` giả lập.
 - `RoomSessionRealSignalingServerTest` — **cùng kịch bản trên nhưng qua `WebSocketSignalingClient` + 1 `signaling-server` thật** (tự boot bằng `SpringApplicationBuilder`, không phải giả lập) — sau khi sửa 2 bug ở trên, chạy đúng end-to-end.
+- `WebSocketSignalingClientReconnectTest` — server "sập" thật (đóng thẳng context, không phải client tự ngắt) → xác nhận client tự chuyển `RECONNECTING` → server sống lại trên đúng cổng cũ → xác nhận client tự kết nối lại + tự JOIN lại (kiểm chứng bằng cách cho 1 peer khác vào phòng sau đó và xác nhận client cũ thấy được peer mới).
 
 ### Chưa làm (mảnh còn thiếu để hoàn chỉnh nhiệm vụ A)
 
