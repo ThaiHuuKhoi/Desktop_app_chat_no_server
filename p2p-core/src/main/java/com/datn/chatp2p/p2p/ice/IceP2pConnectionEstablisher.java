@@ -7,6 +7,7 @@ import com.datn.chatp2p.p2p.channel.P2pDataChannel;
 import org.ice4j.TransportAddress;
 import org.ice4j.ice.Agent;
 import org.ice4j.ice.CandidatePair;
+import org.ice4j.ice.CandidateType;
 import org.ice4j.ice.Component;
 import org.ice4j.ice.IceMediaStream;
 import org.ice4j.ice.IceProcessingState;
@@ -19,6 +20,8 @@ import java.io.IOException;
 import java.net.DatagramSocket;
 import java.net.InetSocketAddress;
 import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
@@ -78,9 +81,12 @@ public final class IceP2pConnectionEstablisher {
     private final Agent agent = new Agent();
     private final IceMediaStream mediaStream;
     private final Component component;
+    /** Moc thoi gian tao ra instance nay - dung lam "diem bat dau" khi tinh {@link IceConnectionStats#establishmentMillis()}. */
+    private final long constructedAtNanos = System.nanoTime();
 
     private volatile Consumer<DataChannel> onConnectedHandler;
     private volatile Consumer<Throwable> onFailedHandler;
+    private volatile IceConnectionStats stats;
 
     /**
      * @param stunServers danh sach dia chi STUN server (vi du
@@ -166,6 +172,17 @@ public final class IceP2pConnectionEstablisher {
         agent.free();
     }
 
+    /**
+     * So lieu do hiệu nang cua phien nay - {@link Optional#empty()} neu ICE
+     * chua {@code COMPLETED} (con dang chay, da {@code FAILED}, hoac chua bat
+     * dau) - Tai-lieu-ky-thuat.md Phan F.1. Doc duoc bat ky luc nao SAU khi
+     * callback {@link #onConnected} da chay xong (thuong doc ngay trong chinh
+     * callback do, hoac luu lai {@code this} de doc sau).
+     */
+    public Optional<IceConnectionStats> getStats() {
+        return Optional.ofNullable(stats);
+    }
+
     private void applyRemote(String remoteUfrag, String remotePassword, List<String> remoteCandidateLines) {
         mediaStream.setRemoteUfrag(remoteUfrag);
         mediaStream.setRemotePassword(remotePassword);
@@ -207,6 +224,10 @@ public final class IceP2pConnectionEstablisher {
                 DatagramSocket socket = component.getSocket();
                 InetSocketAddress remoteAddress = selectedPair.getRemoteCandidate().getTransportAddress();
 
+                long establishmentMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - constructedAtNanos);
+                boolean usingRelay = isRelayed(selectedPair);
+                stats = new IceConnectionStats(establishmentMillis, usingRelay);
+
                 DataChannel channel = new P2pDataChannel(socket, remoteAddress);
                 Consumer<DataChannel> handler = onConnectedHandler;
                 if (handler != null) {
@@ -218,6 +239,17 @@ public final class IceP2pConnectionEstablisher {
                     failedHandler.accept(e);
                 }
             }
+        }
+
+        /**
+         * {@code true} neu 1 trong 2 phia cua candidate pair da chon la
+         * {@code RELAYED_CANDIDATE} (du lieu di qua TURN) - kiem tra ca 2 phia
+         * vi ke ca chi 1 ben phai dung TURN, ca ket noi van tinh la "qua relay"
+         * (Tai-lieu-ky-thuat.md Phan F.1: "Ti le... phai relay").
+         */
+        private boolean isRelayed(CandidatePair pair) {
+            return pair.getLocalCandidate().getType() == CandidateType.RELAYED_CANDIDATE
+                    || pair.getRemoteCandidate().getType() == CandidateType.RELAYED_CANDIDATE;
         }
     }
 }

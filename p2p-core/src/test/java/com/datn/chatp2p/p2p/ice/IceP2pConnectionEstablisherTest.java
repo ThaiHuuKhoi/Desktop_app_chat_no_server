@@ -13,6 +13,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -88,6 +89,19 @@ class IceP2pConnectionEstablisherTest {
 
         assertTrue(answererReceived.await(5, TimeUnit.SECONDS), "Answerer phai nhan duoc du lieu qua kenh ICE that");
         assertEquals("xin chao qua ICE that", receivedText.get());
+
+        // Do hieu nang (Tai-lieu-ky-thuat.md Phan F.1): tren localhost, khong cau
+        // hinh TURN, ca 2 ben phai ket noi TRUC TIEP (khong qua relay) va thiet
+        // lap rat nhanh (thuc te quan sat duoc ~1s, nhung khong ep con so cu the
+        // vao test de tranh flaky tren may cham/CI qua tai).
+        var offererStats = offerer.getStats();
+        var answererStats = answerer.getStats();
+        assertTrue(offererStats.isPresent(), "Phai co IceConnectionStats sau khi COMPLETED");
+        assertTrue(answererStats.isPresent());
+        assertFalse(offererStats.get().usingRelay(), "Localhost khong co TURN - khong duoc bao la dang dung relay");
+        assertFalse(answererStats.get().usingRelay());
+        assertTrue(offererStats.get().establishmentMillis() >= 0);
+        assertTrue(answererStats.get().establishmentMillis() >= 0);
 
         fromOfferer.close();
         fromAnswerer.close();
