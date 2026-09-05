@@ -14,15 +14,27 @@
   <packaging>jar</packaging>
   <name>chat-p2p-java :: p2p-core</name>
   <description>
-    Cac cai dat cua interface DataChannel: LoopbackDataChannel (gia lap, dung
-    ngay) va P2pDataChannel (khung viec, se hoan thien bang ice4j o tuan 7-9),
-    cung SignalingClient. Phu trach: Thanh vien A (Phan-cong-cong-viec.md muc 2).
+    Cac cai dat cua interface DataChannel: LoopbackDataChannel (gia lap),
+    P2pDataChannel (that, tren UDP socket do ice4j chon) va SignalingClient
+    (WebSocketSignalingClient, dung java.net.http.HttpClient). Phu trach:
+    Thanh vien A (Phan-cong-cong-viec.md muc 2).
   </description>
 
   <dependencies>
     <dependency>
       <groupId>com.datn.chatp2p</groupId>
       <artifactId>common</artifactId>
+    </dependency>
+    <!-- De (de)serialize SignalMessage va cac payload ICE (IceOfferPayload/
+         IceAnswerPayload) sang/tu JSON trong WebSocketSignalingClient. -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+    </dependency>
+    <!-- ICE/STUN/TURN that cho P2pDataChannel - xem Tai-lieu-ky-thuat.md Phan E.6. -->
+    <dependency>
+      <groupId>org.jitsi</groupId>
+      <artifactId>ice4j</artifactId>
     </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId>

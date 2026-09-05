@@ -30,6 +30,11 @@
     <jackson.version>2.17.2</jackson.version>
     <junit.version>5.10.3</junit.version>
     <javafx.version>21.0.4</javafx.version>
+    <!-- ice4j dung versioning kieu "git describe" (khong theo semver) - da kiem tra
+         qua Maven Central API luc them dependency nay; kiem tra lai phien ban moi
+         nhat tai https://search.maven.org/artifact/org.jitsi/ice4j truoc khi build
+         neu qua lau sau thoi diem nay. -->
+    <ice4j.version>3.2-8-gfa5f931</ice4j.version>
   </properties>
 
   <dependencyManagement>
@@ -48,6 +53,14 @@
         <groupId>com.fasterxml.jackson.core</groupId>
         <artifactId>jackson-databind</artifactId>
         <version>${jackson.version}</version>
+      </dependency>
+
+      <!-- Xuyen NAT (ICE/STUN/TURN) cho P2pDataChannel that - De-cuong-Chat-P2P-Java.md
+           muc 5, Tai-lieu-ky-thuat.md Phan E.6. Chi dung o p2p-core. -->
+      <dependency>
+        <groupId>org.jitsi</groupId>
+        <artifactId>ice4j</artifactId>
+        <version>${ice4j.version}</version>
       </dependency>
 
       <dependency>
