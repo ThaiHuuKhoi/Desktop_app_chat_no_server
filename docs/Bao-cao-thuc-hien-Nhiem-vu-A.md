@@ -4,7 +4,7 @@ Báo cáo thực hiện — Nhiệm vụ A (Mạng & Kết nối)
 
 *Tài liệu này ghi lại **từng bước đã thực hiện** cho các phần việc thuộc Thành viên A (xem [Phan-cong-cong-viec.md](Phan-cong-cong-viec.md) mục 2), dùng làm bản nháp cho Chương 4 — Cài đặt của báo cáo đồ án. Chỉ ghi phần đã code xong và chạy được thật; các mục còn lại của nhiệm vụ A (P2P core/ice4j, mesh, đo hiệu năng — xem Tai-lieu-ky-thuat.md Phần C.2) sẽ được bổ sung tiếp vào tài liệu này khi hoàn thành.*
 
-**Trạng thái tại thời điểm viết:** đã hoàn thành toàn bộ chuỗi mạng cốt lõi — signaling server, ICE thật (`ice4j`), kênh dữ liệu P2P thật, đa kênh logic + trao khoá phiên, và `RoomSession` quản lý nhiều peer — cả 6 test liên quan đã tự chạy bằng IntelliJ và **PASS**. Còn thiếu: xác thực danh tính tự động (`PEER_IDENTITY`, cần `IdentitySignatureService` của B), TURN dự phòng, đo hiệu năng, và kiểm thử qua `signaling-server` thật + 2 máy thật khác NAT.
+**Trạng thái tại thời điểm viết:** đã hoàn thành toàn bộ chuỗi mạng cốt lõi — signaling server, ICE thật (`ice4j`), kênh dữ liệu P2P thật, đa kênh logic + trao khoá phiên, và `RoomSession` quản lý nhiều peer — đã xác nhận chạy đúng **cả qua signaling server thật** (không chỉ giả lập), 7 test liên quan đã tự chạy bằng IntelliJ và **PASS**. Trong quá trình đó phát hiện và sửa 1 bug race condition thật trong `RoomRegistry` (tưởng đã "xong" từ Giai đoạn 1). Còn thiếu: xác thực danh tính tự động (`PEER_IDENTITY`, cần `IdentitySignatureService` của B), TURN dự phòng, đo hiệu năng, và kiểm thử qua 2 máy thật khác NAT.
 
 ---
 
@@ -76,22 +76,32 @@ Báo cáo thực hiện — Nhiệm vụ A (Mạng & Kết nối)
 - **`DataChannel`** (`common`): 3 method `send/onReceive/close` — cả `LoopbackDataChannel` (giả lập của B) lẫn `P2pDataChannel` (thật của A) đều implement đúng interface này, B không cần đổi code khi ghép kênh thật vào.
 - **`SignalingClient`** (`p2p-core`): hợp đồng cho việc kết nối/tham gia phòng qua signaling — `WebSocketSignalingClient` là cài đặt thật, dùng `java.net.http.HttpClient` (có sẵn JDK) mở WebSocket tới `signaling-server`, serialize/deserialize `SignalMessage` bằng Jackson, dispatch theo `SignalType` tới đúng handler đã đăng ký (`onOffer`, `onAnswer`,...).
 
+### Bug thật phát hiện khi test qua signaling-server thật (không phải giả lập)
+
+`RoomSessionTest` (dùng `LoopbackSignalingClient` giả lập) chạy đúng, nhưng khi đổi sang test với `WebSocketSignalingClient` + 1 `signaling-server` thật (`RoomSessionRealSignalingServerTest`, tự boot server thật trên cổng ngẫu nhiên bằng `SpringApplicationBuilder`) thì **treo, không kết nối được**.
+
+Nguyên nhân: `RoomRegistry.join()` (module `signaling-server`, tưởng đã "xong" và có test pass từ Giai đoạn 1) đọc danh sách peer hiện có rồi mới thêm mình vào — **2 bước này không nguyên tử**. Khi 2 `RoomSession` join gần như đồng thời (2 thread Tomcat khác nhau xử lý 2 WebSocket session), cả 2 có thể cùng đọc được danh sách rỗng trước khi bên kia kịp thêm mình vào registry → cả 2 đều nghĩ mình là người đầu tiên → **không ai chủ động gửi OFFER** → kết nối treo vĩnh viễn. Lỗi này không xuất hiện khi test bằng `LoopbackSignalingClient` (chạy đơn luồng, đồng bộ) — chỉ lộ ra khi có 2 thread thật xử lý đồng thời, đúng giá trị của việc test qua server thật thay vì chỉ tin vào bản giả lập.
+
+**Đã sửa:** thêm `synchronized (room)` bọc quanh cả `join()` lẫn `leave()` trong [RoomRegistry.java](../signaling-server/src/main/java/com/datn/chatp2p/signaling/room/RoomRegistry.java) — khoá trên chính object Map của từng phòng (không khoá cả `RoomRegistry`), nên các phòng khác nhau không tranh chấp nhau, chỉ join/leave *trong cùng 1 phòng* mới bị serialize.
+
+**Bug phụ khác cũng gặp:** `SpringApplicationBuilder.properties("server.port=0")` không có tác dụng ép cổng ngẫu nhiên — độ ưu tiên của nó thấp hơn `server.port: 8080` đã hardcode trong `application.yml`, nên bị đè ngược lại. Phải dùng `.run("--server.port=0")` (tương đương tham số dòng lệnh, ưu tiên cao nhất) mới ghi đè đúng.
+
 ### Đã kiểm chứng thật (không chỉ "viết xong")
 
-6 test đã tự chạy bằng IntelliJ và **PASS**:
+7 test đã tự chạy bằng IntelliJ và **PASS**:
 - `LoopbackDataChannelTest`, `P2pDataChannelTest` — kênh dữ liệu.
 - `IceP2pConnectionEstablisherTest` — 2 `Agent` ice4j thật trên localhost, ICE chạy đúng RFC 8445, gửi/nhận dữ liệu thành công qua kênh vừa thiết lập.
 - `EnvelopeCodecTest` — mã hoá/giải mã đúng, sai khoá hoặc dữ liệu bị sửa đều thất bại đúng cách.
 - `PeerConnectionTest` — 2 `PeerConnection` tự trao khoá ECDH xong rồi gửi/nhận đúng 1 `Envelope` mã hoá.
-- `RoomSessionTest` — 2 `RoomSession` (Alice vào trước, Bob vào sau) tự nhận đúng vai trò chủ động/trả lời, chạy ICE thật + trao khoá ECDH thật + gửi/nhận `Envelope` mã hoá thật, toàn bộ end-to-end trong 1 test (dùng `LoopbackSignalingClient` — bản giả lập signaling server trong bộ nhớ, chỉ để test, không phải code thật).
+- `RoomSessionTest` — 2 `RoomSession` (Alice vào trước, Bob vào sau) tự nhận đúng vai trò chủ động/trả lời, chạy ICE thật + trao khoá ECDH thật + gửi/nhận `Envelope` mã hoá thật, dùng `LoopbackSignalingClient` giả lập.
+- `RoomSessionRealSignalingServerTest` — **cùng kịch bản trên nhưng qua `WebSocketSignalingClient` + 1 `signaling-server` thật** (tự boot bằng `SpringApplicationBuilder`, không phải giả lập) — sau khi sửa 2 bug ở trên, chạy đúng end-to-end.
 
 ### Chưa làm (mảnh còn thiếu để hoàn chỉnh nhiệm vụ A)
 
-- Test `RoomSession` qua `WebSocketSignalingClient` + `signaling-server` **thật** (hiện mới test bằng `LoopbackSignalingClient` giả lập trong bộ nhớ, chưa qua WebSocket/Spring Boot thật).
 - `PEER_IDENTITY` tự động (cần `IdentitySignatureService` bằng ECDSA ở module `crypto` — chưa có, thuộc phần B).
 - TURN dự phòng (mới có STUN).
 - Đo hiệu năng kết nối.
-- Test qua 2 máy thật khác NAT (mới test localhost).
+- Test qua 2 máy thật khác NAT (mới test được trên 1 máy — theo tìm hiểu, cách duy nhất giả lập "2 máy khác NAT" chỉ bằng 1 laptop là dùng 2 máy ảo với chế độ mạng NAT riêng biệt, chưa dựng vì không cấp thiết).
 - Nối `RoomSession` vào `RoomController`/UI thật của `client-javafx` (hiện UI vẫn đang dùng `LoopbackDataChannel`/`DemoPeerSimulator`, thuộc phần B).
 
 ---
