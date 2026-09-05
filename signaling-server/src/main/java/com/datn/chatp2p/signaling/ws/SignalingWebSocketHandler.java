@@ -175,11 +175,22 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
         if (!session.isOpen()) {
             return;
         }
-        try {
-            session.sendMessage(new TextMessage(objectMapper.writeValueAsString(message)));
-        } catch (IOException e) {
-            log.warn("Gui ban tin {} toi session {} that bai (co the vua dong) - bo qua, khong anh huong peer khac: {}",
-                    message.getType(), session.getId(), e.getMessage());
+        // QUAN TRONG: WebSocketSession/Tomcat KHONG an toan khi 2 thread cung goi
+        // sendMessage() dong thoi tren CUNG 1 session - se nem
+        // IllegalStateException ("state [TEXT_PARTIAL_WRITING]..."). Dieu nay xay
+        // ra that: nhieu peer JOIN gan nhu dong thoi (nhieu thread Tomcat khac
+        // nhau) co the cung luc broadcastToOthers() toi CUNG 1 peer da co san -
+        // phat hien qua WebSocketSignalingClientCapacityTest (30 peer join dong
+        // thoi). Khoa tren chinh doi tuong session (khong phai khoa toan cuc) de
+        // chi serialize ghi TREN CUNG 1 session - cac session khac nhau van gui
+        // song song binh thuong, khong mat hieu nang.
+        synchronized (session) {
+            try {
+                session.sendMessage(new TextMessage(objectMapper.writeValueAsString(message)));
+            } catch (IOException | IllegalStateException e) {
+                log.warn("Gui ban tin {} toi session {} that bai (co the vua dong hoac dang ghi dong thoi) - bo qua, khong anh huong peer khac: {}",
+                        message.getType(), session.getId(), e.getMessage());
+            }
         }
     }
 }
