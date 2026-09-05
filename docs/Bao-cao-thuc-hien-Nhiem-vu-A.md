@@ -4,7 +4,63 @@ Báo cáo thực hiện — Nhiệm vụ A (Mạng & Kết nối)
 
 *Tài liệu này ghi lại **từng bước đã thực hiện** cho các phần việc thuộc Thành viên A (xem [Phan-cong-cong-viec.md](Phan-cong-cong-viec.md) mục 2), dùng làm bản nháp cho Chương 4 — Cài đặt của báo cáo đồ án. Chỉ ghi phần đã code xong và chạy được thật; các mục còn lại của nhiệm vụ A (P2P core/ice4j, mesh, đo hiệu năng — xem Tai-lieu-ky-thuat.md Phần C.2) sẽ được bổ sung tiếp vào tài liệu này khi hoàn thành.*
 
-**Trạng thái tại thời điểm viết:** đã hoàn thành **Giai đoạn 1 — Signaling server** và phần **giao ước interface** dùng chung với Thành viên B. Chưa đụng tới ICE/ice4j/P2P thật.
+**Trạng thái tại thời điểm viết:** đã hoàn thành signaling server, giao ước interface dùng chung với B, kênh dữ liệu P2P thật (`P2pDataChannel`), và điều phối ICE thật bằng `ice4j` (`IceP2pConnectionEstablisher`) — cả 3 test liên quan đã tự chạy bằng IntelliJ và **PASS** (xem Giai đoạn 11). Còn thiếu `RoomSession`/mesh nhiều peer và đo hiệu năng.
+
+---
+
+## Tóm tắt chức năng & cách xử lý từng thành phần (tính đến hiện tại)
+
+*Phần này mô tả **hệ thống đang có** theo đúng luồng xử lý thật (từ lúc 2 peer "tìm thấy nhau" tới lúc gửi được dữ liệu) — đọc trước các "Giai đoạn" bên dưới nếu muốn hiểu kiến trúc trước khi đọc lịch sử từng bước code.*
+
+### Tầng 1 — Signaling (tìm nhau, trao đổi thông tin kết nối)
+
+**`signaling-server`** — máy chủ trung gian tối giản. Chức năng: giúp các peer trong cùng 1 phòng biết về nhau và chuyển tiếp (relay) các gói tin cần thiết để 2 bên tự thiết lập kết nối trực tiếp — **không bao giờ đọc/lưu nội dung chat**.
+
+- [RoomRegistry.java](../signaling-server/src/main/java/com/datn/chatp2p/signaling/room/RoomRegistry.java): giữ `Map<roomId, Map<peerId, PeerSession>>` hoàn toàn trong bộ nhớ (không database) — mất khi restart server, đúng thiết kế "ephemeral".
+- [SignalingWebSocketHandler.java](../signaling-server/src/main/java/com/datn/chatp2p/signaling/ws/SignalingWebSocketHandler.java) xử lý từng loại bản tin (`SignalType`):
+  - `JOIN` → thêm peer vào registry, trả `PEER_LIST` (ai đã có sẵn) cho người mới, báo `PEER_JOINED` cho người cũ.
+  - `LEAVE` (hoặc WebSocket đóng đột ngột) → xoá khỏi registry, báo `PEER_LEFT`.
+  - `OFFER`/`ANSWER`/`ICE_CANDIDATE` → **chỉ chuyển tiếp nguyên văn** tới đúng `toPeerId`, không parse bên trong `payload`.
+- Chạy qua WebSocket endpoint `/ws`, đóng gói fat jar chạy bằng `java -jar` (đã né bug path tiếng Việt làm hỏng `spring-boot:run`).
+
+### Tầng 2 — Thiết lập kết nối trực tiếp (ICE, xuyên NAT) — mới viết trong phiên gần đây, dùng `ice4j`
+
+**`IceOfferPayload`/`IceAnswerPayload`** (trong `common`): "gói tin mời kết nối" — chứa `ufrag`, `password` (2 giá trị bí mật ngắn để xác thực đúng đối phương lúc bắt tay ICE) và `candidates` (danh sách địa chỉ IP:port khả dụng của mình). Chỉ là 2 `record` Java thuần, serialize JSON rồi nhét vào `SignalMessage.payload` có sẵn — server không cần biết cấu trúc bên trong.
+
+**`IceCandidateCodec`**: dịch qua lại giữa candidate của `ice4j` và 1 dòng text để gửi qua signaling.
+- `encode()`: gọi thẳng `candidate.toString()` của `ice4j` — tự in đúng chuẩn RFC 5245 (vd `candidate:1 1 udp 2130706431 192.168.1.5 54321 typ host`).
+- `decode()`: tách dòng text ra từng phần (foundation, transport, priority, địa chỉ, port, loại candidate), dựng lại thành `RemoteCandidate`.
+
+**`IceP2pConnectionEstablisher`** — "bộ điều phối" trung tâm, đại diện cho 1 phiên thiết lập kết nối với đúng 1 peer khác, bọc 1 `Agent` của `ice4j`. Xử lý đúng thứ tự:
+1. Khởi tạo: tạo `Agent`, thêm STUN server, tạo `IceMediaStream` + `Component` — tự động gom (harvest) candidate cục bộ.
+2. Bên chủ động (peer vào sau, thấy người khác đã có sẵn) gọi `createOffer()` → đánh dấu "controlling", trả `IceOfferPayload` chứa candidate vừa gom, gửi qua signaling.
+3. Bên nhận offer gọi `createAnswer(offer)` → áp thông tin người kia, tạo answer, **tự bắt đầu ngay** `startConnectivityEstablishment()` (đã đủ thông tin 2 phía).
+4. Bên chủ động nhận answer, gọi `acceptAnswer(answer)` → áp thông tin người kia rồi mới bắt đầu `startConnectivityEstablishment()` phía mình.
+5. `ice4j` tự chạy ngầm: ghép từng cặp candidate, gửi STUN kiểm tra, chọn cặp "thông" nhất — phần xuyên NAT khó nhất do thư viện lo, không tự viết.
+6. Khi xong, `ice4j` bắn sự kiện `IceProcessingState.COMPLETED` — lớp này lắng nghe (`PropertyChangeListener`), lấy socket UDP + địa chỉ đối phương đã chọn, **tự tạo `P2pDataChannel`**, gọi callback `onConnected(channel)`. Nếu `FAILED` → gọi callback `onFailed`.
+
+### Tầng 3 — Kênh dữ liệu thật sau khi đã "bắt tay" xong
+
+**`P2pDataChannel`**: kênh gửi/nhận byte thô giữa 2 peer sau khi ICE đã tìm ra đường truyền — implement đúng interface `DataChannel` chung với B.
+- `send(data)`: thêm 4 byte length-prefix ở đầu, gửi qua `DatagramSocket.send()` tới đúng địa chỉ đối phương.
+- 1 thread nền riêng chạy vòng lặp `socket.receive()` liên tục — mỗi gói tới, bóc length-prefix, lấy đúng phần dữ liệu, gọi `receiveHandler` (đăng ký qua `onReceive`).
+- `close()`: đóng socket, dừng thread nền.
+
+### Interface/giao ước chung (nền tảng để A/B code song song)
+
+- **`DataChannel`** (`common`): 3 method `send/onReceive/close` — cả `LoopbackDataChannel` (giả lập của B) lẫn `P2pDataChannel` (thật của A) đều implement đúng interface này, B không cần đổi code khi ghép kênh thật vào.
+- **`SignalingClient`** (`p2p-core`): hợp đồng cho việc kết nối/tham gia phòng qua signaling — `WebSocketSignalingClient` là cài đặt thật, dùng `java.net.http.HttpClient` (có sẵn JDK) mở WebSocket tới `signaling-server`, serialize/deserialize `SignalMessage` bằng Jackson, dispatch theo `SignalType` tới đúng handler đã đăng ký (`onOffer`, `onAnswer`,...).
+
+### Đã kiểm chứng thật (không chỉ "viết xong")
+
+3 test đã tự chạy bằng IntelliJ và **PASS**: `LoopbackDataChannelTest`, `P2pDataChannelTest`, `IceP2pConnectionEstablisherTest` (2 `Agent` ice4j thật trên localhost, ICE chạy đúng RFC 8445, gửi/nhận dữ liệu thành công qua kênh vừa thiết lập).
+
+### Chưa làm (mảnh còn thiếu để hoàn chỉnh nhiệm vụ A)
+
+- **`RoomSession`/`PeerConnection`** — quản lý **nhiều peer cùng lúc** trong 1 phòng (mesh N-peer), tự chạy lại luồng ICE ở trên với từng peer mới, nối `WebSocketSignalingClient` thật vào (hiện `IceP2pConnectionEstablisher` mới test bằng cách tự trao offer/answer trực tiếp trong code, chưa qua signaling server thật).
+- TURN dự phòng (mới có STUN).
+- Đo hiệu năng kết nối.
+- Test qua 2 máy thật khác NAT (mới test localhost).
 
 ---
 
