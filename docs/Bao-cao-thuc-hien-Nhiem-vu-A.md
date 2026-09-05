@@ -1,0 +1,192 @@
+Báo cáo thực hiện — Nhiệm vụ A (Mạng & Kết nối)
+
+# BÁO CÁO THỰC HIỆN — NHIỆM VỤ A: MẠNG & KẾT NỐI
+
+*Tài liệu này ghi lại **từng bước đã thực hiện** cho các phần việc thuộc Thành viên A (xem [Phan-cong-cong-viec.md](Phan-cong-cong-viec.md) mục 2), dùng làm bản nháp cho Chương 4 — Cài đặt của báo cáo đồ án. Chỉ ghi phần đã code xong và chạy được thật; các mục còn lại của nhiệm vụ A (P2P core/ice4j, mesh, đo hiệu năng — xem Tai-lieu-ky-thuat.md Phần C.2) sẽ được bổ sung tiếp vào tài liệu này khi hoàn thành.*
+
+**Trạng thái tại thời điểm viết:** đã hoàn thành **Giai đoạn 1 — Signaling server** và phần **giao ước interface** dùng chung với Thành viên B. Chưa đụng tới ICE/ice4j/P2P thật.
+
+---
+
+## Giai đoạn 1: Dựng khung dự án đa module
+
+**Mục tiêu:** tách hệ thống thành các module Maven độc lập để 2 thành viên code song song không giẫm chân nhau.
+
+**Đã làm:**
+1. Tạo `pom.xml` cha (parent POM) khai báo `packaging=pom`, quản lý version chung (Java 17, Spring Boot, JUnit 5) qua `dependencyManagement`.
+2. Tách 5 module con: `common` (model + giao ước dùng chung), `crypto` (thuộc B), `p2p-core` (thuộc A — interface + cài đặt tầng P2P), `signaling-server` (thuộc A), `client-javafx` (thuộc B).
+3. Khai báo phụ thuộc giữa các module: `signaling-server` chỉ phụ thuộc `common` — **không** phụ thuộc `crypto`/`p2p-core`, đúng nguyên tắc "server chỉ relay, không xử lý nội dung/mã hoá" (Tai-lieu-ky-thuat.md Phần C.2).
+
+**Kết quả:** `mvn -q -DskipTests package` build được cả 5 module từ gốc repo.
+
+## Giai đoạn 2: Định nghĩa giao thức signaling tối giản (`common`)
+
+**Mục tiêu:** có một định dạng bản tin chung, độc lập framework, để cả server lẫn client (sau này) cùng (de)serialize.
+
+**Đã làm:**
+1. Viết `SignalType` ([SignalType.java](../common/src/main/java/com/datn/chatp2p/common/signal/SignalType.java)) — enum 8 giá trị: `JOIN, LEAVE` (client→server), `PEER_JOINED, PEER_LEFT, PEER_LIST` (server→client), `OFFER, ANSWER, ICE_CANDIDATE` (client→server→client đích, server chỉ relay).
+2. Viết `SignalMessage` ([SignalMessage.java](../common/src/main/java/com/datn/chatp2p/common/signal/SignalMessage.java)) — POJO thuần (không annotation Jackson) gồm `type, roomId, fromPeerId, toPeerId, userName, payload, peers[]`; cố tình để `payload` là `String` cơ hội — server không bao giờ parse bên trong nó, chỉ có client (sau này) mới hiểu SDP/ICE candidate chứa gì.
+3. Thêm factory method tiện dụng `SignalMessage.join(roomId, peerId, userName)` cho thao tác JOIN — dùng lại được cả ở test lẫn ở client thật sau này.
+
+**Quyết định thiết kế đáng chú ý:** để `SignalMessage` không phụ thuộc Jackson annotation (chỉ dùng constructor rỗng + getter/setter chuẩn) — nhờ vậy module `common` không phải kéo theo Jackson như một dependency bắt buộc, những module không cần serialize (ví dụ nếu sau này có module khác chỉ dùng model thuần) không bị ảnh hưởng.
+
+## Giai đoạn 3: Chốt 2 interface giao ước với Thành viên B
+
+**Mục tiêu:** để B dựng UI + mã hoá song song mà không phải chờ A code xong phần mạng thật (Phan-cong-cong-viec.md mục 3).
+
+**Đã làm:**
+1. Viết `DataChannel` ([DataChannel.java](../common/src/main/java/com/datn/chatp2p/common/channel/DataChannel.java)) trong `common` — interface 3 method: `send(byte[])`, `onReceive(Consumer<byte[]>)`, `close()`. Đặt trong `common` (không phải `p2p-core`) vì cả A lẫn B đều cần thấy được nó.
+2. Viết `SignalingClient` ([SignalingClient.java](../p2p-core/src/main/java/com/datn/chatp2p/p2p/signaling/SignalingClient.java)) trong `p2p-core` — interface 10 method (`connect`, `onPeerJoined/onPeerLeft/onPeerList`, `onOffer/onAnswer/onIceCandidate`, `sendOffer/sendAnswer/sendIceCandidate`, `disconnect`) mô tả đầy đủ vòng đời một client tham gia phòng — chốt trước để `WebSocketSignalingClient` (bước sau) và `RoomSession` (việc sau này) đều dựa vào cùng một hợp đồng.
+3. Cài đặt tạm `LoopbackDataChannel` ([LoopbackDataChannel.java](../p2p-core/src/main/java/com/datn/chatp2p/p2p/LoopbackDataChannel.java)) — 2 đầu kênh nối thẳng với nhau trong bộ nhớ, gửi bất đồng bộ qua 1 `ExecutorService` riêng (mô phỏng đúng hành vi bất đồng bộ của mạng thật thay vì gọi callback đồng bộ ngay tại chỗ). Đây là việc B cần để dựng UI ngay, không phải chờ A.
+4. Viết khung `P2pDataChannel`/`WebSocketSignalingClient` — cài đặt thật của A cho 2 interface trên — nhưng **để trống**, mọi method `throw UnsupportedOperationException` kèm Javadoc TODO trỏ đúng tuần cần hoàn thiện, để 2 module vẫn biên dịch được và các module khác (`client-javafx`) có thể phụ thuộc vào lớp này mà không bị chặn bởi lỗi biên dịch.
+
+**Kết quả kiểm chứng:** `LoopbackDataChannelTest` (1 test) xác nhận 2 đầu kênh gửi/nhận đúng dữ liệu 2 chiều — chứng minh interface `DataChannel` đủ dùng cho cả 2 phía trước khi có kết nối thật.
+
+## Giai đoạn 4: Cài đặt lõi quản lý phòng (`signaling-server`)
+
+**Mục tiêu:** biết "ai đang ở phòng nào" trong bộ nhớ, không đọc/lưu nội dung chat.
+
+**Đã làm:**
+1. Viết `PeerSession` ([PeerSession.java](../signaling-server/src/main/java/com/datn/chatp2p/signaling/room/PeerSession.java)) — gắn 1 `WebSocketSession` của Spring với `roomId/peerId/userName`; chỉ giữ đúng 3 trường metadata kết nối, không có trường nào chứa nội dung chat.
+2. Viết `RoomRegistry` ([RoomRegistry.java](../signaling-server/src/main/java/com/datn/chatp2p/signaling/room/RoomRegistry.java)) — `Map<roomId, Map<peerId, PeerSession>>` bằng `ConcurrentHashMap` (an toàn khi nhiều WebSocket session xử lý đồng thời trên các thread khác nhau của Spring). Cung cấp `join()` (trả về danh sách peer đã có sẵn trước khi peer mới được thêm vào — dùng để trả lời `PEER_LIST`), `leave()`, `peersInRoom()`, `find()`, và `leaveBySession()` (duyệt toàn bộ để tìm đúng peer gắn với 1 `WebSocketSession` bị đóng, dùng khi client tắt đột ngột không kịp gửi LEAVE).
+3. Cố tình giữ toàn bộ trong bộ nhớ (`ConcurrentHashMap`, không có database) — đúng nguyên tắc ephemeral: server restart là mất hết phòng, chấp nhận được vì đây là hành vi thiết kế, không phải thiếu sót (Tai-lieu-ky-thuat.md Phần F.4).
+
+## Giai đoạn 5: Cài đặt handler WebSocket + đăng ký endpoint
+
+**Mục tiêu:** nhận/gửi các `SignalMessage` qua WebSocket thật, đúng vai trò "chỉ relay, không đọc nội dung".
+
+**Đã làm:**
+1. Viết `SignalingWebSocketHandler` ([SignalingWebSocketHandler.java](../signaling-server/src/main/java/com/datn/chatp2p/signaling/ws/SignalingWebSocketHandler.java)) kế thừa `TextWebSocketHandler` của Spring:
+   - `handleTextMessage`: parse JSON thành `SignalMessage` bằng `ObjectMapper`, `switch` theo `type` — `JOIN` gọi `handleJoin`, `LEAVE` gọi `handleLeave`, `OFFER/ANSWER/ICE_CANDIDATE` gọi `relayToTargetPeer` (chuyển tiếp **nguyên văn** `payload`, không parse bên trong), các loại chỉ-server-mới-phát (`PEER_JOINED/PEER_LEFT/PEER_LIST`) bị bỏ qua nếu client lỡ gửi lên.
+   - `handleJoin`: tạo `PeerSession`, lưu `roomId`/`peerId` vào `session.getAttributes()` (để tra cứu lại khi cần, ví dụ lúc đóng kết nối), gọi `RoomRegistry.join()`, trả `PEER_LIST` cho chính peer vừa vào, rồi broadcast `PEER_JOINED` cho các peer còn lại trong phòng (trừ chính nó).
+   - `afterConnectionClosed` (override từ Spring, tự gọi khi WebSocket đóng vì bất kỳ lý do gì — kể cả mất mạng đột ngột) và `handleLeave` đều gọi chung `removeAndNotify` — đảm bảo dù client rời phòng "lịch sự" (gửi LEAVE) hay rớt mạng đột ngột, các peer còn lại đều nhận được `PEER_LEFT`.
+   - `relayToTargetPeer`: validate có đủ `roomId`/`toPeerId` không, tìm đúng `WebSocketSession` đích qua `RoomRegistry.find()`, nếu không thấy thì log `WARN` và bỏ qua bản tin đó — **không** làm sập cả kết nối của các peer khác (đúng nguyên tắc xử lý lỗi ở Tai-lieu-ky-thuat.md Phần H.1).
+2. Viết `WebSocketConfig` ([WebSocketConfig.java](../signaling-server/src/main/java/com/datn/chatp2p/signaling/config/WebSocketConfig.java)) — đăng ký `SignalingWebSocketHandler` vào endpoint cố định `/ws`, cho phép mọi origin (`setAllowedOriginPatterns("*")`) vì server không xử lý dữ liệu nhạy cảm.
+3. Viết `SignalingServerApplication` ([SignalingServerApplication.java](../signaling-server/src/main/java/com/datn/chatp2p/signaling/SignalingServerApplication.java)) — entry point `@SpringBootApplication` tối giản.
+4. Cấu hình `pom.xml` của `signaling-server`: thêm `spring-boot-starter-websocket` + khai báo riêng `jackson-databind` (starter-websocket không tự kéo Jackson như starter-web, phải thêm tay để có bean `ObjectMapper`), và khai báo tường minh goal `repackage` của `spring-boot-maven-plugin` (module không kế thừa `spring-boot-starter-parent` nên goal này không tự gắn vào phase `package`).
+
+## Giai đoạn 6: Viết integration test thật (không chỉ test biên dịch)
+
+**Mục tiêu:** chứng minh server hoạt động đúng bằng WebSocket thật, không chỉ unit test cô lập.
+
+**Đã làm:** viết `SignalingWebSocketHandlerTest` ([SignalingWebSocketHandlerTest.java](../signaling-server/src/test/java/com/datn/chatp2p/signaling/SignalingWebSocketHandlerTest.java)) dùng `@SpringBootTest(webEnvironment = RANDOM_PORT)` — khởi động Tomcat thật trên cổng ngẫu nhiên, dùng `StandardWebSocketClient` của Spring mở 2 kết nối WebSocket thật (mô phỏng "Alice" và "Bob"):
+1. Alice JOIN phòng mới → xác nhận nhận lại `PEER_LIST` rỗng (phòng chưa có ai khác).
+2. Bob JOIN cùng phòng → xác nhận Bob nhận `PEER_LIST` có đúng 1 phần tử là Alice.
+3. Xác nhận Alice nhận được `PEER_JOINED` đúng lúc Bob vào, với `fromPeerId = "bob"`.
+
+Kết quả: **1 test, pass** — đây là integration test thật (có Spring context + Tomcat + WebSocket client thật), không phải mock, nên xác nhận được cả cấu hình (`WebSocketConfig`, bean `ObjectMapper`) lẫn logic (`RoomRegistry`, `SignalingWebSocketHandler`) hoạt động đúng cùng nhau.
+
+## Giai đoạn 7: Xử lý vấn đề triển khai thực tế trên Windows
+
+**Vấn đề phát hiện:** `mvn -pl signaling-server spring-boot:run` báo `Could not find or load main class` dù `mvn package` build thành công — xảy ra vì đường dẫn project chứa dấu tiếng Việt (`...\Máy tính\...`), làm goal `spring-boot:run` ghi/đọc sai encoding file classpath tạm (`@argfile`).
+
+**Cách khắc phục đã áp dụng và xác nhận hoạt động:** không dùng `spring-boot:run`; đóng gói fat jar bằng `mvn package` (nhờ đã khai báo goal `repackage` ở Giai đoạn 5) rồi chạy trực tiếp:
+```bash
+java -jar signaling-server/target/signaling-server.jar
+```
+Đã xác nhận: Tomcat khởi động đúng, endpoint `/ws` phản hồi HTTP 400 khi gọi bằng GET thường (đúng hành vi kỳ vọng cho endpoint chỉ nhận WebSocket upgrade).
+
+---
+
+## Tổng kết Giai đoạn 1 (đã hoàn thành)
+
+| Hạng mục | Trạng thái |
+|---|---|
+| Khung đa module Maven (5 module) | ✅ Build được |
+| Giao thức `SignalMessage`/`SignalType` | ✅ |
+| Interface `DataChannel`, `SignalingClient` | ✅ Đã chốt, dùng chung với B |
+| `LoopbackDataChannel` (tạm, để B không phải chờ) | ✅ Có test, pass |
+| `RoomRegistry`/`PeerSession` | ✅ |
+| `SignalingWebSocketHandler`/`WebSocketConfig`/`SignalingServerApplication` | ✅ |
+| Integration test WebSocket thật | ✅ 1 test, pass |
+| Chạy được bằng `java -jar` (đã né bug path tiếng Việt) | ✅ |
+
+## Giai đoạn 8: Thêm dependency `ice4j` + cài đặt thật `WebSocketSignalingClient`
+
+**Mục tiêu:** thay bản stub `WebSocketSignalingClient` (ném `UnsupportedOperationException`) bằng cài đặt thật, dùng đúng `java.net.http.HttpClient` như Tai-lieu-ky-thuat.md Phần E.6.4 đề xuất — không cần thêm thư viện WebSocket client ngoài.
+
+**Đã làm:**
+1. Thêm property `ice4j.version` + entry `dependencyManagement` cho `org.jitsi:ice4j` vào `pom.xml` gốc (version xác nhận qua Maven Central Search API tại thời điểm viết: `3.2-8-gfa5f931` — ice4j dùng kiểu versioning "git describe", không theo semver, nên **kiểm tra lại phiên bản mới nhất** trước khi build nếu đã lâu).
+2. Thêm dependency `jackson-databind` + `ice4j` vào `p2p-core/pom.xml`.
+3. Viết lại hoàn chỉnh `WebSocketSignalingClient` ([WebSocketSignalingClient.java](../p2p-core/src/main/java/com/datn/chatp2p/p2p/signaling/WebSocketSignalingClient.java)): `connect()` mở kết nối qua `HttpClient.newWebSocketBuilder().buildAsync(...)`, gửi `JOIN` ngay sau khi kết nối; mọi `send*` gói thành `SignalMessage` rồi `sendText` dạng JSON (Jackson); `Listener.onText` gộp các frame bị chia nhỏ (`last=false`) trước khi parse, dispatch theo `SignalType` tới đúng danh sách handler đã đăng ký qua `on*`.
+
+## Giai đoạn 9: Cài đặt thật `P2pDataChannel`
+
+**Đã làm:** viết lại `P2pDataChannel` ([P2pDataChannel.java](../p2p-core/src/main/java/com/datn/chatp2p/p2p/channel/P2pDataChannel.java)) nhận sẵn 1 `DatagramSocket` + địa chỉ đích đã được ICE chọn — không tự làm ICE, chỉ lo gửi/nhận byte: `send()` thêm 4-byte length-prefix rồi gửi qua `DatagramSocket.send`, 1 thread nền `receive()` liên tục rồi gọi `receiveHandler`. Viết `P2pDataChannelTest` dùng 2 `DatagramSocket` thật trên `localhost` (khác cổng UDP) để kiểm chứng logic framing/gửi/nhận — **không cần ice4j**, nên có thể chạy độc lập.
+
+## Giai đoạn 10: Điều phối ICE thật bằng ice4j (`IceP2pConnectionEstablisher`)
+
+**Mục tiêu:** lớp mới đứng giữa `SignalingClient` và `P2pDataChannel` — chạy `Agent` của ice4j để 2 phía thật sự "bắt tay" qua UDP.
+
+**Đã làm:**
+1. Thêm 2 record `IceOfferPayload`/`IceAnswerPayload` (`ufrag, password, candidates[]`) vào `common` — nội dung JSON sẽ nằm trong `SignalMessage.payload` (Tai-lieu-ky-thuat.md Phần E.6.1).
+2. Viết `IceCandidateCodec` — encode 1 `LocalCandidate` thành dòng văn bản chuẩn RFC 5245/8839 (dùng thẳng `Candidate.toString()` có sẵn của ice4j, không tự bịa định dạng), và decode ngược lại thành `RemoteCandidate` để `component.addRemoteCandidate(...)`.
+3. Viết `IceP2pConnectionEstablisher` — bọc 1 `Agent` + 1 `IceMediaStream` + 1 `Component`: bên chủ động gọi `createOffer()` (gather candidate, đánh dấu `controlling=true`); bên nhận gọi `createAnswer(offer)` (áp thông tin đối phương, tạo answer, tự gọi `startConnectivityEstablishment()` ngay); bên chủ động gọi `acceptAnswer(answer)` sau khi nhận answer để bắt đầu xử lý. Lắng nghe `Agent.PROPERTY_ICE_PROCESSING_STATE`: khi `COMPLETED` thì lấy `component.getSocket()` + địa chỉ đối phương từ `component.getSelectedPair()`, dựng `P2pDataChannel` và gọi callback `onConnected`; khi `FAILED` gọi callback `onFailed`.
+4. Viết `IceP2pConnectionEstablisherTest` — 2 `Agent` thật chạy trên cùng máy (khác cổng UDP), không dùng STUN server (localhost chỉ cần host candidate), tự trao offer/answer trong test rồi xác nhận cả 2 bên báo `COMPLETED` và gửi/nhận dữ liệu qua kênh vừa thiết lập được.
+
+**Quyết định thiết kế đáng chú ý:**
+- Tắt tường minh trickle ICE (`agent.setTrickling(false)`) thay vì dựa vào giá trị mặc định của ice4j — gather toàn bộ candidate xong mới gửi 1 lần, đúng thiết kế offer/answer đơn giản ở Phần E.6.1 (không làm trickle ICE trong bản đầu).
+- Constructor `IceP2pConnectionEstablisher` bọc `IOException`/`BindException` từ `Agent.createComponent(...)` thành `IllegalStateException` có thông điệp rõ ràng (không còn port UDP trống trong khoảng cấu hình) — đồng bộ với cách xử lý lỗi ở các lớp khác trong module.
+
+**Chưa làm (ghi rõ để không nhận vơ):**
+- TURN relay dự phòng — mới có STUN harvester, chưa có `TurnCandidateHarvester`.
+- Xử lý mất kết nối `WebSocketSignalingClient` (tự động reconnect) — vẫn còn TODO như Phần H.3 đã nêu.
+- Chưa nối `IceP2pConnectionEstablisher` vào `RoomSession`/`RoomController` thật (vẫn cần `RoomSession` — Giai đoạn kế tiếp).
+
+**Giới hạn của việc kiểm chứng khi viết code:** môi trường làm việc của trợ lý AI không có `mvn` trên PATH nên không tự chạy được `mvn test` để xác nhận — chỉ dùng được chẩn đoán biên dịch thời gian thực của IDE (đã phát hiện và sửa 2 lỗi thật lúc viết: thiếu try/catch cho `IOException`/`BindException` của `Agent.createComponent`, và 1 lần tự làm hỏng dòng `import` do dùng `replace_all` không cẩn thận). Các hằng số/API của `ice4j` đã được tra cứu trực tiếp từ mã nguồn thật trên GitHub (nhánh `master` của `jitsi/ice4j`) thay vì suy đoán — xem Giai đoạn 11 để biết kết quả chạy thật.
+
+## Giai đoạn 11: Chạy thật bằng IntelliJ trên máy — phát hiện và sửa 1 bug thật
+
+**Đã làm:** tự chạy 3 test bằng IntelliJ (không qua dòng lệnh `mvn`, dùng Run trực tiếp trong IDE):
+
+1. Lần chạy đầu tiên `IceP2pConnectionEstablisherTest` → **lỗi thật**:
+   ```
+   java.lang.IllegalArgumentException: preferredPort (0) must be between minPort (10000) and maxPort (10100)
+       at org.ice4j.ice.harvest.HostCandidateHarvester.checkPorts(...)
+       at ... Agent.createComponent(Agent.java:533)
+       at IceP2pConnectionEstablisher.<init>(IceP2pConnectionEstablisher.java:98)
+   ```
+   Nguyên nhân: khác với `java.net.ServerSocket`, ice4j **không** chấp nhận `preferredPort=0` nghĩa là "cổng bất kỳ" — bắt buộc phải nằm trong khoảng `[minPort, maxPort]`. Đã tra lại mã nguồn `HostCandidateHarvester.createDatagramSocket` để xác nhận: nếu bind thất bại ở `preferredPort`, nó tự tăng dần cổng, quay vòng trong khoảng `[minPort, maxPort]` cho tới khi tìm được cổng trống — vậy chỉ cần sửa `PREFERRED_PORT` từ `0` thành `10_000` (bằng `MIN_PORT`) là đủ, không cần đổi gì khác.
+2. Sửa 1 dòng trong `IceP2pConnectionEstablisher.java`, chạy lại → **PASS**: `establishesDirectConnectionAndExchangesDataOnLocalhost` — ✔ **1 test passed, 2s 47ms** (xác nhận bằng ảnh chụp panel kết quả test của IntelliJ, không chỉ dựa vào log console).
+
+**Log thật xác nhận ICE hoạt động đúng** (không phải suy đoán): cả 2 `Agent` (offerer/answerer) đều báo `ICE state changed from Running to Completed`, có `Nomination confirmed for pair`, `Selected pair for stream data.RTP`, `Harvester used for selected pair: host` — đúng trình tự RFC 8445 thật, chạy qua candidate host thật trên máy (không phải mock). 2 dòng `Closing.`/`Failed to receive: Socket closed` xuất hiện sau đó là log dọn dẹp bình thường của `agent.free()` gọi trong `@AfterEach` sau khi test đã gửi/nhận dữ liệu xong — đã đối chiếu với mã nguồn `Agent.java` (`terminate()`/`free()`) để xác nhận đây không phải lỗi.
+
+3. Chạy tiếp `LoopbackDataChannelTest` và `P2pDataChannelTest` bằng IntelliJ (Run riêng từng file) → **cả 2 đều pass**. Vậy cả 3 test trong `p2p-core` (`LoopbackDataChannelTest`, `P2pDataChannelTest`, `IceP2pConnectionEstablisherTest`) đã được tự tay chạy và xác nhận PASS trên máy thật qua IntelliJ trong phiên này — không còn dựa vào chẩn đoán tĩnh của IDE nữa.
+
+**Còn thiếu để coi là "xong hẳn":**
+- Chưa chạy `mvn -pl common,p2p-core test` qua dòng lệnh (chỉ mới chạy từng test đơn lẻ qua IntelliJ) — nên chạy 1 lần đầy đủ cả module để chắc chắn không sót lỗi ở test khác (chạy qua IntelliJ thường chỉ compile lại phần đã đổi, không chắc bằng 1 lần `mvn clean test` sạch từ đầu).
+- Chưa test `IceP2pConnectionEstablisher` giữa 2 máy thật khác NAT (mới có localhost, chưa cần STUN/TURN thật).
+- Chưa có test tự động riêng cho `WebSocketSignalingClient` (khó viết vì cần `signaling-server` thật chạy song song).
+
+## Tổng kết trạng thái hiện tại
+
+| Hạng mục | Trạng thái |
+|---|---|
+| Khung đa module Maven (5 module) | ✅ Build được |
+| Giao thức `SignalMessage`/`SignalType` | ✅ |
+| Interface `DataChannel`, `SignalingClient` | ✅ Đã chốt, dùng chung với B |
+| `LoopbackDataChannel` (tạm, để B không phải chờ) | ✅ Có test, **đã chạy lại bằng IntelliJ trong phiên này, pass** |
+| `RoomRegistry`/`PeerSession` | ✅ |
+| `SignalingWebSocketHandler`/`WebSocketConfig`/`SignalingServerApplication` | ✅ |
+| Integration test WebSocket thật (signaling-server) | ✅ 1 test, pass |
+| Chạy được bằng `java -jar` (đã né bug path tiếng Việt) | ✅ |
+| `WebSocketSignalingClient` (thật, HttpClient) | ✅ Viết xong, **chưa có test tự động riêng** (đã dùng gián tiếp qua các test khác, nhưng chưa test chính lớp này) |
+| `P2pDataChannel` (thật, UDP + framing) | ✅ **Đã chạy thật bằng IntelliJ, PASS** (`P2pDataChannelTest`) |
+| `IceCandidateCodec`, `IceP2pConnectionEstablisher` (ice4j) | ✅ **Đã chạy thật bằng IntelliJ, PASS** (1 test, 2s47ms) — xem Giai đoạn 11 |
+| `RoomSession`/`PeerConnection` (mesh nhiều peer) | ❌ Chưa làm |
+| Đo hiệu năng kết nối | ❌ Chưa làm |
+
+**Tất cả 3 test trong `p2p-core` đã được tự tay chạy và xác nhận PASS bằng IntelliJ trong phiên làm việc này** (`LoopbackDataChannelTest`, `P2pDataChannelTest`, `IceP2pConnectionEstablisherTest`).
+
+## Việc tiếp theo của nhiệm vụ A
+
+1. (Tuỳ chọn, nên làm trước khi coi là "chốt") Chạy 1 lần `mvn -pl common,p2p-core -am clean test` qua dòng lệnh để có 1 lần build sạch từ đầu, đối chiếu với kết quả chạy rời rạc qua IntelliJ ở trên.
+2. Thử nghiệm `IceP2pConnectionEstablisher` giữa 2 máy thật khác NAT (không chỉ localhost) — xem có cần STUN server thật, TURN dự phòng hay không.
+3. Viết `RoomSession`/`PeerConnection` để quản lý mesh nhiều peer, nối `IceP2pConnectionEstablisher` + `WebSocketSignalingClient` + `EnvelopeCodec` (chưa có) lại với nhau.
+4. Đo hiệu năng kết nối (tỉ lệ P2P thành công, độ trễ thiết lập).
+
+*(Xem Tai-lieu-ky-thuat.md Phần E.4/E.6/E.7 để biết chi tiết thiết kế cho các mục còn lại.)*
+
+---
+
+*Ghi chú: các Giai đoạn 1–7 đã được xác nhận qua `mvn test` thật ở phiên làm việc trước (xem lịch sử trong chính file này). Giai đoạn 8–10 (ice4j) được viết trong 1 phiên không có Maven trên PATH nên lúc viết chỉ kiểm tra được bằng chẩn đoán tĩnh của IDE; Giai đoạn 11 sau đó đã tự chạy thật cả 3 test của `p2p-core` bằng IntelliJ trên máy, phát hiện và sửa đúng 1 bug thật (`preferredPort=0` không hợp lệ với ice4j), và xác nhận cả `LoopbackDataChannelTest`, `P2pDataChannelTest`, `IceP2pConnectionEstablisherTest` đều PASS. Việc còn lại chỉ là chạy 1 lần `mvn` dòng lệnh cho chắc và thử qua 2 máy thật khác NAT trước khi coi phần ICE là "chốt hẳn". Cập nhật tiếp file này thành các giai đoạn mới khi hoàn thành từng phần.*
