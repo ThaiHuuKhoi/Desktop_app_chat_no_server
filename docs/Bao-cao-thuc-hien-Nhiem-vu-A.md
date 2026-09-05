@@ -4,7 +4,7 @@ Báo cáo thực hiện — Nhiệm vụ A (Mạng & Kết nối)
 
 *Tài liệu này ghi lại **từng bước đã thực hiện** cho các phần việc thuộc Thành viên A (xem [Phan-cong-cong-viec.md](Phan-cong-cong-viec.md) mục 2), dùng làm bản nháp cho Chương 4 — Cài đặt của báo cáo đồ án. Chỉ ghi phần đã code xong và chạy được thật; các mục còn lại của nhiệm vụ A (P2P core/ice4j, mesh, đo hiệu năng — xem Tai-lieu-ky-thuat.md Phần C.2) sẽ được bổ sung tiếp vào tài liệu này khi hoàn thành.*
 
-**Trạng thái tại thời điểm viết:** đã hoàn thành toàn bộ chuỗi mạng cốt lõi — signaling server (có tự động kết nối lại khi mất mạng), ICE thật (`ice4j`, có đo hiệu năng), kênh dữ liệu P2P thật, đa kênh logic + trao khoá phiên, và `RoomSession` quản lý nhiều peer — đã xác nhận chạy đúng **cả qua signaling server thật** (không chỉ giả lập), 8 test liên quan đã tự chạy bằng IntelliJ và **PASS**. Trong quá trình đó phát hiện và sửa 1 bug race condition thật trong `RoomRegistry` (tưởng đã "xong" từ Giai đoạn 1). Còn thiếu: xác thực danh tính tự động (`PEER_IDENTITY`, cần `IdentitySignatureService` của B), TURN dự phòng, đo hiệu năng tổng hợp qua mạng thật, và kiểm thử qua 2 máy thật khác NAT.
+**Trạng thái tại thời điểm viết:** đã hoàn thành toàn bộ chuỗi mạng cốt lõi — signaling server (có tự động kết nối lại khi mất mạng, đã rà soát chịu lỗi), ICE thật (`ice4j`, có đo hiệu năng), kênh dữ liệu P2P thật, đa kênh logic + trao khoá phiên, và `RoomSession` quản lý nhiều peer — đã xác nhận chạy đúng **cả qua signaling server thật** (không chỉ giả lập), 9 test liên quan đã tự chạy bằng IntelliJ và **PASS**. Trong quá trình đó phát hiện và sửa 3 bug thật: 1 race condition trong `RoomRegistry`, 2 lỗ hổng chịu lỗi trong `SignalingWebSocketHandler` (JSON hỏng làm crash kết nối, 1 peer lỗi chặn thông báo cho các peer khác). Còn thiếu: xác thực danh tính tự động (`PEER_IDENTITY`, cần `IdentitySignatureService` của B), TURN dự phòng, đo hiệu năng tổng hợp qua mạng thật, và kiểm thử qua 2 máy thật khác NAT.
 
 ---
 
@@ -22,6 +22,10 @@ Báo cáo thực hiện — Nhiệm vụ A (Mạng & Kết nối)
   - `LEAVE` (hoặc WebSocket đóng đột ngột) → xoá khỏi registry, báo `PEER_LEFT`.
   - `OFFER`/`ANSWER`/`ICE_CANDIDATE` → **chỉ chuyển tiếp nguyên văn** tới đúng `toPeerId`, không parse bên trong `payload`.
 - Chạy qua WebSocket endpoint `/ws`, đóng gói fat jar chạy bằng `java -jar` (đã né bug path tiếng Việt làm hỏng `spring-boot:run`).
+
+**Chịu lỗi ở tầng signaling** (Tai-lieu-ky-thuat.md Phần H.1 — rà soát và vá lại, không phải viết mới):
+- `handleTextMessage`: 1 client gửi JSON sai định dạng → bắt riêng, log WARN, bỏ qua đúng bản tin đó — **không** để lỗi lan ra ngoài làm Spring tự đóng luôn kết nối của chính client đó.
+- `send()`: gửi tới 1 session thất bại (socket đang đóng dở) → bắt riêng `IOException` cho **từng session**, không để lỗi 1 người làm dừng cả vòng lặp `broadcastToOthers` — các peer còn lại trong phòng vẫn phải nhận được `PEER_JOINED`/`PEER_LEFT` bình thường. Đây chính là nguyên nhân của cảnh báo "Unhandled exception after connection closed" từng thấy trong log lúc test `RoomSessionRealSignalingServerTest` ở phiên trước.
 
 ### Tầng 2 — Thiết lập kết nối trực tiếp (ICE, xuyên NAT) — mới viết trong phiên gần đây, dùng `ice4j`
 
@@ -90,9 +94,13 @@ Nguyên nhân: `RoomRegistry.join()` (module `signaling-server`, tưởng đã "
 
 **Bug phụ khác cũng gặp:** `SpringApplicationBuilder.properties("server.port=0")` không có tác dụng ép cổng ngẫu nhiên — độ ưu tiên của nó thấp hơn `server.port: 8080` đã hardcode trong `application.yml`, nên bị đè ngược lại. Phải dùng `.run("--server.port=0")` (tương đương tham số dòng lệnh, ưu tiên cao nhất) mới ghi đè đúng.
 
+### Ghi chú môi trường: Mockito không chạy được trên JDK 26
+
+Lúc viết test cho phần chịu lỗi ở trên, thử dùng Mockito trước — thất bại thật với lỗi `Java 26 (70) is not supported by the current version of Byte Buddy which officially supports Java 23 (67)`. Đây là giới hạn của JDK 26 (bản rất mới) với engine bytecode mà Mockito's "inline mock maker" dùng để giả lập class/interface, **không phải bug trong code**. Cách xử lý: bỏ hẳn Mockito cho test này, tự viết `FakeWebSocketSession` (implement `WebSocketSession` thủ công, chỉ cài đặt đúng các method handler thực sự dùng tới) và dùng `RoomRegistry` **thật** thay vì mock nó — vừa né được vấn đề JDK, vừa nhất quán với phong cách "tự viết fake thay vì dùng framework mock nặng" đã có sẵn trong dự án (`LoopbackDataChannel`, `LoopbackSignalingClient`). Nếu sau này cần dùng Mockito cho việc khác, nhớ kiểm tra lại phiên bản JDK đang chạy trước.
+
 ### Đã kiểm chứng thật (không chỉ "viết xong")
 
-8 test đã tự chạy bằng IntelliJ và **PASS**:
+9 test đã tự chạy bằng IntelliJ và **PASS**:
 - `LoopbackDataChannelTest`, `P2pDataChannelTest` — kênh dữ liệu.
 - `IceP2pConnectionEstablisherTest` — 2 `Agent` ice4j thật trên localhost, ICE chạy đúng RFC 8445, gửi/nhận dữ liệu thành công qua kênh vừa thiết lập; xác nhận `IceConnectionStats` báo đúng `usingRelay=false` trên localhost (không có TURN).
 - `EnvelopeCodecTest` — mã hoá/giải mã đúng, sai khoá hoặc dữ liệu bị sửa đều thất bại đúng cách.
@@ -100,6 +108,7 @@ Nguyên nhân: `RoomRegistry.join()` (module `signaling-server`, tưởng đã "
 - `RoomSessionTest` — 2 `RoomSession` (Alice vào trước, Bob vào sau) tự nhận đúng vai trò chủ động/trả lời, chạy ICE thật + trao khoá ECDH thật + gửi/nhận `Envelope` mã hoá thật, dùng `LoopbackSignalingClient` giả lập.
 - `RoomSessionRealSignalingServerTest` — **cùng kịch bản trên nhưng qua `WebSocketSignalingClient` + 1 `signaling-server` thật** (tự boot bằng `SpringApplicationBuilder`, không phải giả lập) — sau khi sửa 2 bug ở trên, chạy đúng end-to-end.
 - `WebSocketSignalingClientReconnectTest` — server "sập" thật (đóng thẳng context, không phải client tự ngắt) → xác nhận client tự chuyển `RECONNECTING` → server sống lại trên đúng cổng cũ → xác nhận client tự kết nối lại + tự JOIN lại (kiểm chứng bằng cách cho 1 peer khác vào phòng sau đó và xác nhận client cũ thấy được peer mới).
+- `SignalingWebSocketHandlerErrorHandlingTest` — JSON hỏng/thiếu `type` không làm throw; 1 session đang "lỗi" đứng trước 1 session khoẻ mạnh trong danh sách broadcast không chặn được thông báo tới session khoẻ mạnh.
 
 ### Chưa làm (mảnh còn thiếu để hoàn chỉnh nhiệm vụ A)
 
