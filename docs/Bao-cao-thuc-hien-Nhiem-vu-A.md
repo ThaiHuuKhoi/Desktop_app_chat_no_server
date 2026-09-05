@@ -4,7 +4,7 @@ Báo cáo thực hiện — Nhiệm vụ A (Mạng & Kết nối)
 
 *Tài liệu này ghi lại **từng bước đã thực hiện** cho các phần việc thuộc Thành viên A (xem [Phan-cong-cong-viec.md](Phan-cong-cong-viec.md) mục 2), dùng làm bản nháp cho Chương 4 — Cài đặt của báo cáo đồ án. Chỉ ghi phần đã code xong và chạy được thật; các mục còn lại của nhiệm vụ A (P2P core/ice4j, mesh, đo hiệu năng — xem Tai-lieu-ky-thuat.md Phần C.2) sẽ được bổ sung tiếp vào tài liệu này khi hoàn thành.*
 
-**Trạng thái tại thời điểm viết:** đã hoàn thành signaling server, giao ước interface dùng chung với B, kênh dữ liệu P2P thật (`P2pDataChannel`), và điều phối ICE thật bằng `ice4j` (`IceP2pConnectionEstablisher`) — cả 3 test liên quan đã tự chạy bằng IntelliJ và **PASS** (xem Giai đoạn 11). Còn thiếu `RoomSession`/mesh nhiều peer và đo hiệu năng.
+**Trạng thái tại thời điểm viết:** đã hoàn thành signaling server, giao ước interface dùng chung với B, kênh dữ liệu P2P thật (`P2pDataChannel`), điều phối ICE thật bằng `ice4j` (`IceP2pConnectionEstablisher`), và đa kênh logic + trao khoá phiên (`Envelope`/`EnvelopeCodec`/`PeerConnection`) — cả 5 test liên quan đã tự chạy bằng IntelliJ và **PASS**. Còn thiếu `RoomSession` (mesh nhiều peer) và đo hiệu năng.
 
 ---
 
@@ -46,6 +46,21 @@ Báo cáo thực hiện — Nhiệm vụ A (Mạng & Kết nối)
 - 1 thread nền riêng chạy vòng lặp `socket.receive()` liên tục — mỗi gói tới, bóc length-prefix, lấy đúng phần dữ liệu, gọi `receiveHandler` (đăng ký qua `onReceive`).
 - `close()`: đóng socket, dừng thread nền.
 
+### Tầng 4 — Đa kênh logic + trao khoá phiên (`Envelope`/`EnvelopeCodec`/`PeerConnection`)
+
+**`EnvelopeType`/`Envelope`/`EnvelopeNamespace`** (`common`): "phong bì" chung cho MỌI thứ đi qua `DataChannel` sau khi đã kết nối P2P — thay vì chỉ gửi được 1 loại tin nhắn duy nhất như bản demo ban đầu. `EnvelopeType` liệt kê 10 loại (tin nhắn, gõ phím, xác thực danh tính, file, media...), `Envelope` gói `type + namespace (nhóm/DM) + timestamp + payload (JSON của loại tương ứng)`. `MessagePayload` là payload cụ thể đầu tiên (tin nhắn văn bản).
+
+**`EnvelopeCodec`** (`p2p-core`): nối `AesGcmCipher` (đã có sẵn của B, module `crypto`) với Jackson (`common`) — **không viết lại logic mã hoá**, chỉ dùng lại.
+- `encode(type, namespace, payload)`: `payload` → JSON → gói vào `Envelope` → JSON → mã hoá AES-GCM → `byte[]` sẵn sàng cho `DataChannel.send()`.
+- `decode(raw)`: giải mã AES-GCM → JSON → `Envelope` (phần `payload` bên trong vẫn là JSON thô, chưa parse).
+- `parsePayload(envelope, Class<T>)`: parse tiếp phần payload thô đó thành đúng record cụ thể (vd `MessagePayload`).
+
+**`PeerConnection`** (`p2p-core`): bọc 1 `DataChannel` đã mở với đúng 1 peer, tự lo việc trao khoá phiên rồi mới cho gửi dữ liệu.
+- Ngay khi tạo xong (2 phía đối xứng, không ai "hỏi trước"), mỗi bên tự gọi `sendEcdhPublicKey()` — gửi public key ECDH của mình, đây là **gói tin duy nhất không mã hoá** (bản thân public key không cần giữ bí mật).
+- Gói tin **đầu tiên nhận được** ở mỗi bên được coi là public key ECDH của đối phương → tự tính `KeyExchangeService.deriveSharedSecret(...)` (có sẵn của B) → dựng `EnvelopeCodec` cho riêng peer này.
+- Từ gói tin thứ 2 trở đi, mọi thứ đều đi qua `EnvelopeCodec` (đã mã hoá). Gọi `send()` trước khi trao khoá xong bị chặn bằng `IllegalStateException` rõ ràng, không gửi ngầm dữ liệu chưa mã hoá.
+- Mỗi peer trong phòng có 1 `PeerConnection` + 1 khoá AES riêng (không dùng chung khoá giữa các cặp peer khác nhau).
+
 ### Interface/giao ước chung (nền tảng để A/B code song song)
 
 - **`DataChannel`** (`common`): 3 method `send/onReceive/close` — cả `LoopbackDataChannel` (giả lập của B) lẫn `P2pDataChannel` (thật của A) đều implement đúng interface này, B không cần đổi code khi ghép kênh thật vào.
@@ -53,11 +68,16 @@ Báo cáo thực hiện — Nhiệm vụ A (Mạng & Kết nối)
 
 ### Đã kiểm chứng thật (không chỉ "viết xong")
 
-3 test đã tự chạy bằng IntelliJ và **PASS**: `LoopbackDataChannelTest`, `P2pDataChannelTest`, `IceP2pConnectionEstablisherTest` (2 `Agent` ice4j thật trên localhost, ICE chạy đúng RFC 8445, gửi/nhận dữ liệu thành công qua kênh vừa thiết lập).
+5 test đã tự chạy bằng IntelliJ và **PASS**:
+- `LoopbackDataChannelTest`, `P2pDataChannelTest` — kênh dữ liệu.
+- `IceP2pConnectionEstablisherTest` — 2 `Agent` ice4j thật trên localhost, ICE chạy đúng RFC 8445, gửi/nhận dữ liệu thành công qua kênh vừa thiết lập.
+- `EnvelopeCodecTest` — mã hoá/giải mã đúng, sai khoá hoặc dữ liệu bị sửa đều thất bại đúng cách.
+- `PeerConnectionTest` — 2 `PeerConnection` tự trao khoá ECDH xong rồi gửi/nhận đúng 1 `Envelope` mã hoá.
 
 ### Chưa làm (mảnh còn thiếu để hoàn chỉnh nhiệm vụ A)
 
-- **`RoomSession`/`PeerConnection`** — quản lý **nhiều peer cùng lúc** trong 1 phòng (mesh N-peer), tự chạy lại luồng ICE ở trên với từng peer mới, nối `WebSocketSignalingClient` thật vào (hiện `IceP2pConnectionEstablisher` mới test bằng cách tự trao offer/answer trực tiếp trong code, chưa qua signaling server thật).
+- **`RoomSession`** — quản lý **nhiều peer cùng lúc** trong 1 phòng (mesh N-peer): nghe `WebSocketSignalingClient` báo peer mới → tự chạy `IceP2pConnectionEstablisher` → khi ICE xong tự tạo `PeerConnection` → gom lại thành `Map<peerId, PeerConnection>`. Đây là mảnh ghép cuối cùng nối tất cả những gì đã có ở trên lại với nhau qua signaling server thật (hiện `IceP2pConnectionEstablisher`/`PeerConnection` mới test bằng cách tự trao offer/answer/public key trực tiếp trong code).
+- `PEER_IDENTITY` tự động (cần `IdentitySignatureService` bằng ECDSA ở module `crypto` — chưa có, thuộc phần B).
 - TURN dự phòng (mới có STUN).
 - Đo hiệu năng kết nối.
 - Test qua 2 máy thật khác NAT (mới test localhost).
