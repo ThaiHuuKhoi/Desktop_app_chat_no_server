@@ -40,7 +40,7 @@ class WebSocketSignalingClientCapacityTest {
 
     @Test
     void manyPeersJoiningConcurrentlyAllDiscoverEachOtherCorrectly() throws Exception {
-        int peerCount = 30; // du lon de la phep thu tai concurrency that su, van chay nhanh trong 1 unit test
+        int peerCount = 100; // tang tu 30 len 100 de tim gioi han thuc te hon (Tomcat maxThreads mac dinh la 200)
 
         ConfigurableApplicationContext serverContext = new SpringApplicationBuilder(SignalingServerApplication.class)
                 .run("--server.port=0");
@@ -74,15 +74,16 @@ class WebSocketSignalingClientCapacityTest {
                 });
             }
 
-            assertTrue(allJoined.await(30, TimeUnit.SECONDS),
-                    "Ca " + peerCount + " peer phai ket noi + JOIN xong trong 30s");
+            assertTrue(allJoined.await(60, TimeUnit.SECONDS),
+                    "Ca " + peerCount + " peer phai ket noi + JOIN xong trong 60s");
             long elapsedMillis = (System.nanoTime() - startNanos) / 1_000_000;
             System.out.println(peerCount + " peer join dong thoi qua signaling-server that mat " + elapsedMillis + "ms");
 
             // Cho cac thong bao PEER_JOINED con dang bay (bat dong bo qua WebSocket that,
             // co the toi sau khi allJoined da dem xong vi connect() chi cho JOIN cua CHINH
-            // minh, khong cho thong bao ve nguoi khac) kip toi truoc khi kiem tra.
-            Thread.sleep(2000);
+            // minh, khong cho thong bao ve nguoi khac) kip toi truoc khi kiem tra. Tang tu
+            // 2s len 3s vi peerCount lon hon co nhieu ban tin PEER_JOINED can lan truyen hon.
+            Thread.sleep(3000);
 
             Set<String> allPeerIds = IntStream.range(0, peerCount)
                     .mapToObj(i -> "peer-" + i)
