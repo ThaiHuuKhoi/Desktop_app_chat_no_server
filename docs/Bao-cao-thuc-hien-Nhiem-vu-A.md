@@ -39,6 +39,8 @@ Báo cáo thực hiện — Nhiệm vụ A (Mạng & Kết nối)
 5. `ice4j` tự chạy ngầm: ghép từng cặp candidate, gửi STUN kiểm tra, chọn cặp "thông" nhất — phần xuyên NAT khó nhất do thư viện lo, không tự viết.
 6. Khi xong, `ice4j` bắn sự kiện `IceProcessingState.COMPLETED` — lớp này lắng nghe (`PropertyChangeListener`), lấy socket UDP + địa chỉ đối phương đã chọn, **tự tạo `P2pDataChannel`**, gọi callback `onConnected(channel)`. Nếu `FAILED` → gọi callback `onFailed`.
 
+**Đo hiệu năng kết nối** (`IceConnectionStats`, Tai-lieu-ky-thuat.md Phần F.1): ngay lúc `COMPLETED`, tính `establishmentMillis` (từ lúc tạo `IceP2pConnectionEstablisher` tới lúc xong) và `usingRelay` (xem loại candidate của candidate pair đã chọn có phải `RELAYED_CANDIDATE` không — nếu có thì dữ liệu đang đi qua TURN thay vì trực tiếp). Đọc qua `getStats()` (trả `Optional`, rỗng nếu ICE chưa xong).
+
 ### Tầng 3 — Kênh dữ liệu thật sau khi đã "bắt tay" xong
 
 **`P2pDataChannel`**: kênh gửi/nhận byte thô giữa 2 peer sau khi ICE đã tìm ra đường truyền — implement đúng interface `DataChannel` chung với B.
@@ -90,7 +92,7 @@ Nguyên nhân: `RoomRegistry.join()` (module `signaling-server`, tưởng đã "
 
 7 test đã tự chạy bằng IntelliJ và **PASS**:
 - `LoopbackDataChannelTest`, `P2pDataChannelTest` — kênh dữ liệu.
-- `IceP2pConnectionEstablisherTest` — 2 `Agent` ice4j thật trên localhost, ICE chạy đúng RFC 8445, gửi/nhận dữ liệu thành công qua kênh vừa thiết lập.
+- `IceP2pConnectionEstablisherTest` — 2 `Agent` ice4j thật trên localhost, ICE chạy đúng RFC 8445, gửi/nhận dữ liệu thành công qua kênh vừa thiết lập; xác nhận `IceConnectionStats` báo đúng `usingRelay=false` trên localhost (không có TURN).
 - `EnvelopeCodecTest` — mã hoá/giải mã đúng, sai khoá hoặc dữ liệu bị sửa đều thất bại đúng cách.
 - `PeerConnectionTest` — 2 `PeerConnection` tự trao khoá ECDH xong rồi gửi/nhận đúng 1 `Envelope` mã hoá.
 - `RoomSessionTest` — 2 `RoomSession` (Alice vào trước, Bob vào sau) tự nhận đúng vai trò chủ động/trả lời, chạy ICE thật + trao khoá ECDH thật + gửi/nhận `Envelope` mã hoá thật, dùng `LoopbackSignalingClient` giả lập.
@@ -99,8 +101,8 @@ Nguyên nhân: `RoomRegistry.join()` (module `signaling-server`, tưởng đã "
 ### Chưa làm (mảnh còn thiếu để hoàn chỉnh nhiệm vụ A)
 
 - `PEER_IDENTITY` tự động (cần `IdentitySignatureService` bằng ECDSA ở module `crypto` — chưa có, thuộc phần B).
-- TURN dự phòng (mới có STUN).
-- Đo hiệu năng kết nối.
+- TURN dự phòng (mới có STUN — `IceConnectionStats.usingRelay()` đã sẵn sàng đo khi có TURN, chỉ chưa có harvester TURN để thử).
+- Đo hiệu năng kết nối **tổng hợp qua nhiều kịch bản mạng thật** (đã có hạ tầng đo `IceConnectionStats` cho từng phiên; còn thiếu chạy thật qua LAN/NAT khác nhau và tổng hợp bảng số liệu như Tai-lieu-ky-thuat.md Phần F.5.3 yêu cầu).
 - Test qua 2 máy thật khác NAT (mới test được trên 1 máy — theo tìm hiểu, cách duy nhất giả lập "2 máy khác NAT" chỉ bằng 1 laptop là dùng 2 máy ảo với chế độ mạng NAT riêng biệt, chưa dựng vì không cấp thiết).
 - Nối `RoomSession` vào `RoomController`/UI thật của `client-javafx` (hiện UI vẫn đang dùng `LoopbackDataChannel`/`DemoPeerSimulator`, thuộc phần B).
 
