@@ -4,7 +4,7 @@ Báo cáo thực hiện — Nhiệm vụ A (Mạng & Kết nối)
 
 *Tài liệu này ghi lại **từng bước đã thực hiện** cho các phần việc thuộc Thành viên A (xem [Phan-cong-cong-viec.md](Phan-cong-cong-viec.md) mục 2), dùng làm bản nháp cho Chương 4 — Cài đặt của báo cáo đồ án. Chỉ ghi phần đã code xong và chạy được thật; các mục còn lại của nhiệm vụ A (P2P core/ice4j, mesh, đo hiệu năng — xem Tai-lieu-ky-thuat.md Phần C.2) sẽ được bổ sung tiếp vào tài liệu này khi hoàn thành.*
 
-**Trạng thái tại thời điểm viết:** đã hoàn thành toàn bộ chuỗi mạng cốt lõi — signaling server + client (Tầng 1, **coi như đã hoàn thiện chịu lỗi cả 2 phía**), ICE thật (`ice4j`, có đo hiệu năng), kênh dữ liệu P2P thật, đa kênh logic + trao khoá phiên, và `RoomSession` quản lý nhiều peer — đã xác nhận chạy đúng **cả qua signaling server thật** (không chỉ giả lập), 10 test liên quan đã tự chạy bằng IntelliJ và **PASS**. Trong quá trình đó phát hiện và sửa 4 bug thật: 1 race condition trong `RoomRegistry`, 2 lỗ hổng chịu lỗi trong `SignalingWebSocketHandler` (JSON hỏng làm crash kết nối, 1 peer lỗi chặn thông báo cho các peer khác), và 1 lỗ hổng đối xứng ở `RoomSession` (1 peer lỗi trong `PEER_LIST` chặn kết nối tới các peer khác). Còn thiếu: xác thực danh tính tự động (`PEER_IDENTITY`, cần `IdentitySignatureService` của B), TURN dự phòng, đo hiệu năng tổng hợp qua mạng thật, và kiểm thử qua 2 máy thật khác NAT.
+**Trạng thái tại thời điểm viết:** đã hoàn thành toàn bộ chuỗi mạng cốt lõi — signaling server + client (Tầng 1, **coi như đã hoàn thiện chịu lỗi cả 2 phía**), ICE thật (`ice4j`, có đo hiệu năng), kênh dữ liệu P2P thật, đa kênh logic + trao khoá phiên, và `RoomSession` quản lý nhiều peer (đã xác nhận mesh **≥3 peer** hoạt động đúng, không chỉ 2 peer) — đã xác nhận chạy đúng **cả qua signaling server thật** (không chỉ giả lập), 11 test liên quan đã tự chạy bằng IntelliJ và **PASS**. Trong quá trình đó phát hiện và sửa 4 bug thật: 1 race condition trong `RoomRegistry`, 2 lỗ hổng chịu lỗi trong `SignalingWebSocketHandler` (JSON hỏng làm crash kết nối, 1 peer lỗi chặn thông báo cho các peer khác), và 1 lỗ hổng đối xứng ở `RoomSession` (1 peer lỗi trong `PEER_LIST` chặn kết nối tới các peer khác). Còn thiếu: xác thực danh tính tự động (`PEER_IDENTITY`, cần `IdentitySignatureService` của B), TURN dự phòng, đo hiệu năng tổng hợp qua mạng thật, và kiểm thử qua 2 máy thật khác NAT.
 
 ---
 
@@ -77,6 +77,8 @@ Báo cáo thực hiện — Nhiệm vụ A (Mạng & Kết nối)
 - `broadcast(type, payload)` gửi cho mọi peer đang có; `sendTo(peerId, type, payload)` gửi 1 peer; `onEnvelope(type, handler)` đăng ký nhận theo đúng loại `EnvelopeType`, không quan tâm gửi từ peer nào.
 - `leave()` đóng hết `PeerConnection`, huỷ mọi phiên ICE đang dở, rồi mới ngắt signaling.
 
+**Khả năng mở rộng** (Tai-lieu-ky-thuat.md Phần B.3/F.3): kiến trúc mesh đầy đủ (N peer → N×(N-1)/2 kết nối) — băng thông/CPU tăng theo N², **chấp nhận được và đã ghi rõ là giới hạn thiết kế** (không phải bug), khuyến nghị demo ổn định ở 2-8 peer/phòng, giống hệt kiến trúc gốc `chitchatter`. Đến trước phiên này mọi test chỉ dùng 2 peer — đã bổ sung `RoomSessionThreePeerMeshTest` dựng **mesh 3 peer thật** (P3 vào sau cùng, thấy 2 peer qua `PEER_LIST`, tự kết nối với cả hai) để xác nhận `handlePeerList` xử lý đúng khi danh sách có nhiều hơn 1 peer, và broadcast từ 1 người tới đúng tất cả người còn lại. Signaling server chạy đơn instance, không scale ngang (state trong bộ nhớ) — chấp nhận được, đúng tinh thần ephemeral, ngoài phạm vi đồ án.
+
 ### Interface/giao ước chung (nền tảng để A/B code song song)
 
 - **`DataChannel`** (`common`): 3 method `send/onReceive/close` — cả `LoopbackDataChannel` (giả lập của B) lẫn `P2pDataChannel` (thật của A) đều implement đúng interface này, B không cần đổi code khi ghép kênh thật vào.
@@ -100,7 +102,7 @@ Lúc viết test cho phần chịu lỗi ở trên, thử dùng Mockito trước
 
 ### Đã kiểm chứng thật (không chỉ "viết xong")
 
-10 test đã tự chạy bằng IntelliJ và **PASS**:
+11 test đã tự chạy bằng IntelliJ và **PASS**:
 - `LoopbackDataChannelTest`, `P2pDataChannelTest` — kênh dữ liệu.
 - `IceP2pConnectionEstablisherTest` — 2 `Agent` ice4j thật trên localhost, ICE chạy đúng RFC 8445, gửi/nhận dữ liệu thành công qua kênh vừa thiết lập; xác nhận `IceConnectionStats` báo đúng `usingRelay=false` trên localhost (không có TURN).
 - `EnvelopeCodecTest` — mã hoá/giải mã đúng, sai khoá hoặc dữ liệu bị sửa đều thất bại đúng cách.
@@ -110,6 +112,7 @@ Lúc viết test cho phần chịu lỗi ở trên, thử dùng Mockito trước
 - `WebSocketSignalingClientReconnectTest` — server "sập" thật (đóng thẳng context, không phải client tự ngắt) → xác nhận client tự chuyển `RECONNECTING` → server sống lại trên đúng cổng cũ → xác nhận client tự kết nối lại + tự JOIN lại (kiểm chứng bằng cách cho 1 peer khác vào phòng sau đó và xác nhận client cũ thấy được peer mới).
 - `SignalingWebSocketHandlerErrorHandlingTest` — JSON hỏng/thiếu `type` không làm throw; 1 session đang "lỗi" đứng trước 1 session khoẻ mạnh trong danh sách broadcast không chặn được thông báo tới session khoẻ mạnh.
 - `RoomSessionErrorHandlingTest` — đối xứng phía client: giả lập gửi OFFER tới 1 peer thất bại, xác nhận `onConnectionFailed` báo đúng lỗi cho peer đó **và** vẫn kết nối thành công với peer còn lại trong cùng `PEER_LIST`.
+- `RoomSessionThreePeerMeshTest` — mesh 3 peer thật (P1→P2→P3), xác nhận cả 3 cặp tự kết nối đúng (mỗi peer 2 kết nối) và broadcast từ 1 người tới đúng cả 2 người còn lại.
 
 **Tầng 1 (Signaling) coi như đã hoàn thiện chịu lỗi** — cả 2 phía (server relay, client phản ứng với bản tin signaling) đều cô lập lỗi đúng theo nguyên tắc H.1: 1 lỗi cục bộ (JSON hỏng, session/peer đang gặp sự cố) không được lan sang ảnh hưởng các peer/bản tin khác.
 
