@@ -4,7 +4,7 @@ Báo cáo thực hiện — Nhiệm vụ A (Mạng & Kết nối)
 
 *Tài liệu này ghi lại **từng bước đã thực hiện** cho các phần việc thuộc Thành viên A (xem [Phan-cong-cong-viec.md](Phan-cong-cong-viec.md) mục 2), dùng làm bản nháp cho Chương 4 — Cài đặt của báo cáo đồ án. Chỉ ghi phần đã code xong và chạy được thật; các mục còn lại của nhiệm vụ A (P2P core/ice4j, mesh, đo hiệu năng — xem Tai-lieu-ky-thuat.md Phần C.2) sẽ được bổ sung tiếp vào tài liệu này khi hoàn thành.*
 
-**Trạng thái tại thời điểm viết:** đã hoàn thành signaling server, giao ước interface dùng chung với B, kênh dữ liệu P2P thật (`P2pDataChannel`), điều phối ICE thật bằng `ice4j` (`IceP2pConnectionEstablisher`), và đa kênh logic + trao khoá phiên (`Envelope`/`EnvelopeCodec`/`PeerConnection`) — cả 5 test liên quan đã tự chạy bằng IntelliJ và **PASS**. Còn thiếu `RoomSession` (mesh nhiều peer) và đo hiệu năng.
+**Trạng thái tại thời điểm viết:** đã hoàn thành toàn bộ chuỗi mạng cốt lõi — signaling server, ICE thật (`ice4j`), kênh dữ liệu P2P thật, đa kênh logic + trao khoá phiên, và `RoomSession` quản lý nhiều peer — cả 6 test liên quan đã tự chạy bằng IntelliJ và **PASS**. Còn thiếu: xác thực danh tính tự động (`PEER_IDENTITY`, cần `IdentitySignatureService` của B), TURN dự phòng, đo hiệu năng, và kiểm thử qua `signaling-server` thật + 2 máy thật khác NAT.
 
 ---
 
@@ -61,6 +61,16 @@ Báo cáo thực hiện — Nhiệm vụ A (Mạng & Kết nối)
 - Từ gói tin thứ 2 trở đi, mọi thứ đều đi qua `EnvelopeCodec` (đã mã hoá). Gọi `send()` trước khi trao khoá xong bị chặn bằng `IllegalStateException` rõ ràng, không gửi ngầm dữ liệu chưa mã hoá.
 - Mỗi peer trong phòng có 1 `PeerConnection` + 1 khoá AES riêng (không dùng chung khoá giữa các cặp peer khác nhau).
 
+### Tầng 5 — Quản lý mesh nhiều peer (`RoomSession`)
+
+**`RoomSession`** (`p2p-core`): lớp duy nhất biết cả 3 mảnh ở trên (`SignalingClient`, `IceP2pConnectionEstablisher`, `PeerConnection`) — mảnh ghép cuối cùng nối tất cả lại thành 1 phòng chat hoạt động được.
+
+- **Quy tắc ai chủ động, ai trả lời** (bắt buộc để 2 bên không cùng lúc gửi OFFER hoặc cùng chờ nhau): nhận `PEER_LIST` lúc vừa vào phòng (nghĩa là những peer này đã vào TRƯỚC mình) → **mình chủ động** gửi OFFER cho từng người. Nhận `PEER_JOINED` (ai đó vào SAU mình) → chỉ ghi nhớ tên hiển thị, **không tự gửi gì** — vì họ sẽ tự thấy mình qua `PEER_LIST` của họ và chủ động gửi OFFER tới mình.
+- Nhận được OFFER → tạo 1 `IceP2pConnectionEstablisher` mới, trả lời bằng ANSWER. Nhận được ANSWER → tìm đúng phiên ICE đang chờ (theo `peerId`), gọi tiếp `acceptAnswer()`.
+- Khi ICE báo xong (`onConnected`) → sinh 1 cặp khoá ECDH **riêng cho peer này**, tạo `PeerConnection`, tự gọi `sendEcdhPublicKey()` ngay. Chỉ khi `PeerConnection` báo trao khoá xong mới bắn sự kiện `onPeerJoined` ra ngoài (UI/lớp gọi chỉ nhận peer khi nó đã thật sự dùng được).
+- `broadcast(type, payload)` gửi cho mọi peer đang có; `sendTo(peerId, type, payload)` gửi 1 peer; `onEnvelope(type, handler)` đăng ký nhận theo đúng loại `EnvelopeType`, không quan tâm gửi từ peer nào.
+- `leave()` đóng hết `PeerConnection`, huỷ mọi phiên ICE đang dở, rồi mới ngắt signaling.
+
 ### Interface/giao ước chung (nền tảng để A/B code song song)
 
 - **`DataChannel`** (`common`): 3 method `send/onReceive/close` — cả `LoopbackDataChannel` (giả lập của B) lẫn `P2pDataChannel` (thật của A) đều implement đúng interface này, B không cần đổi code khi ghép kênh thật vào.
@@ -68,19 +78,21 @@ Báo cáo thực hiện — Nhiệm vụ A (Mạng & Kết nối)
 
 ### Đã kiểm chứng thật (không chỉ "viết xong")
 
-5 test đã tự chạy bằng IntelliJ và **PASS**:
+6 test đã tự chạy bằng IntelliJ và **PASS**:
 - `LoopbackDataChannelTest`, `P2pDataChannelTest` — kênh dữ liệu.
 - `IceP2pConnectionEstablisherTest` — 2 `Agent` ice4j thật trên localhost, ICE chạy đúng RFC 8445, gửi/nhận dữ liệu thành công qua kênh vừa thiết lập.
 - `EnvelopeCodecTest` — mã hoá/giải mã đúng, sai khoá hoặc dữ liệu bị sửa đều thất bại đúng cách.
 - `PeerConnectionTest` — 2 `PeerConnection` tự trao khoá ECDH xong rồi gửi/nhận đúng 1 `Envelope` mã hoá.
+- `RoomSessionTest` — 2 `RoomSession` (Alice vào trước, Bob vào sau) tự nhận đúng vai trò chủ động/trả lời, chạy ICE thật + trao khoá ECDH thật + gửi/nhận `Envelope` mã hoá thật, toàn bộ end-to-end trong 1 test (dùng `LoopbackSignalingClient` — bản giả lập signaling server trong bộ nhớ, chỉ để test, không phải code thật).
 
 ### Chưa làm (mảnh còn thiếu để hoàn chỉnh nhiệm vụ A)
 
-- **`RoomSession`** — quản lý **nhiều peer cùng lúc** trong 1 phòng (mesh N-peer): nghe `WebSocketSignalingClient` báo peer mới → tự chạy `IceP2pConnectionEstablisher` → khi ICE xong tự tạo `PeerConnection` → gom lại thành `Map<peerId, PeerConnection>`. Đây là mảnh ghép cuối cùng nối tất cả những gì đã có ở trên lại với nhau qua signaling server thật (hiện `IceP2pConnectionEstablisher`/`PeerConnection` mới test bằng cách tự trao offer/answer/public key trực tiếp trong code).
+- Test `RoomSession` qua `WebSocketSignalingClient` + `signaling-server` **thật** (hiện mới test bằng `LoopbackSignalingClient` giả lập trong bộ nhớ, chưa qua WebSocket/Spring Boot thật).
 - `PEER_IDENTITY` tự động (cần `IdentitySignatureService` bằng ECDSA ở module `crypto` — chưa có, thuộc phần B).
 - TURN dự phòng (mới có STUN).
 - Đo hiệu năng kết nối.
 - Test qua 2 máy thật khác NAT (mới test localhost).
+- Nối `RoomSession` vào `RoomController`/UI thật của `client-javafx` (hiện UI vẫn đang dùng `LoopbackDataChannel`/`DemoPeerSimulator`, thuộc phần B).
 
 ---
 
