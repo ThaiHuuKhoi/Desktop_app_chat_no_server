@@ -16,14 +16,25 @@
   <description>
     Cac cai dat cua interface DataChannel: LoopbackDataChannel (gia lap),
     P2pDataChannel (that, tren UDP socket do ice4j chon) va SignalingClient
-    (WebSocketSignalingClient, dung java.net.http.HttpClient). Phu trach:
-    Thanh vien A (Phan-cong-cong-viec.md muc 2).
+    (WebSocketSignalingClient, dung java.net.http.HttpClient); giao thuc
+    Envelope/EnvelopeCodec va PeerConnection (trao khoa ECDH + ma hoa
+    AES-GCM tren tung ket noi peer). Phu trach: Thanh vien A
+    (Phan-cong-cong-viec.md muc 2), rieng EnvelopeCodec la diem giao thoa
+    voi B - dung lai AesGcmCipher/KeyExchangeService cua module crypto,
+    khong viet lai (xem Phan-cong-cong-viec.md muc 3.2).
   </description>
 
   <dependencies>
     <dependency>
       <groupId>com.datn.chatp2p</groupId>
       <artifactId>common</artifactId>
+    </dependency>
+    <!-- ECDH trao khoa phien + AES-GCM ma hoa noi dung - da co san, viet boi
+         Thanh vien B. p2p-core chi DUNG LAI qua EnvelopeCodec/PeerConnection,
+         khong viet lai logic ma hoa. -->
+    <dependency>
+      <groupId>com.datn.chatp2p</groupId>
+      <artifactId>crypto</artifactId>
     </dependency>
     <!-- De (de)serialize SignalMessage va cac payload ICE (IceOfferPayload/
          IceAnswerPayload) sang/tu JSON trong WebSocketSignalingClient. -->
