@@ -85,6 +85,25 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
     }
 
     private void handleJoin(WebSocketSession session, SignalMessage signal) {
+        // PeerSession dung Objects.requireNonNull cho ca 3 truong nay - phai tu
+        // validate TRUOC khi goi constructor, neu khong 1 JOIN hop le ve JSON nhung
+        // thieu truong (bug client hoac co y) se nem NullPointerException khong ai
+        // bat, vi pham dung nguyen tac H.1 da ap dung cho loi parse JSON o tren.
+        if (signal.getRoomId() == null || signal.getFromPeerId() == null || signal.getUserName() == null) {
+            log.warn("Bo qua ban tin JOIN thieu roomId/fromPeerId/userName tu session {}", session.getId());
+            return;
+        }
+
+        // Neu session nay da JOIN truoc do ma chua LEAVE (client gui JOIN lan 2 -
+        // bug hoac doi phong giua chung) - don dep entry CU truoc khi them entry
+        // moi. Khong lam vay thi RoomRegistry se giu 2 entry cho CUNG 1 session,
+        // nhung leaveBySession() (goi luc dong ket noi that su) chi tim va xoa
+        // DUNG entry DAU TIEN khop session.getId() no gap - entry con lai se "mo
+        // coi" vinh vien, khong ai bao PEER_LEFT cho phong cu.
+        if (session.getAttributes().get(ROOM_ID_ATTR) != null) {
+            removeAndNotify(session);
+        }
+
         PeerSession self = new PeerSession(session, signal.getRoomId(), signal.getFromPeerId(), signal.getUserName());
         session.getAttributes().put(ROOM_ID_ATTR, self.getRoomId());
         session.getAttributes().put(PEER_ID_ATTR, self.getPeerId());

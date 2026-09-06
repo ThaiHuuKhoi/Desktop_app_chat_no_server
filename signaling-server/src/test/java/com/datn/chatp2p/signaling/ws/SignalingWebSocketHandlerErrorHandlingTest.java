@@ -1,6 +1,7 @@
 package com.datn.chatp2p.signaling.ws;
 
 import com.datn.chatp2p.common.signal.SignalMessage;
+import com.datn.chatp2p.common.signal.SignalType;
 import com.datn.chatp2p.signaling.room.PeerSession;
 import com.datn.chatp2p.signaling.room.RoomRegistry;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -51,6 +52,54 @@ class SignalingWebSocketHandlerErrorHandlingTest {
 
         assertDoesNotThrow(() ->
                 handler.handleTextMessage(session, new TextMessage("{\"roomId\":\"r1\"}")));
+    }
+
+    @Test
+    void joinMissingRequiredFieldsIsIgnoredWithoutThrowingOrClosingTheSession() throws Exception {
+        // PeerSession (module signaling-server) dung Objects.requireNonNull cho ca
+        // roomId/peerId/userName - neu handleJoin khong tu validate truoc, 1 ban
+        // tin JOIN hop le VE MAT JSON nhung thieu fromPeerId (vd bug client, hoac
+        // co y tan cong) se nem NullPointerException NGAY TRONG handleTextMessage,
+        // KHONG duoc bat o dau ca (khac voi loi parse JSON da xu ly rieng o
+        // malformedJsonIsIgnoredWithoutThrowingOrClosingTheSession) - vi pham dung
+        // nguyen tac H.1 da ap dung cho cac loai loi khac trong lop nay.
+        SignalingWebSocketHandler handler = new SignalingWebSocketHandler(new RoomRegistry(), objectMapper);
+        FakeWebSocketSession session = new FakeWebSocketSession("s1");
+
+        SignalMessage joinMissingFromPeerId = new SignalMessage();
+        joinMissingFromPeerId.setType(SignalType.JOIN);
+        joinMissingFromPeerId.setRoomId("room-1");
+        // Co y KHONG set fromPeerId/userName - mo phong dung ban tin JOIN thieu truong.
+        String json = objectMapper.writeValueAsString(joinMissingFromPeerId);
+
+        assertDoesNotThrow(() -> handler.handleTextMessage(session, new TextMessage(json)),
+                "JOIN thieu fromPeerId/userName khong duoc lam nem NullPointerException ra ngoai handleTextMessage");
+        assertTrue(session.isOpen(), "Session khong duoc tu dong bi dong chi vi 1 ban tin JOIN thieu truong");
+    }
+
+    @Test
+    void joiningTwiceOnTheSameSessionWithoutLeavingCleansUpThePreviousRoomEntry() throws Exception {
+        // Khong co gi ngan 1 client (bug hoac co y) gui JOIN lan 2 tren CUNG 1
+        // session ma khong gui LEAVE truoc - vd doi phong giua chung. Neu
+        // RoomRegistry khong tu don entry cu, no se giu ca 2 entry cho CUNG 1
+        // session; RoomRegistry#leaveBySession (goi luc session dong that su) chi
+        // tim va xoa DUNG entry DAU TIEN gap - entry con lai "mo coi" vinh vien,
+        // khong bao gio duoc thong bao PEER_LEFT toi phong cu.
+        RoomRegistry roomRegistry = new RoomRegistry();
+        SignalingWebSocketHandler handler = new SignalingWebSocketHandler(roomRegistry, objectMapper);
+        FakeWebSocketSession session = new FakeWebSocketSession("s1");
+
+        handler.handleTextMessage(session, new TextMessage(
+                objectMapper.writeValueAsString(SignalMessage.join("room-A", "p1", "Peer1"))));
+        assertFalse(roomRegistry.peersInRoom("room-A").isEmpty(), "Sau JOIN lan 1, room-A phai co peer");
+
+        // Gui JOIN lan 2 tren CUNG session, sang phong KHAC - khong gui LEAVE truoc.
+        handler.handleTextMessage(session, new TextMessage(
+                objectMapper.writeValueAsString(SignalMessage.join("room-B", "p1", "Peer1"))));
+
+        assertTrue(roomRegistry.peersInRoom("room-A").isEmpty(),
+                "Entry cu o room-A phai duoc don dep khi JOIN lan 2 sang phong khac tren cung session");
+        assertFalse(roomRegistry.peersInRoom("room-B").isEmpty(), "room-B phai co peer sau JOIN lan 2");
     }
 
     @Test
