@@ -136,7 +136,18 @@ public final class RoomSession {
     /** Gui toi TAT CA peer dang co trong phong (nhom). */
     public void broadcast(EnvelopeType type, Object payload) {
         for (PeerConnection connection : peers.values()) {
-            connection.send(type, payload);
+            try {
+                connection.send(type, payload);
+            } catch (RuntimeException e) {
+                // 1 peer gui that bai (vd socket cua no vua dong dung luc dang broadcast,
+                // hoac DataChannel.send() nem loi mang) KHONG duoc lam dung vong lap va
+                // chan viec gui toi cac peer con lai - dung nguyen tac H.1 da ap dung
+                // xuyen suot du an (vd broadcastToOthers o SignalingWebSocketHandler,
+                // handlePeerList o chinh lop nay). Truoc day loi nay se thoat thang ra
+                // ngoai broadcast(), khien CAC PEER SAU peer loi trong vong lap khong
+                // bao gio nhan duoc broadcast, du ban than ho hoan toan khoe manh.
+                notifyConnectionFailed(connection.getPeerId(), e);
+            }
         }
     }
 
@@ -165,6 +176,16 @@ public final class RoomSession {
      */
     boolean hasPendingEstablisherFor(String peerId) {
         return pendingEstablishers.containsKey(peerId);
+    }
+
+    /**
+     * CHI DUNG CHO TEST (package-private, khong phai API cong khai): lay dung
+     * {@link PeerConnection} da ket noi xong voi {@code peerId} - dung de mo
+     * phong loi cuc bo (vd goi {@code close()} truc tiep tren no) ma khong can
+     * dan dong toan bo 1 kich ban mang that (peer roi phong, socket loi that su).
+     */
+    PeerConnection getPeerConnection(String peerId) {
+        return peers.get(peerId);
     }
 
     private void handlePeerList(SignalMessage message) {
