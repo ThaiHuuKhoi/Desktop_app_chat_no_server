@@ -10,6 +10,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -114,6 +115,14 @@ class RoomSessionErrorHandlingTest {
 
         assertTrue(failureLatch.await(5, TimeUnit.SECONDS), "Phai bao onConnectionFailed cho existing1");
         assertNotNull(failureForExisting1.get());
+
+        // connectAsOfferer da tao xong 1 IceP2pConnectionEstablisher (chiem 1 UDP socket)
+        // cho existing1 TRUOC KHI sendOffer nem loi - neu RoomSession chi bao loi ma khong
+        // don dep, establisher do "mo coi" vinh vien trong pendingEstablishers, ro ri socket.
+        // Chi kiem tra DUNG peerId "existing1" (khong phai toan bo map) - vi establisher
+        // that cho "existing2" van co the con dang cho ICE that hoan tat, khong phai ro ri.
+        assertFalse(self.hasPendingEstablisherFor("existing1"),
+                "Establisher that bai (existing1) khong duoc de mo coi trong pendingEstablishers - phai duoc dispose() va go ngay");
 
         // Diem mau chot: du existing1 that bai, self van phai ket noi duoc voi
         // existing2 binh thuong (khong bi chan boi loi cua existing1).

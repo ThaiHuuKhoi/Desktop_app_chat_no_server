@@ -6,6 +6,7 @@ import com.datn.chatp2p.common.signal.ice.IceOfferPayload;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
+import java.net.DatagramSocket;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -16,6 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * Kiem tra toan bo luong ICE that giua 2 {@link IceP2pConnectionEstablisher}
@@ -105,5 +107,64 @@ class IceP2pConnectionEstablisherTest {
 
         fromOfferer.close();
         fromAnswerer.close();
+    }
+
+    @Test
+    void reportsOnFailedAndFreesTheUdpPortWhenRemoteCredentialsAreWrong() throws Exception {
+        // RoomSession.handleIceFailed (goi khi ICE THAT SU that bai, khac voi loi
+        // parse OFFER/ANSWER) truoc day KHONG goi establisher.dispose() - ro ri UDP
+        // socket trong dai cong RAT HEP 10000-10100 (da sua, xem RoomSession.java).
+        // Test nay xac nhan o dung TANG establisher (khong qua RoomSession): (1)
+        // onFailed CO THAT SU fire khi ICE that bai that (khong chi khi payload
+        // JSON/candidate sai dinh dang - truong hop do da duoc RoomSession bat rieng
+        // tu truoc), va (2) sau khi goi dispose(), cong UDP da dung duoc giai phong
+        // that (bind lai duoc), chung minh dispose() giai quyet dung van de ro ri.
+        //
+        // Cach ep ICE that bai NHANH va xac dinh (khong doi timeout mang that ~vai
+        // chuc giay): co y sua SAI mat khau (password) trong offer truoc khi dua
+        // cho answerer - dia chi candidate van THAT va con nghe (offerer that), nen
+        // answerer gui duoc STUN Binding Request toi noi, nhung offerer se tu choi
+        // ngay (STUN error response do sai MESSAGE-INTEGRITY) thay vi im lang - ICE
+        // xu ly phan hoi loi ro rang nhu vay nhanh hon nhieu so voi cho het gio vi
+        // khong co phan hoi gi ca.
+        offerer = new IceP2pConnectionEstablisher(List.of());
+        IceOfferPayload realOffer = offerer.createOffer();
+        IceOfferPayload tamperedOffer = new IceOfferPayload(
+                realOffer.ufrag(), "mat-khau-sai-co-y", realOffer.candidates());
+
+        answerer = new IceP2pConnectionEstablisher(List.of());
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        CountDownLatch failedLatch = new CountDownLatch(1);
+        answerer.onFailed(err -> {
+            failure.set(err);
+            failedLatch.countDown();
+        });
+        answerer.onConnected(ch -> fail("Khong duoc bao COMPLETED khi mat khau cua peer kia sai"));
+
+        IceAnswerPayload answer = answerer.createAnswer(tamperedOffer);
+
+        assertTrue(failedLatch.await(20, TimeUnit.SECONDS),
+                "Phai bao onFailed trong 20s khi mat khau cua offerer sai (khong duoc treo vo thoi han)");
+        assertNotNull(failure.get());
+        assertTrue(answerer.getStats().isEmpty(), "Khong duoc co IceConnectionStats khi ICE that bai");
+
+        // "answer" van la 1 IceAnswerPayload HOP LE (dinh dang dung) - tu day lay ra
+        // dung cong UDP that answerer da bind, de kiem tra dispose() co giai phong
+        // no khong.
+        int answererLocalPort = parsePort(answer.candidates().get(0));
+
+        answerer.dispose();
+
+        // Neu dispose() da giai phong dung DatagramSocket, phai bind lai duoc CHINH
+        // XAC cong nay - neu khong (van con bi chiem), bind se nem BindException.
+        try (DatagramSocket verifyFreed = new DatagramSocket(answererLocalPort)) {
+            assertTrue(verifyFreed.isBound());
+        }
+    }
+
+    private static int parsePort(String candidateLine) {
+        String body = candidateLine.startsWith("candidate:") ? candidateLine.substring("candidate:".length()) : candidateLine;
+        String[] tokens = body.trim().split("\\s+");
+        return Integer.parseInt(tokens[5]);
     }
 }

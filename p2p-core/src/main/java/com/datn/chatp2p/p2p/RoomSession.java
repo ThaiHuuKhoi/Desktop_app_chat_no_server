@@ -152,6 +152,19 @@ public final class RoomSession {
         return List.copyOf(peers.keySet());
     }
 
+    /**
+     * CHI DUNG CHO TEST (package-private, khong phai API cong khai): {@code true}
+     * neu {@code peerId} van con 1 phien ICE dang cho trong {@link #pendingEstablishers} -
+     * dung de xac nhan KHONG co establisher nao bi "mo coi" (ro ri UDP socket)
+     * sau khi 1 loi voi DUNG peer do da duoc xu ly xong, thay vi chi tin vao doc
+     * code. Kiem tra dung 1 peerId (khong phai tong so luong) vi cac peer KHAC
+     * trong cung phong van co the con dang ICE that (chua COMPLETED) tai cung
+     * thoi diem - do khong phai ro ri, chi la dang xu ly binh thuong.
+     */
+    boolean hasPendingEstablisherFor(String peerId) {
+        return pendingEstablishers.containsKey(peerId);
+    }
+
     private void handlePeerList(SignalMessage message) {
         for (SignalMessage.PeerInfo info : message.getPeers()) {
             try {
@@ -161,6 +174,15 @@ public final class RoomSession {
                 // trong cung PEER_LIST - dung nguyen tac da ap dung o SignalingWebSocketHandler
                 // (Tai-lieu-ky-thuat.md Phan H.1: loi cuc bo khong duoc lam gian doan xu ly
                 // cho cac doi tuong khac).
+                //
+                // QUAN TRONG: connectAsOfferer da tao va dang ky establisher vao
+                // pendingEstablishers TRUOC KHI co the nem loi (vd establisher.createOffer()
+                // hoac signalingClient.sendOffer() that bai SAU khi establisher da duoc tao) -
+                // neu chi notifyConnectionFailed ma khong don dep, establisher do se "mo coi"
+                // vinh vien trong pendingEstablishers, ro ri UDP socket cua no (dai cong RAT
+                // HEP 10000-10100). Phai goi cleanupFailedEstablisher o day, dung nhu
+                // handleOffer/handleAnswer/handleIceFailed da lam.
+                cleanupFailedEstablisher(info.getPeerId());
                 notifyConnectionFailed(info.getPeerId(), e);
             }
         }
@@ -292,7 +314,17 @@ public final class RoomSession {
     }
 
     private void handleIceFailed(String peerId, Throwable error) {
-        pendingEstablishers.remove(peerId);
+        // Truoc day CHUA goi dispose() o day - khac voi cleanupFailedEstablisher
+        // (dung cho loi parse OFFER/ANSWER) va handlePeerLeftNotice (dung cho peer
+        // roi phong giua chung), ca 2 cho do deu da tu giai phong Agent dung cach.
+        // Rieng nhanh nay (ICE THAT SU that bai - vd sau NAT doi xung khong xuyen
+        // qua duoc, mang that su khong thong) lai bo quen dispose() - ro ri UDP
+        // socket cua Agent (dai cong RAT HEP, chi 101 cong 10000-10100): moi lan
+        // ICE that bai that ma khong dispose se chiem vinh vien 1 cong, sau ~101
+        // lan that bai that (hoan toan co the xay ra tren mang xau/nhieu peer)
+        // MOI IceP2pConnectionEstablisher moi se khong con cong nao de bind, lam
+        // sap toan bo kha nang ket noi P2P moi trong phong.
+        cleanupFailedEstablisher(peerId);
         notifyConnectionFailed(peerId, error);
     }
 
