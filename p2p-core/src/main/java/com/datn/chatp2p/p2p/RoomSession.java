@@ -222,7 +222,20 @@ public final class RoomSession {
      */
     private IceP2pConnectionEstablisher createEstablisherFor(String peerId, String userName) {
         IceP2pConnectionEstablisher establisher = new IceP2pConnectionEstablisher(stunServers);
-        pendingEstablishers.put(peerId, establisher);
+        // QUAN TRONG (bao mat): pendingEstablishers.put() tra ve GIA TRI CU neu da
+        // co san 1 establisher dang cho cho DUNG peerId nay (vd 1 peer gui lai OFFER
+        // lan 2 truoc khi lan dau kip hoan tat - do bug o phia ho, hoac CO Y tan
+        // cong DoS: gui lien tiep nhieu OFFER toi CUNG 1 nan nhan de chiem het dai
+        // cong UDP cua nan nhan, dai cong nay huu han - Tai-lieu-ky-thuat.md Phan
+        // H.2 da xac nhan signaling KHONG gioi han toc do/xac thuc ban tin, nen
+        // khong co gi ngan 1 peer gui OFFER lien tuc). Neu khong dispose() gia tri
+        // cu truoc khi ghi de, establisher do se "mo coi" vinh vien - ro ri 1 UDP
+        // socket moi lan bi ghi de, du dai cong co rong bao nhieu cung se can kiet
+        // neu ke tan cong gui du nhieu OFFER.
+        IceP2pConnectionEstablisher previous = pendingEstablishers.put(peerId, establisher);
+        if (previous != null) {
+            previous.dispose();
+        }
         establisher.onConnected(channel -> onIceConnected(peerId, userName, channel));
         establisher.onFailed(error -> handleIceFailed(peerId, error));
         return establisher;
