@@ -150,6 +150,15 @@ Lúc viết test cho phần chịu lỗi ở trên, thử dùng Mockito trước
 - Test qua 2 máy thật khác NAT (mới test được trên 1 máy — theo tìm hiểu, cách duy nhất giả lập "2 máy khác NAT" chỉ bằng 1 laptop là dùng 2 máy ảo với chế độ mạng NAT riêng biệt, chưa dựng vì không cấp thiết).
 - Nối `RoomSession` vào `RoomController`/UI thật của `client-javafx` (hiện UI vẫn đang dùng `LoopbackDataChannel`/`DemoPeerSimulator`, thuộc phần B).
 
+### Rà soát SOLID/design pattern và 2 refactor gọn code (không đổi hành vi)
+
+Sau khi toàn bộ chuỗi mạng cốt lõi đã chạy đúng và có test bao phủ, rà soát lại code theo góc nhìn SOLID/design pattern (không phải viết mới) để tìm chỗ vi phạm DRY/SRP còn sót — phát hiện đúng 2 chỗ trùng lặp logic, cả 2 đều đã refactor và **xác nhận lại toàn bộ test liên quan vẫn PASS** sau khi sửa (không đổi hành vi, chỉ gọn code lại):
+
+1. **`SignalMessageDispatcher`** (mới, [SignalMessageDispatcher.java](../p2p-core/src/main/java/com/datn/chatp2p/p2p/signaling/SignalMessageDispatcher.java)) — trước đây `WebSocketSignalingClient` (cài đặt thật) và `LoopbackSignalingClient` (fake dùng cho test) mỗi lớp tự viết lại **y hệt** logic đăng ký/dispatch handler theo `SignalType` (`EnumMap<SignalType, List<Consumer<SignalMessage>>>` + `register()`/`dispatch()`) — vi phạm DRY, sửa 1 nơi dễ quên nơi kia. Tách ra 1 lớp `public` dùng chung, cả 2 lớp trên giờ chỉ giữ 1 field `SignalMessageDispatcher` và uỷ quyền toàn bộ việc đăng ký/dispatch cho nó.
+2. **`RoomSession.createEstablisherFor(peerId, userName)`** — `connectAsOfferer` và `handleOffer` trước đây tự lặp lại y hệt đoạn tạo `IceP2pConnectionEstablisher` mới, đăng ký vào `pendingEstablishers`, gán `onConnected`/`onFailed`. Trích thành 1 helper `private` dùng chung, mỗi nơi gọi nó chỉ còn giữ lại phần logic riêng của mình (gửi OFFER, hoặc tạo+gửi ANSWER).
+
+Đã chạy lại toàn bộ test bị ảnh hưởng sau refactor và **PASS**: `RoomSessionTest`, `RoomSessionThreePeerMeshTest`, `RoomSessionErrorHandlingTest`, `RoomSessionRealSignalingServerTest`, `WebSocketSignalingClientReconnectTest`, `WebSocketSignalingClientCapacityTest`.
+
 ---
 
 ## Giai đoạn 1: Dựng khung dự án đa module
