@@ -10,12 +10,8 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;
 import java.time.Duration;
-import java.util.EnumMap;
-import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -60,7 +56,7 @@ public final class WebSocketSignalingClient implements SignalingClient {
     }
 
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final Map<SignalType, List<Consumer<SignalMessage>>> handlers = new EnumMap<>(SignalType.class);
+    private final SignalMessageDispatcher dispatcher = new SignalMessageDispatcher();
     private final StringBuilder incomingTextBuffer = new StringBuilder();
     private final ScheduledExecutorService reconnectExecutor = Executors.newSingleThreadScheduledExecutor(runnable -> {
         Thread thread = new Thread(runnable, "signaling-client-reconnect");
@@ -99,32 +95,32 @@ public final class WebSocketSignalingClient implements SignalingClient {
 
     @Override
     public void onPeerJoined(Consumer<SignalMessage> handler) {
-        registerHandler(SignalType.PEER_JOINED, handler);
+        dispatcher.register(SignalType.PEER_JOINED, handler);
     }
 
     @Override
     public void onPeerLeft(Consumer<SignalMessage> handler) {
-        registerHandler(SignalType.PEER_LEFT, handler);
+        dispatcher.register(SignalType.PEER_LEFT, handler);
     }
 
     @Override
     public void onPeerList(Consumer<SignalMessage> handler) {
-        registerHandler(SignalType.PEER_LIST, handler);
+        dispatcher.register(SignalType.PEER_LIST, handler);
     }
 
     @Override
     public void onOffer(Consumer<SignalMessage> handler) {
-        registerHandler(SignalType.OFFER, handler);
+        dispatcher.register(SignalType.OFFER, handler);
     }
 
     @Override
     public void onAnswer(Consumer<SignalMessage> handler) {
-        registerHandler(SignalType.ANSWER, handler);
+        dispatcher.register(SignalType.ANSWER, handler);
     }
 
     @Override
     public void onIceCandidate(Consumer<SignalMessage> handler) {
-        registerHandler(SignalType.ICE_CANDIDATE, handler);
+        dispatcher.register(SignalType.ICE_CANDIDATE, handler);
     }
 
     @Override
@@ -227,10 +223,6 @@ public final class WebSocketSignalingClient implements SignalingClient {
         }
     }
 
-    private void registerHandler(SignalType type, Consumer<SignalMessage> handler) {
-        handlers.computeIfAbsent(type, t -> new CopyOnWriteArrayList<>()).add(handler);
-    }
-
     private void sendTargeted(SignalType type, String toPeerId, String payload) {
         SignalMessage message = new SignalMessage();
         message.setType(type);
@@ -254,19 +246,6 @@ public final class WebSocketSignalingClient implements SignalingClient {
         }
     }
 
-    private void dispatch(SignalMessage message) {
-        if (message.getType() == null) {
-            return;
-        }
-        List<Consumer<SignalMessage>> forType = handlers.get(message.getType());
-        if (forType == null) {
-            return;
-        }
-        for (Consumer<SignalMessage> handler : forType) {
-            handler.accept(message);
-        }
-    }
-
     /**
      * WebSocket co the chia 1 ban tin thanh nhieu frame (tham so {@code last}
      * bao khi nao ket thuc) - phai gop lai truoc khi parse JSON, khong duoc
@@ -283,7 +262,7 @@ public final class WebSocketSignalingClient implements SignalingClient {
                 String json = incomingTextBuffer.toString();
                 incomingTextBuffer.setLength(0);
                 try {
-                    dispatch(objectMapper.readValue(json, SignalMessage.class));
+                    dispatcher.dispatch(objectMapper.readValue(json, SignalMessage.class));
                 } catch (IOException e) {
                     // Ban tin loi dinh dang - bo qua, khong lam sap ca ket noi
                     // (dung nguyen tac xu ly loi o Tai-lieu-ky-thuat.md Phan H.1).

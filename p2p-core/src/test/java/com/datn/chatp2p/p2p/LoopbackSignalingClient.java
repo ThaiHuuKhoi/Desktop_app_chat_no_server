@@ -2,14 +2,13 @@ package com.datn.chatp2p.p2p;
 
 import com.datn.chatp2p.common.signal.SignalMessage;
 import com.datn.chatp2p.common.signal.SignalType;
+import com.datn.chatp2p.p2p.signaling.SignalMessageDispatcher;
 import com.datn.chatp2p.p2p.signaling.SignalingClient;
 
 import java.util.ArrayList;
-import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
 /**
@@ -86,7 +85,7 @@ final class LoopbackSignalingClient implements SignalingClient {
     }
 
     private final Hub hub;
-    private final Map<SignalType, List<Consumer<SignalMessage>>> handlers = new EnumMap<>(SignalType.class);
+    private final SignalMessageDispatcher dispatcher = new SignalMessageDispatcher();
 
     private volatile String roomId;
     private volatile String peerId;
@@ -106,32 +105,32 @@ final class LoopbackSignalingClient implements SignalingClient {
 
     @Override
     public void onPeerJoined(Consumer<SignalMessage> handler) {
-        register(SignalType.PEER_JOINED, handler);
+        dispatcher.register(SignalType.PEER_JOINED, handler);
     }
 
     @Override
     public void onPeerLeft(Consumer<SignalMessage> handler) {
-        register(SignalType.PEER_LEFT, handler);
+        dispatcher.register(SignalType.PEER_LEFT, handler);
     }
 
     @Override
     public void onPeerList(Consumer<SignalMessage> handler) {
-        register(SignalType.PEER_LIST, handler);
+        dispatcher.register(SignalType.PEER_LIST, handler);
     }
 
     @Override
     public void onOffer(Consumer<SignalMessage> handler) {
-        register(SignalType.OFFER, handler);
+        dispatcher.register(SignalType.OFFER, handler);
     }
 
     @Override
     public void onAnswer(Consumer<SignalMessage> handler) {
-        register(SignalType.ANSWER, handler);
+        dispatcher.register(SignalType.ANSWER, handler);
     }
 
     @Override
     public void onIceCandidate(Consumer<SignalMessage> handler) {
-        register(SignalType.ICE_CANDIDATE, handler);
+        dispatcher.register(SignalType.ICE_CANDIDATE, handler);
     }
 
     @Override
@@ -154,10 +153,6 @@ final class LoopbackSignalingClient implements SignalingClient {
         hub.leave(roomId, peerId);
     }
 
-    private void register(SignalType type, Consumer<SignalMessage> handler) {
-        handlers.computeIfAbsent(type, t -> new CopyOnWriteArrayList<>()).add(handler);
-    }
-
     private void sendTargeted(SignalType type, String toPeerId, String payload) {
         SignalMessage message = new SignalMessage();
         message.setType(type);
@@ -169,12 +164,6 @@ final class LoopbackSignalingClient implements SignalingClient {
     }
 
     private void deliver(SignalMessage message) {
-        List<Consumer<SignalMessage>> forType = handlers.get(message.getType());
-        if (forType == null) {
-            return;
-        }
-        for (Consumer<SignalMessage> handler : forType) {
-            handler.accept(message);
-        }
+        dispatcher.dispatch(message);
     }
 }

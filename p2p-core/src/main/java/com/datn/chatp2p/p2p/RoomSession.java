@@ -192,11 +192,22 @@ public final class RoomSession {
         }
     }
 
-    private void connectAsOfferer(String peerId, String userName) {
+    /**
+     * Tao 1 {@link IceP2pConnectionEstablisher} moi cho {@code peerId}, dang ky vao
+     * {@link #pendingEstablishers} va gan san 2 callback {@code onConnected}/{@code onFailed}
+     * dung chung cho ca 2 vai tro (offerer lan answerer - {@link #connectAsOfferer} va
+     * {@link #handleOffer} truoc day tu lap lai y het doan nay).
+     */
+    private IceP2pConnectionEstablisher createEstablisherFor(String peerId, String userName) {
         IceP2pConnectionEstablisher establisher = new IceP2pConnectionEstablisher(stunServers);
         pendingEstablishers.put(peerId, establisher);
         establisher.onConnected(channel -> onIceConnected(peerId, userName, channel));
         establisher.onFailed(error -> handleIceFailed(peerId, error));
+        return establisher;
+    }
+
+    private void connectAsOfferer(String peerId, String userName) {
+        IceP2pConnectionEstablisher establisher = createEstablisherFor(peerId, userName);
 
         var offer = establisher.createOffer();
         signalingClient.sendOffer(peerId, toJson(offer));
@@ -208,10 +219,7 @@ public final class RoomSession {
             var offer = fromJson(message.getPayload(), com.datn.chatp2p.common.signal.ice.IceOfferPayload.class);
             String userName = pendingUserNames.get(peerId);
 
-            IceP2pConnectionEstablisher establisher = new IceP2pConnectionEstablisher(stunServers);
-            pendingEstablishers.put(peerId, establisher);
-            establisher.onConnected(channel -> onIceConnected(peerId, userName, channel));
-            establisher.onFailed(error -> handleIceFailed(peerId, error));
+            IceP2pConnectionEstablisher establisher = createEstablisherFor(peerId, userName);
 
             var answer = establisher.createAnswer(offer);
             signalingClient.sendAnswer(peerId, toJson(answer));
