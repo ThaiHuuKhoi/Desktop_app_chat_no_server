@@ -22,6 +22,7 @@ import java.net.InetSocketAddress;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
@@ -73,10 +74,49 @@ public final class IceP2pConnectionEstablisher {
      * gia tri nam trong chinh khoang nay (da xac nhan qua loi that khi chay
      * IceP2pConnectionEstablisherTest: "preferredPort (0) must be between
      * minPort (10000) and maxPort (10100)").
+     *
+     * <p><b>Da mo rong tu 101 cong (10000-10100) len 1001 cong</b> sau khi
+     * RoomSessionEightPeerMeshScalabilityTest phat hien that: dai cu KHONG DU
+     * cho mesh 8 peer (bien tren da khuyen nghi o Tai-lieu-ky-thuat.md Phan
+     * B.3/F.3) khi mo phong nhieu peer CHUNG 1 JVM/dai cong OS (dung
+     * {@code LoopbackSignalingClient} de test khong can nhieu may that) - that
+     * bai that voi {@code IOException: Failed to bind even a single host
+     * candidate... preferredPort=10000 minPort=10000 maxPort=10100} sau ~64s.
+     * Nguyen nhan sau: {@code HostCandidateHarvester} cua ice4j thu bind CUNG 1
+     * so cong tren TAT CA network interface cua may (IPv6 tam thoi, WiFi,
+     * hotspot...) truoc khi chuyen sang cong tiep theo - 1 Agent tren may
+     * nhieu interface (rat pho bien) co the "ngon" NHIEU HON 1 cong de tim
+     * duoc 1 cong trong ca dai, khong dung "1 ket noi = 1 cong" nhu tuong.
+     * Trong trien khai THAT, moi peer chay tren may rieng (chi can toi da N-1
+     * cong cho N-1 ket noi cua chinh minh, khong chia se dai cong voi peer
+     * khac) - nhung van mo rong dai cong de co them bien do an toan cho ca may
+     * nhieu interface LAN test mo phong nhieu peer chung 1 JVM.
      */
-    private static final int PREFERRED_PORT = 10_000;
     private static final int MIN_PORT = 10_000;
-    private static final int MAX_PORT = 10_100;
+    private static final int MAX_PORT = 11_000;
+
+    /**
+     * <b>Nguyen nhan GOC thuc su cua bug tren</b> (khong phai do dai cong qua
+     * hep): {@code HostCandidateHarvester} cua ice4j CHI thu toi da ~50 cong
+     * LIEN TIEP tinh tu {@code preferredPort} cho MOI dia chi mang, roi bo
+     * cuoc VOI DIA CHI DO - hoan toan KHONG lien quan toi {@code MAX_PORT} da
+     * khai bao (da xac nhan that: tang MAX_PORT tu 10100 len 11000 - gap 10
+     * lan - khong doi ket qua/thoi gian that bai mot chut nao, log cho thay
+     * moi dia chi mang deu dung lai dung o preferredPort+49 roi chuyen dia
+     * chi tiep theo, du con hang tram cong trong tren o phia sau). Truoc day
+     * MOI instance cua lop nay deu dung CUNG 1 hang so {@code PREFERRED_PORT
+     * = 10_000} lam diem bat dau - nen ngay khi ~50 cong dau tien (10000-10049)
+     * bi chiem boi cac ket noi TRUOC DO (giu cong suot vong doi ket noi,
+     * khong bao gio tra lai giua chung), MOI Agent moi tao ra sau do deu chac
+     * chan that bai, bat ke con bao nhieu cong trong o xa hon trong dai.
+     *
+     * <p><b>Cach sua:</b> cho diem bat dau dò cổng XOAY VONG qua tung
+     * instance (bang 1 {@code AtomicInteger} dung chung, tang dan moi lan
+     * tao Agent moi) thay vi luon co dinh o {@code MIN_PORT} - nho vay cac
+     * Agent tao gan nhau ve thoi gian se rai deu diem bat dau tren toan bo
+     * dai cong, khong con dam vao dung 50 cong dau da bi chiem het.
+     */
+    private static final AtomicInteger nextPreferredPort = new AtomicInteger(MIN_PORT);
 
     private final Agent agent = new Agent();
     private final IceMediaStream mediaStream;
@@ -105,10 +145,14 @@ public final class IceP2pConnectionEstablisher {
             agent.addCandidateHarvester(new StunCandidateHarvester(stunServer));
         }
         this.mediaStream = agent.createMediaStream("data");
+        // Xoay vong diem bat dau do cong qua tung instance - xem javadoc cua
+        // nextPreferredPort de biet ly do (ice4j chi thu ~50 cong lien tiep
+        // tinh tu preferredPort cho moi dia chi mang, khong lien quan MAX_PORT).
+        int preferredPort = nextPreferredPort.getAndUpdate(p -> p >= MAX_PORT ? MIN_PORT : p + 1);
         try {
             // createComponent() tu goi gather candidate ngay (khong trickle) - xong buoc nay
             // la co du candidate cuc bo (host + server-reflexive qua STUN o tren).
-            this.component = agent.createComponent(mediaStream, PREFERRED_PORT, MIN_PORT, MAX_PORT);
+            this.component = agent.createComponent(mediaStream, preferredPort, MIN_PORT, MAX_PORT);
         } catch (IOException e) {
             // BindException (khong tim duoc cong UDP trong khoang MIN_PORT-MAX_PORT) la
             // truong hop hay gap nhat - bao loi ro rang thay vi de checked exception
