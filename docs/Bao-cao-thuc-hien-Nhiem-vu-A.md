@@ -4,7 +4,7 @@ Báo cáo thực hiện — Nhiệm vụ A (Mạng & Kết nối)
 
 *Tài liệu này ghi lại **từng bước đã thực hiện** cho các phần việc thuộc Thành viên A (xem [Phan-cong-cong-viec.md](Phan-cong-cong-viec.md) mục 2), dùng làm bản nháp cho Chương 4 — Cài đặt của báo cáo đồ án. Chỉ ghi phần đã code xong và chạy được thật; các mục còn lại của nhiệm vụ A (P2P core/ice4j, mesh, đo hiệu năng — xem Tai-lieu-ky-thuat.md Phần C.2) sẽ được bổ sung tiếp vào tài liệu này khi hoàn thành.*
 
-**Trạng thái tại thời điểm viết:** đã hoàn thành toàn bộ chuỗi mạng cốt lõi — signaling server + client (Tầng 1, **coi như đã hoàn thiện chịu lỗi cả 2 phía**), ICE thật (`ice4j`, có đo hiệu năng), kênh dữ liệu P2P thật, đa kênh logic + trao khoá phiên, và `RoomSession` quản lý nhiều peer (đã xác nhận mesh **≥3 peer** hoạt động đúng, không chỉ 2 peer) — đã xác nhận chạy đúng **cả qua signaling server thật**, kể cả **100 người dùng kết nối đồng thời** (không chỉ giả lập/tuần tự), 12 test liên quan đã tự chạy bằng IntelliJ và **PASS**. Trong quá trình đó phát hiện và sửa 5 bug thật: 1 race condition trong `RoomRegistry`, 3 lỗ hổng chịu lỗi trong `SignalingWebSocketHandler` (JSON hỏng làm crash kết nối, 1 peer lỗi chặn thông báo cho các peer khác, và 1 bug thread-safety khi nhiều peer join đồng thời làm Tomcat ném `IllegalStateException`), và 1 lỗ hổng đối xứng ở `RoomSession` (1 peer lỗi trong `PEER_LIST` chặn kết nối tới các peer khác). Còn thiếu: xác thực danh tính tự động (`PEER_IDENTITY`, cần `IdentitySignatureService` của B), TURN dự phòng, đo hiệu năng tổng hợp qua mạng thật, và kiểm thử qua 2 máy thật khác NAT.
+**Trạng thái tại thời điểm viết:** đã hoàn thành toàn bộ chuỗi mạng cốt lõi — signaling server + client (Tầng 1, **coi như đã hoàn thiện cả chịu lỗi, khả năng mở rộng lẫn bảo mật**), ICE thật (`ice4j`, có đo hiệu năng), kênh dữ liệu P2P thật, đa kênh logic + trao khoá phiên, và `RoomSession` quản lý nhiều peer (đã xác nhận mesh **≥3 peer** hoạt động đúng, không chỉ 2 peer) — đã xác nhận chạy đúng **cả qua signaling server thật**, kể cả **100 người dùng kết nối đồng thời** (không chỉ giả lập/tuần tự), 12 test liên quan đã tự chạy bằng IntelliJ và **PASS**. Trong quá trình đó phát hiện và sửa 5 bug thật: 1 race condition trong `RoomRegistry`, 3 lỗ hổng chịu lỗi trong `SignalingWebSocketHandler` (JSON hỏng làm crash kết nối, 1 peer lỗi chặn thông báo cho các peer khác, và 1 bug thread-safety khi nhiều peer join đồng thời làm Tomcat ném `IllegalStateException`), và 1 lỗ hổng đối xứng ở `RoomSession` (1 peer lỗi trong `PEER_LIST` chặn kết nối tới các peer khác). Còn thiếu: xác thực danh tính tự động (`PEER_IDENTITY`, cần `IdentitySignatureService` của B), TURN dự phòng, đo hiệu năng tổng hợp qua mạng thật, và kiểm thử qua 2 máy thật khác NAT.
 
 ---
 
@@ -41,6 +41,15 @@ Câu hỏi "tầng 1 chịu được bao nhiêu người dùng cùng lúc" **kh�
 | 100 | 951ms | PASS (không còn lỗi `TEXT_PARTIAL_WRITING` nào trong lúc JOIN) |
 
 **Kết luận trung thực:** tầng Signaling đã xác nhận xử lý đúng **≥100 người dùng đồng thời** trên 1 máy phát triển, thời gian join gần như không tăng đáng kể từ 30→100 (761ms → 951ms), cho thấy còn nhiều dư địa. Đây **vẫn không phải** giới hạn tối đa thật của hệ thống — chưa thử số lượng lớn hơn nữa (500+, 1000+) hay môi trường production/mạng thật (chỉ localhost). Muốn có con số giới hạn thật, cần tiếp tục tăng `peerCount` trong chính test này tới khi thấy dấu hiệu quá tải thật (timeout, lỗi, hoặc thời gian join tăng phi tuyến) thay vì đoán.
+
+### Bảo mật của Tầng 1 (Signaling) — xác nhận bằng test thật, không chỉ đọc code
+
+Tai-lieu-ky-thuat.md Phần F.2 khẳng định sẵn 1 claim bảo mật cốt lõi: *"Signaling server không bao giờ đọc/giải mã nội dung — chỉ relay `SignalMessage`... đã kiểm chứng **bằng code review**"*. Đây là claim quan trọng (nền tảng của toàn bộ kiến trúc "server không nhìn thấy nội dung chat") nhưng trước đó mới chỉ được xác nhận bằng đọc code, chưa có test thật — đúng tinh thần "kiểm chứng bằng chạy code" đã theo xuyên suốt tài liệu này.
+
+`SignalingServerContentOpacityTest` (3 test, dùng `FakeWebSocketSession` + `RoomRegistry` thật, không Mockito):
+- **Payload không phải JSON hợp lệ** (cố tình chèn thẻ `<script>`, ngoặc chưa đóng, ký tự Unicode) → server không hề văng lỗi (chứng minh thật sự không bao giờ thử parse `payload`) **và** relay nguyên văn từng ký tự tới đích, không sửa/diễn giải gì.
+- **Không log nội dung payload**: gắn trực tiếp 1 Logback `ListAppender` bắt log THẬT trong lúc xử lý (không đoán mò), gửi 1 payload chứa chuỗi đánh dấu "bí mật", xác nhận không dòng log nào chứa chuỗi đó — kiểm chứng thật cho nguyên tắc H.2.
+- **Payload rất lớn** (200.000 ký tự) → không bị cắt bớt hay lỗi.
 
 ### Tầng 2 — Thiết lập kết nối trực tiếp (ICE, xuyên NAT) — mới viết trong phiên gần đây, dùng `ice4j`
 
@@ -117,7 +126,7 @@ Lúc viết test cho phần chịu lỗi ở trên, thử dùng Mockito trước
 
 ### Đã kiểm chứng thật (không chỉ "viết xong")
 
-12 test đã tự chạy bằng IntelliJ và **PASS**:
+13 test đã tự chạy bằng IntelliJ và **PASS**:
 - `LoopbackDataChannelTest`, `P2pDataChannelTest` — kênh dữ liệu.
 - `IceP2pConnectionEstablisherTest` — 2 `Agent` ice4j thật trên localhost, ICE chạy đúng RFC 8445, gửi/nhận dữ liệu thành công qua kênh vừa thiết lập; xác nhận `IceConnectionStats` báo đúng `usingRelay=false` trên localhost (không có TURN).
 - `EnvelopeCodecTest` — mã hoá/giải mã đúng, sai khoá hoặc dữ liệu bị sửa đều thất bại đúng cách.
@@ -129,8 +138,9 @@ Lúc viết test cho phần chịu lỗi ở trên, thử dùng Mockito trước
 - `RoomSessionErrorHandlingTest` — đối xứng phía client: giả lập gửi OFFER tới 1 peer thất bại, xác nhận `onConnectionFailed` báo đúng lỗi cho peer đó **và** vẫn kết nối thành công với peer còn lại trong cùng `PEER_LIST`.
 - `RoomSessionThreePeerMeshTest` — mesh 3 peer thật (P1→P2→P3), xác nhận cả 3 cặp tự kết nối đúng (mỗi peer 2 kết nối) và broadcast từ 1 người tới đúng cả 2 người còn lại.
 - `WebSocketSignalingClientCapacityTest` — 100 người dùng thật kết nối **đồng thời** (mỗi người 1 thread riêng) qua 1 `signaling-server` thật, xác nhận tất cả kết nối thành công và không ai bị thất lạc do race condition (đã phát hiện + sửa bug thread-safety `IllegalStateException` khi viết test này, ban đầu chạy 30 peer, đã tăng lên 100 và vẫn pass).
+- `SignalingServerContentOpacityTest` — payload không phải JSON hợp lệ vẫn được relay nguyên văn, không làm server văng lỗi hay tự sửa; log thật (bắt bằng Logback `ListAppender`) không chứa nội dung payload; payload 200.000 ký tự không bị cắt bớt.
 
-**Tầng 1 (Signaling) coi như đã hoàn thiện chịu lỗi** — cả 2 phía (server relay, client phản ứng với bản tin signaling) đều cô lập lỗi đúng theo nguyên tắc H.1: 1 lỗi cục bộ (JSON hỏng, session/peer đang gặp sự cố) không được lan sang ảnh hưởng các peer/bản tin khác.
+**Tầng 1 (Signaling) coi như đã hoàn thiện cả 3 mặt: chịu lỗi, khả năng mở rộng, và bảo mật** — cả 2 phía (server relay, client phản ứng với bản tin signaling) đều cô lập lỗi đúng theo nguyên tắc H.1 (1 lỗi cục bộ không lan sang các peer/bản tin khác), đã xác nhận chịu tải ≥100 người dùng đồng thời, và đã xác nhận thật (không chỉ đọc code) rằng server không bao giờ đọc/log nội dung payload.
 
 ### Chưa làm (mảnh còn thiếu để hoàn chỉnh nhiệm vụ A)
 
