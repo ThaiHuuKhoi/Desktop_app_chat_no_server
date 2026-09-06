@@ -113,7 +113,22 @@ public final class P2pDataChannel implements DataChannel {
 
             Consumer<byte[]> handler = receiveHandler;
             if (handler != null) {
-                handler.accept(data);
+                try {
+                    handler.accept(data);
+                } catch (RuntimeException handlerFailure) {
+                    // QUAN TRONG: handler (thuong la PeerConnection.handleIncoming, giai ma
+                    // AES-GCM) co the nem loi voi 1 goi tin da qua duoc kiem tra framing o
+                    // tren nhung noi dung ben trong hong/gia mao (vd sai khoa, du lieu bi
+                    // thay doi tren duong truyen, hoac 1 goi UDP la lam roi vao dung cong
+                    // nay tinh co) - neu khong bat o day, loi se thoat ra khoi vong lap
+                    // while nay, LAM CHET VINH VIEN thread nhan cua CHINH kenh nay (vi day
+                    // la than cua vong lap - khong con ai goi lai socket.receive() nua) -
+                    // ket noi P2P se tro thanh "xac song": tuong con mo nhung khong bao gio
+                    // nhan duoc gi nua. Dung nguyen tac da ap dung xuyen suot du an (Tai-lieu-ky-thuat.md
+                    // Phan H.1): 1 goi tin loi khong duoc lam gian doan viec nhan cac goi
+                    // tin sau do - bo qua dung goi tin nay, tiep tuc vong lap.
+                    continue;
+                }
             }
         }
     }
