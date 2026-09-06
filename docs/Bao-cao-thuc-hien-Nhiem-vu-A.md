@@ -201,6 +201,17 @@ Sau khi toàn bộ chuỗi mạng cốt lõi đã chạy đúng và có test bao
 
 Đã chạy lại toàn bộ test bị ảnh hưởng sau refactor và **PASS**: `RoomSessionTest`, `RoomSessionThreePeerMeshTest`, `RoomSessionErrorHandlingTest`, `RoomSessionRealSignalingServerTest`, `WebSocketSignalingClientReconnectTest`, `WebSocketSignalingClientCapacityTest`.
 
+### Rà soát SOLID/design pattern lần 2 (sau khi hoàn tất Tầng 2)
+
+Sau khi Tầng 2 (ICE) đã được rà soát đầy đủ cả chịu lỗi/mở rộng/bảo mật, rà soát lại toàn bộ code production 1 lượt nữa theo góc nhìn SOLID/design pattern — đọc lại `SignalingWebSocketHandler`, `RoomRegistry`, `WebSocketConfig`, `WebSocketSignalingClient`/`SignalMessageDispatcher`, `IceP2pConnectionEstablisher`, `IceCandidateCodec`, `RoomSession`, `PeerConnection`, `EnvelopeCodec`. Đa số đã ổn (`PeerConnection`/`EnvelopeCodec`/`IceCandidateCodec` SRP tốt, không trùng lặp; tầng signaling đã được dọn ở lượt review trước) — tìm thấy 2 chỗ đáng sửa, cả 2 đều ở `RoomSession.java`:
+
+1. **Trùng lặp DRY (4 lần)**: chuỗi `cleanupFailedEstablisher(peerId); notifyConnectionFailed(peerId, error);` bị lặp y hệt ở 4 nơi (catch của `handlePeerList`/`handleOffer`/`handleAnswer`, và `handleIceFailed`) — gộp thành 1 helper `failConnection(peerId, error)` dùng chung.
+2. **Dùng tên lớp đầy đủ (FQN) thay vì import**: `handleOffer`/`handleAnswer` viết `com.datn.chatp2p.common.signal.ice.IceOfferPayload.class`/`IceAnswerPayload.class` trực tiếp trong thân hàm thay vì import ở đầu file — đã thêm import, bỏ FQN.
+
+**Ghi nhận nhưng không sửa (DIP)**: `RoomSession` phụ thuộc trực tiếp vào class cụ thể `IceP2pConnectionEstablisher`/`PeerConnection` (không qua interface) — chấp nhận được vì dự án đã chọn chủ đích "dùng object thật thay vì mock/interface-cho-test" (xem mục Mockito ở trên), và hiện chưa có nhu cầu thay thế implementation nào khác cho 2 lớp này.
+
+Không đổi hành vi, chỉ gọn code. Đã chạy lại toàn bộ test liên quan (`RoomSessionTest`, `RoomSessionThreePeerMeshTest`, `RoomSessionErrorHandlingTest`, `RoomSessionMalformedIceCandidateTest`, `RoomSessionDuplicateOfferSecurityTest`, `RoomSessionRealSignalingServerTest`) và xác nhận **PASS**.
+
 ### Rà soát lại Tầng 1 từ đầu (lượt 2) — phát hiện thêm 3 bug thật
 
 Sau khi coi Tầng 1 "đã hoàn thiện", chủ động đọc lại toàn bộ `SignalingWebSocketHandler`/`RoomRegistry`/`WebSocketConfig` một lượt nữa với tinh thần hoài nghi (không tin claim cũ, tự hỏi "còn góc nào chưa test thật") — tìm ra đúng 3 chỗ hổng thật, mỗi chỗ đều viết test chứng minh TRƯỚC/SAU khi sửa, không chỉ đọc code suông:
