@@ -11,6 +11,11 @@ import javax.crypto.SecretKey;
 import java.security.KeyPair;
 import java.security.PublicKey;
 import java.util.Objects;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 
 /**
@@ -33,12 +38,40 @@ import java.util.function.BiConsumer;
  *       WebRTC nen phai tu ma hoa moi byte, TRU dung goi tin trao khoa dau tien.</li>
  * </ol>
  *
+ * <p><b>Chiu loi khi mat goi UDP</b> (Tai-lieu-ky-thuat.md Phan H.3 - UDP khong
+ * dam bao thu tu/khong mat goi): {@code P2pDataChannel} khong co ACK/retry o
+ * tang duoi, nen goi public key ECDH ban dau (chi gui DUNG 1 lan) hoan toan co
+ * the bi mat tren duong truyen - da xac nhan THAT bang test thuc te (mesh 3
+ * peer thinh thoang "ICE hoan tat nhung handshake ECDH khong bao gio xong" -
+ * ~50% ti le that bai qua vai lan chay lien tiep tren cung 1 may). {@link #sendEcdhPublicKey()}
+ * vi vay tu dong GUI LAI toi da {@value #HANDSHAKE_RETRY_ATTEMPTS} lan, cach
+ * nhau {@value #HANDSHAKE_RETRY_INTERVAL_MILLIS}ms - an toan de gui lai du
+ * doi phuong co the DA hoan tat handshake tu ban sao truoc do (ban sao sau se
+ * bi coi la du lieu ma hoa, giai ma that bai, bi {@code P2pDataChannel} bo
+ * qua an toan thay vi lam sap ket noi - xem javadoc lop do).
+ *
  * <p><b>Chua lam</b> (de bo sung khi co {@code IdentitySignatureService} o
  * module crypto): tu dong gui/xac thuc {@code EnvelopeType.PEER_IDENTITY}
  * ngay sau khi handshake xong - hien tai {@link #verificationState} luon la
  * {@code UNVERIFIED} cho toi khi lop goi no (RoomSession) tu cap nhat.
  */
 public final class PeerConnection {
+
+    /** So lan GUI LAI (khong tinh lan dau) neu ben kia chua xac nhan handshake xong - xem javadoc lop nay. */
+    static final int HANDSHAKE_RETRY_ATTEMPTS = 5;
+    /** Khoang cach giua 2 lan gui lai public key ECDH. */
+    static final long HANDSHAKE_RETRY_INTERVAL_MILLIS = 300;
+
+    /**
+     * Dung CHUNG cho MOI {@code PeerConnection} (khong phai 1 executor rieng
+     * moi instance) - viec gui lai chi la 1 tac vu ngan han, thua thai neu tao
+     * hang chuc thread rieng cho mesh nhieu peer.
+     */
+    private static final ScheduledExecutorService HANDSHAKE_RETRY_EXECUTOR = Executors.newSingleThreadScheduledExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "peer-connection-ecdh-retry");
+        thread.setDaemon(true);
+        return thread;
+    });
 
     private final String peerId;
     private final DataChannel dataChannel;
@@ -50,6 +83,7 @@ public final class PeerConnection {
     private volatile EnvelopeCodec codec;
     private volatile PeerVerificationState verificationState = PeerVerificationState.UNVERIFIED;
     private volatile String customUsername;
+    private volatile ScheduledFuture<?> handshakeRetryTask;
 
     /**
      * @param peerId              id on dinh cua peer ben kia (khong doi trong suot phien).
@@ -82,9 +116,25 @@ public final class PeerConnection {
     /**
      * Phai duoc goi ngay sau khi tao xong {@code PeerConnection} (ca 2 phia) -
      * gui public key ECDH cua minh, CHUA ma hoa (xem javadoc lop nay, buoc 1).
+     * Tu dong gui lai toi da {@link #HANDSHAKE_RETRY_ATTEMPTS} lan (xem javadoc
+     * lop nay muc "Chiu loi khi mat goi UDP") - khong can goi lai tu ben ngoai.
      */
     public void sendEcdhPublicKey() {
-        dataChannel.send(ecdhKeyPair.getPublic().getEncoded());
+        byte[] publicKeyEncoded = ecdhKeyPair.getPublic().getEncoded();
+        dataChannel.send(publicKeyEncoded);
+
+        AtomicInteger remainingRetries = new AtomicInteger(HANDSHAKE_RETRY_ATTEMPTS);
+        handshakeRetryTask = HANDSHAKE_RETRY_EXECUTOR.scheduleAtFixedRate(() -> {
+            // Nem loi khi het luot (thay vi tu goi cancel()) de tan dung dung
+            // hanh vi co san cua scheduleAtFixedRate: 1 task nem loi se tu dong
+            // KHONG duoc lich lai nua, khong can tu quan ly co (flag) rieng.
+            if (remainingRetries.getAndDecrement() <= 0) {
+                throw new IllegalStateException("Da het luot gui lai public key ECDH cho peer " + peerId);
+            }
+            // dataChannel.send() cung co the tu nem loi (vd channel da dong vi
+            // peer roi phong) - cung se tu dung lich lai theo dung co che tren.
+            dataChannel.send(publicKeyEncoded);
+        }, HANDSHAKE_RETRY_INTERVAL_MILLIS, HANDSHAKE_RETRY_INTERVAL_MILLIS, TimeUnit.MILLISECONDS);
     }
 
     /** {@code true} khi da trao khoa xong va {@link #send} dung duoc. */
@@ -123,6 +173,10 @@ public final class PeerConnection {
     }
 
     public void close() {
+        ScheduledFuture<?> task = handshakeRetryTask;
+        if (task != null) {
+            task.cancel(false);
+        }
         dataChannel.close();
     }
 
