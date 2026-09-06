@@ -4,6 +4,8 @@ import com.datn.chatp2p.common.channel.DataChannel;
 import com.datn.chatp2p.common.protocol.Envelope;
 import com.datn.chatp2p.common.protocol.EnvelopeType;
 import com.datn.chatp2p.common.signal.SignalMessage;
+import com.datn.chatp2p.common.signal.ice.IceAnswerPayload;
+import com.datn.chatp2p.common.signal.ice.IceOfferPayload;
 import com.datn.chatp2p.crypto.KeyExchangeService;
 import com.datn.chatp2p.p2p.ice.IceP2pConnectionEstablisher;
 import com.datn.chatp2p.p2p.signaling.SignalingClient;
@@ -172,18 +174,9 @@ public final class RoomSession {
             } catch (RuntimeException e) {
                 // 1 peer loi (vd het cong UDP cho ICE) khong duoc chan cac peer con lai
                 // trong cung PEER_LIST - dung nguyen tac da ap dung o SignalingWebSocketHandler
-                // (Tai-lieu-ky-thuat.md Phan H.1: loi cuc bo khong duoc lam gian doan xu ly
-                // cho cac doi tuong khac).
-                //
-                // QUAN TRONG: connectAsOfferer da tao va dang ky establisher vao
-                // pendingEstablishers TRUOC KHI co the nem loi (vd establisher.createOffer()
-                // hoac signalingClient.sendOffer() that bai SAU khi establisher da duoc tao) -
-                // neu chi notifyConnectionFailed ma khong don dep, establisher do se "mo coi"
-                // vinh vien trong pendingEstablishers, ro ri UDP socket cua no (dai cong RAT
-                // HEP 10000-10100). Phai goi cleanupFailedEstablisher o day, dung nhu
-                // handleOffer/handleAnswer/handleIceFailed da lam.
-                cleanupFailedEstablisher(info.getPeerId());
-                notifyConnectionFailed(info.getPeerId(), e);
+                // (Tai-lieu-ky-thuat.md Phan H.1). failConnection() cung tu don dep
+                // establisher da tao (neu co) truoc khi bao loi - xem javadoc cua no.
+                failConnection(info.getPeerId(), e);
             }
         }
     }
@@ -251,7 +244,7 @@ public final class RoomSession {
     private void handleOffer(SignalMessage message) {
         String peerId = message.getFromPeerId();
         try {
-            var offer = fromJson(message.getPayload(), com.datn.chatp2p.common.signal.ice.IceOfferPayload.class);
+            var offer = fromJson(message.getPayload(), IceOfferPayload.class);
             String userName = pendingUserNames.get(peerId);
 
             IceP2pConnectionEstablisher establisher = createEstablisherFor(peerId, userName);
@@ -261,8 +254,7 @@ public final class RoomSession {
         } catch (RuntimeException e) {
             // OFFER hong (JSON/candidate sai dinh dang) hoac ICE khoi tao that bai - chi
             // bo qua dung peer nay, khong duoc lam sap ca luong xu ly ban tin cua RoomSession.
-            cleanupFailedEstablisher(peerId);
-            notifyConnectionFailed(peerId, e);
+            failConnection(peerId, e);
         }
     }
 
@@ -273,12 +265,27 @@ public final class RoomSession {
             return; // Khong khop phien ICE nao dang cho (vd peer da roi phong truoc do) - bo qua.
         }
         try {
-            var answer = fromJson(message.getPayload(), com.datn.chatp2p.common.signal.ice.IceAnswerPayload.class);
+            var answer = fromJson(message.getPayload(), IceAnswerPayload.class);
             establisher.acceptAnswer(answer);
         } catch (RuntimeException e) {
-            cleanupFailedEstablisher(peerId);
-            notifyConnectionFailed(peerId, e);
+            failConnection(peerId, e);
         }
+    }
+
+    /**
+     * Xu ly 1 loi ket noi voi {@code peerId}: don dep establisher dang do dang
+     * (neu con) roi bao ra ngoai qua {@link #onConnectionFailed}. Goi chung boi
+     * CA 4 nhanh loi khac nhau trong lop nay (loi parse OFFER/ANSWER trong
+     * {@link #handlePeerList}/{@link #handleOffer}/{@link #handleAnswer}, va
+     * ICE THAT SU bao FAILED trong {@link #handleIceFailed}) - truoc day 4 noi
+     * nay tu lap lai y het 2 dong nay, mot 1 lan (trong {@link #handleIceFailed})
+     * quen mat goi dispose() gay ro ri UDP socket that (dai cong ICE rat hep -
+     * xem lich su sua loi o {@link #handleIceFailed}), gop lai o day tranh lap
+     * lai sai lam tuong tu trong tuong lai.
+     */
+    private void failConnection(String peerId, Throwable error) {
+        cleanupFailedEstablisher(peerId);
+        notifyConnectionFailed(peerId, error);
     }
 
     /** Go 1 phien ICE dang do dang (da that bai giua chung) khoi {@link #pendingEstablishers} va giai phong tai nguyen. */
@@ -327,18 +334,12 @@ public final class RoomSession {
     }
 
     private void handleIceFailed(String peerId, Throwable error) {
-        // Truoc day CHUA goi dispose() o day - khac voi cleanupFailedEstablisher
-        // (dung cho loi parse OFFER/ANSWER) va handlePeerLeftNotice (dung cho peer
-        // roi phong giua chung), ca 2 cho do deu da tu giai phong Agent dung cach.
-        // Rieng nhanh nay (ICE THAT SU that bai - vd sau NAT doi xung khong xuyen
-        // qua duoc, mang that su khong thong) lai bo quen dispose() - ro ri UDP
-        // socket cua Agent (dai cong RAT HEP, chi 101 cong 10000-10100): moi lan
-        // ICE that bai that ma khong dispose se chiem vinh vien 1 cong, sau ~101
-        // lan that bai that (hoan toan co the xay ra tren mang xau/nhieu peer)
-        // MOI IceP2pConnectionEstablisher moi se khong con cong nao de bind, lam
-        // sap toan bo kha nang ket noi P2P moi trong phong.
-        cleanupFailedEstablisher(peerId);
-        notifyConnectionFailed(peerId, error);
+        // ICE THAT SU bao FAILED (vd sau NAT doi xung khong xuyen qua duoc, mang
+        // that su khong thong) - truoc day nhanh nay QUEN goi dispose() (khac voi
+        // 3 nhanh loi kia), ro ri UDP socket that cua Agent (dai cong ICE rat
+        // hep) moi lan that bai, cuoi cung can kiet ca dai cong. Da gop chung vao
+        // failConnection() de tranh lap lai sai lam tuong tu.
+        failConnection(peerId, error);
     }
 
     /** Bao loi ket noi voi 1 peer cu the ra ngoai qua {@link #onConnectionFailed} (khong lam gi neu chua ai dang ky nghe). */
