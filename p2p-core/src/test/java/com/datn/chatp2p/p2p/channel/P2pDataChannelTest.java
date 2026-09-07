@@ -3,9 +3,11 @@ package com.datn.chatp2p.p2p.channel;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
+import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -95,6 +97,61 @@ class P2pDataChannelTest {
         assertTrue(secondPacketReceived.await(5, TimeUnit.SECONDS),
                 "Vong lap nhan phai song sot sau khi handler nem loi o goi tin dau va van nhan duoc goi tin thu 2");
         assertEquals("goi tin thu 2 - phai van nhan duoc binh thuong", new String(bInbox.get(0), StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void ignoresPacketsFromAnUnexpectedSourceInsteadOfTreatingThemAsFromTheRealPeer() throws Exception {
+        // Ly do bao mat co that: socket cua P2pDataChannel KHONG duoc connect()
+        // toi remoteAddress, nen socket.receive() ve nguyen tac chap nhan goi tin
+        // tu BAT KY nguon nao gui toi dung cong do - khong chi tu peer da thoa
+        // thuan qua ICE. Ket hop voi viec goi tin ECDH public key DAU TIEN chua
+        // ma hoa (xem PeerConnection), 1 ke tan cong biet duoc cong UDP nay co
+        // the gui "public key" gia mao truoc peer that de chiem quyen bat tay
+        // (MITM/key-substitution). Test nay xac nhan P2pDataChannel tu loc bo
+        // goi tin tu nguon KHONG phai remoteAddress da chon, chi nhan dung tu
+        // peer hop le - lop phong thu them (khong thay the duoc PEER_IDENTITY
+        // that su, van con la "Chua lam" cua du an).
+        DatagramSocket socketA = new DatagramSocket(0, InetAddress.getLoopbackAddress());
+        DatagramSocket socketB = new DatagramSocket(0, InetAddress.getLoopbackAddress());
+        // "attacker" la 1 socket THU 3, khong lien quan gi den A/B - mo phong ke
+        // tan cong biet duoc cong UDP cua B va gui truc tiep toi, khong qua ICE.
+        DatagramSocket attackerSocket = new DatagramSocket(0, InetAddress.getLoopbackAddress());
+
+        InetSocketAddress addressA = new InetSocketAddress(InetAddress.getLoopbackAddress(), socketA.getLocalPort());
+        InetSocketAddress addressB = new InetSocketAddress(InetAddress.getLoopbackAddress(), socketB.getLocalPort());
+
+        channelA = new P2pDataChannel(socketA, addressB);
+        channelB = new P2pDataChannel(socketB, addressA);
+
+        List<byte[]> bInbox = new ArrayList<>();
+        CountDownLatch bReceivedFromA = new CountDownLatch(1);
+        channelB.onReceive(data -> {
+            bInbox.add(data);
+            bReceivedFromA.countDown();
+        });
+
+        // "Attacker" tu dong goi (khong qua P2pDataChannel, de tu do gia mao dung
+        // dinh dang length-prefix) mot goi tin gia mao toi THANG cong cua B.
+        byte[] fakeMessage = "goi tin gia mao tu ke tan cong".getBytes(StandardCharsets.UTF_8);
+        ByteBuffer framedFake = ByteBuffer.allocate(4 + fakeMessage.length);
+        framedFake.putInt(fakeMessage.length);
+        framedFake.put(fakeMessage);
+        attackerSocket.send(new DatagramPacket(framedFake.array(), framedFake.array().length,
+                InetAddress.getLoopbackAddress(), socketB.getLocalPort()));
+
+        // Cho 1 khoang ngan de dam bao goi tin gia (neu KHONG bi loc) da kip toi
+        // vong lap nhan cua B truoc khi A gui goi tin THAT.
+        Thread.sleep(300);
+        assertTrue(bInbox.isEmpty(), "Goi tin gia mao tu nguon khong mong doi KHONG duoc chuyen toi handler");
+
+        byte[] realMessage = "goi tin THAT tu A".getBytes(StandardCharsets.UTF_8);
+        channelA.send(realMessage);
+
+        assertTrue(bReceivedFromA.await(5, TimeUnit.SECONDS), "B phai van nhan duoc goi tin THAT tu A binh thuong");
+        assertEquals(1, bInbox.size(), "Chi dung 1 goi tin (tu A) duoc chuyen toi handler, goi gia mao van bi loc");
+        assertEquals("goi tin THAT tu A", new String(bInbox.get(0), StandardCharsets.UTF_8));
+
+        attackerSocket.close();
     }
 
     @Test

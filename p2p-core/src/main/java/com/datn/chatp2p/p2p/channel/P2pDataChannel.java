@@ -124,6 +124,26 @@ public final class P2pDataChannel implements DataChannel {
                 continue;
             }
 
+            // QUAN TRONG (bao mat): socket nay KHONG duoc connect() toi remoteAddress
+            // (xem ly do o javadoc lop nay/isFromExpectedRemote) nen socket.receive()
+            // chap nhan goi tin tu BAT KY nguon nao gui toi dung cong nay, khong chi
+            // tu peer da thoa thuan qua ICE. Ket hop voi viec goi tin DAU TIEN (public
+            // key ECDH, xem PeerConnection) chua ma hoa, 1 ke tan cong biet duoc cong
+            // UDP nay (dai cong ICE 10000-11000 kha hep, diem bat dau moi Agent lai
+            // XOAY VONG - xem IceP2pConnectionEstablisher - nen kha doan duoc) co the
+            // gui 1 "public key" gia mao TOI TRUOC peer that, chiem quyen bat tay ECDH
+            // (tan cong MITM/key-substitution kinh dien cho Diffie-Hellman khong xac
+            // thuc). Loc bo goi tin tu nguon KHONG phai remoteAddress da duoc ICE chon
+            // la 1 lop phong thu them (khong the chan tuyet doi ke tan cong ON-PATH co
+            // the gia mao dia chi nguon, nhung chan duoc ke tan cong OFF-PATH/quet cong
+            // ngau nhien khong biet chinh xac dia chi that cua peer hop le) - xac thuc
+            // TRIET DE van can PEER_IDENTITY (Tai-lieu-ky-thuat.md, can
+            // IdentitySignatureService cua B, chua co - xem docs/Bao-cao-thuc-hien-Nhiem-vu-A.md
+            // muc "Chua lam").
+            if (!isFromExpectedRemote(packet)) {
+                continue;
+            }
+
             byte[] data;
             try {
                 data = unframe(packet.getData(), packet.getLength());
@@ -152,6 +172,18 @@ public final class P2pDataChannel implements DataChannel {
                 }
             }
         }
+    }
+
+    /**
+     * {@code true} neu {@code packet} den tu DUNG dia chi/cong da duoc ICE
+     * chon ({@link #remoteAddress}) - xem binh luan bao mat o {@link #runReceiveLoop()}.
+     * So sanh qua {@link InetAddress#equals} (dia chi IP) va port rieng (khong
+     * dung {@code SocketAddress.equals} de tranh phu thuoc vao kieu con cu the
+     * cua {@code InetSocketAddress} tra ve tu {@code DatagramPacket}).
+     */
+    private boolean isFromExpectedRemote(DatagramPacket packet) {
+        return packet.getPort() == remoteAddress.getPort()
+                && packet.getAddress().equals(remoteAddress.getAddress());
     }
 
     private static byte[] frame(byte[] data) {
