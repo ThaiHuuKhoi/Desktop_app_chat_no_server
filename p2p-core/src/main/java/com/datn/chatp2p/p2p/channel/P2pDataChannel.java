@@ -64,6 +64,27 @@ public final class P2pDataChannel implements DataChannel {
             throw new IllegalStateException("DataChannel da bi dong");
         }
         byte[] framed = frame(data);
+        // Kiem tra RO RANG truoc khi goi socket.send() - neu khong, OS se tu choi
+        // voi 1 IOException "Message too long" chung chung, bi boc lai thanh
+        // UncheckedIOException KHONG noi ro nguyen nhan la payload qua lon (da
+        // xac nhan that: thong diep loi mac dinh chi la "Gui du lieu qua
+        // P2pDataChannel that bai", phai tu dao sau vao getCause() moi biet).
+        // Quan trong hon: gioi han 65.507 byte nay KHONG PHAI gioi han thuc te
+        // cho payload UNG DUNG - qua EnvelopeCodec (JSON + base64 hoa truong
+        // byte[] + AES-GCM), gioi han thuc te cho vi du 1 tin nhan van ban chi
+        // con khoang ~49KB. Bao loi som, ro rang o day de ai do lam tinh nang
+        // chia nho file/media (FILE_CHUNK/MEDIA_FRAME) sau nay biet chinh xac
+        // can chia nho toi dau, khong phai tu doan hay tu gap loi kho hieu.
+        if (framed.length > MAX_UDP_PAYLOAD) {
+            throw new IllegalArgumentException(
+                    "Payload qua lon de gui qua 1 goi UDP: " + framed.length + " byte (da gom "
+                            + LENGTH_PREFIX_BYTES + " byte length-prefix), vuot qua gioi han "
+                            + MAX_UDP_PAYLOAD + " byte cua 1 datagram IPv4. Du lieu dau vao cho send() "
+                            + "toi da " + (MAX_UDP_PAYLOAD - LENGTH_PREFIX_BYTES) + " byte - luu y day la"
+                            + " du lieu SAU KHI da qua EnvelopeCodec (JSON+base64+AES-GCM), nen payload"
+                            + " ung dung goc (vd noi dung tin nhan) can nho hon nhieu; voi du lieu lon hon"
+                            + " (vd file/media) phai tu chia nho (chunk) truoc khi goi send().");
+        }
         try {
             socket.send(new DatagramPacket(framed, framed.length, remoteAddress));
         } catch (IOException e) {
