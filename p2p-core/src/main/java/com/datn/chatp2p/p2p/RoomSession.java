@@ -350,7 +350,20 @@ public final class RoomSession {
             return;
         }
         for (BiConsumer<String, Envelope> handler : handlersForType) {
-            handler.accept(from.getPeerId(), envelope);
+            try {
+                handler.accept(from.getPeerId(), envelope);
+            } catch (RuntimeException e) {
+                // onEnvelope() cho phep dang ky NHIEU handler cho CUNG 1 EnvelopeType
+                // (xem javadoc cua no) - vd 1 handler "ghi log" va 1 handler rieng "cap
+                // nhat UI" cung dang ky cho EnvelopeType.MESSAGE. Neu 1 handler co bug va
+                // nem loi, KHONG duoc de no chan cac handler CON LAI dang ky cho cung
+                // type nay - dung nguyen tac H.1 da ap dung xuyen suot du an (vd
+                // broadcastToOthers o SignalingWebSocketHandler, RoomSession.broadcast()).
+                // Loi nay se van duoc P2pDataChannel bat lai o tang duoi (khong lam chet
+                // vong lap nhan), nhung neu khong bat rieng o day, handler thu 2 tro di
+                // se KHONG bao gio chay cho DUNG ban tin nay - mat mat am tham, kho phat
+                // hien vi khong co dau hieu loi nao lo ra ngoai.
+            }
         }
     }
 
