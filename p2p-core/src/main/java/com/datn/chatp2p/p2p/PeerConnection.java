@@ -9,8 +9,15 @@ import com.datn.chatp2p.p2p.protocol.EnvelopeCodec;
 
 import javax.crypto.SecretKey;
 import java.security.KeyPair;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.security.PublicKey;
+import java.util.Collections;
+import java.util.HexFormat;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -50,6 +57,23 @@ import java.util.function.BiConsumer;
  * bi coi la du lieu ma hoa, giai ma that bai, bi {@code P2pDataChannel} bo
  * qua an toan thay vi lam sap ket noi - xem javadoc lop do).
  *
+ * <p><b>Chong tan cong REPLAY</b> (phat hien khi ra soat bao mat Tang 4, so
+ * sanh voi tham khao chitchatter - {@code src/services/Encryption/Encryption.ts}
+ * cua ho KHONG he co logic ma hoa/chong replay noi dung chat, vi WebRTC
+ * DataChannel that cua trinh duyet da bat buoc dung DTLS ben duoi - DTLS tu
+ * dong chong replay bang sequence number + sliding window ngay trong giao
+ * thuc (RFC 6347 Muc 4.1.2.6), "mien phi" cho ung dung. Lop nay KHONG co DTLS
+ * (xem muc "Vong doi trao khoa" o tren) nen mat luon bao ve do - da xac nhan
+ * THAT bang test: gui lai y nguyen 1 ban ma hoa da gui thanh cong truoc do
+ * (mo phong ke tan cong bat duoc goi tin tren duong truyen roi phat lai) VAN
+ * duoc xu ly thanh cong lan 2 neu khong co gi ngan. {@link #handleIncoming}
+ * vi vay tu kiem tra "van tay" (SHA-256) cua tung ban ma hoa nhan duoc trong
+ * 1 "cua so truot" {@value #REPLAY_WINDOW_SIZE} ban gan nhat cho DUNG peer
+ * nay - trung thi bo qua (khong xu ly lai). Dung "vi tri" (khong phai thu
+ * tu/timestamp) nen an toan voi viec UDP co the giao goi tin SAI THU TU (2
+ * ban tin hop le, KHAC nhau, gui gan nhau van co the toi khong dung thu tu
+ * do do tre mang - khong duoc coi nham la replay).
+ *
  * <p><b>Chua lam</b> (de bo sung khi co {@code IdentitySignatureService} o
  * module crypto): tu dong gui/xac thuc {@code EnvelopeType.PEER_IDENTITY}
  * ngay sau khi handshake xong - hien tai {@link #verificationState} luon la
@@ -61,6 +85,9 @@ public final class PeerConnection {
     static final int HANDSHAKE_RETRY_ATTEMPTS = 5;
     /** Khoang cach giua 2 lan gui lai public key ECDH. */
     static final long HANDSHAKE_RETRY_INTERVAL_MILLIS = 300;
+
+    /** So ban ma hoa gan nhat giu lai de doi chieu chong replay - xem javadoc lop nay. */
+    static final int REPLAY_WINDOW_SIZE = 256;
 
     /**
      * Dung CHUNG cho MOI {@code PeerConnection} (khong phai 1 executor rieng
@@ -84,6 +111,21 @@ public final class PeerConnection {
     private volatile PeerVerificationState verificationState = PeerVerificationState.UNVERIFIED;
     private volatile String customUsername;
     private volatile ScheduledFuture<?> handshakeRetryTask;
+
+    /**
+     * "Cua so truot" cac van tay (SHA-256, dang hex) cua {@link #REPLAY_WINDOW_SIZE}
+     * ban ma hoa GAN NHAT da nhan tu DUNG peer nay - xem javadoc lop nay muc
+     * "Chong tan cong REPLAY". Dung {@link LinkedHashMap#removeEldestEntry} de
+     * tu dong loai bo van tay CU NHAT khi vuot qua suc chua, tao thanh 1 hang
+     * doi FIFO co gioi han kich thuoc ma khong can tu quan ly rieng.
+     */
+    private final Set<String> recentCiphertextFingerprints = Collections.synchronizedSet(
+            Collections.newSetFromMap(new LinkedHashMap<>(REPLAY_WINDOW_SIZE + 1, 1.0f, false) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<String, Boolean> eldest) {
+                    return size() > REPLAY_WINDOW_SIZE;
+                }
+            }));
 
     /**
      * @param peerId              id on dinh cua peer ben kia (khong doi trong suot phien).
@@ -185,8 +227,27 @@ public final class PeerConnection {
             completeHandshake(data);
             return;
         }
+        // Chong replay - xem javadoc lop nay muc "Chong tan cong REPLAY". Chi ap
+        // dung SAU khi handshake xong (khong ap dung cho chinh goi cong khai ECDH
+        // dau tien, vi ban sao GUI LAI cua no - co y, xem sendEcdhPublicKey - deu
+        // toi day qua nhanh else nay, tu bi tu choi neu trung van tay, dung y
+        // muon: khong can xu ly lai nhung ban sao handshake du thua).
+        if (!recentCiphertextFingerprints.add(sha256Hex(data))) {
+            return; // da thay CHINH XAC ban ma hoa nay truoc do - bo qua, khong xu ly lai.
+        }
         Envelope envelope = codec.decode(data);
         onEnvelopeReceived.accept(this, envelope);
+    }
+
+    private static String sha256Hex(byte[] data) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            return HexFormat.of().formatHex(digest.digest(data));
+        } catch (NoSuchAlgorithmException e) {
+            // SHA-256 la thuat toan bat buoc phai co trong moi JVM chuan (JLS/JCA) -
+            // khong bao gio xay ra tren thuc te, chi de thoa man checked exception.
+            throw new IllegalStateException("SHA-256 khong duoc JVM nay ho tro", e);
+        }
     }
 
     private void completeHandshake(byte[] peerPublicKeyEncoded) {
