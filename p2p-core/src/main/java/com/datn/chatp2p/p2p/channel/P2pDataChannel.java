@@ -34,6 +34,8 @@ public final class P2pDataChannel implements DataChannel {
 
     private static final int MAX_UDP_PAYLOAD = 65_507; // gioi han thuc te cua 1 datagram IPv4
     private static final int LENGTH_PREFIX_BYTES = 4;
+    /** Xem javadoc cua {@link #enlargeSocketBuffers} - 1MB, du cho hang nghin Envelope nho don dap. */
+    private static final int SOCKET_BUFFER_SIZE_BYTES = 1_048_576;
 
     private final DatagramSocket socket;
     private final InetSocketAddress remoteAddress;
@@ -50,12 +52,41 @@ public final class P2pDataChannel implements DataChannel {
     public P2pDataChannel(DatagramSocket socket, InetSocketAddress remoteAddress) {
         this.socket = socket;
         this.remoteAddress = remoteAddress;
+        enlargeSocketBuffers(socket);
         this.receiveLoopExecutor = Executors.newSingleThreadExecutor(runnable -> {
             Thread thread = new Thread(runnable, "p2p-datachannel-receive");
             thread.setDaemon(true);
             return thread;
         });
         receiveLoopExecutor.submit(this::runReceiveLoop);
+    }
+
+    /**
+     * Tang buffer nhan/gui cua {@code socket} len {@link #SOCKET_BUFFER_SIZE_BYTES}
+     * (mac dinh cua OS thuong CHI vai chuc KB - qua nho so voi 1 "dot" nhieu
+     * Envelope gui lien tiep khong co khoang nghi). Xac nhan that bang test
+     * {@code PeerConnectionBurstThroughputTest}: LAN DAU (chua tang buffer) gui
+     * 1000 Envelope lien tiep tren CHINH localhost (khong co tac nghen mang
+     * that), chi 358/1000 (35.8%) toi noi - vi Envelope THUONG (khac goi ECDH
+     * public key ban dau, xem PeerConnection#sendEcdhPublicKey) hoan toan KHONG
+     * co ACK/retry, 1 goi bi mat vi buffer day la mat VINH VIEN. Khong the
+     * loai bo hoan toan rui ro nay (UDP von khong dam bao) nhung tang buffer
+     * giup vong lap nhan (dang xu ly tuan tu: giai ma AES-GCM + parse JSON +
+     * goi handler cho TUNG goi mot) co du "khong gian dem" de bat kip 1 dot
+     * gui don dap, thay vi OS am tham vut bo ngay khi buffer qua nho day len.
+     *
+     * <p>Khong nem loi neu OS tu choi (vd moi truong bi gioi han) - chi cai
+     * dat "co gang het suc", ban than P2pDataChannel van hoat dong dung voi
+     * buffer mac dinh cua OS, chi kem chiu tai hon.
+     */
+    private static void enlargeSocketBuffers(DatagramSocket socket) {
+        try {
+            socket.setReceiveBufferSize(SOCKET_BUFFER_SIZE_BYTES);
+            socket.setSendBufferSize(SOCKET_BUFFER_SIZE_BYTES);
+        } catch (SocketException e) {
+            // OS tu choi cap phat buffer lon nhu yeu cau - bo qua, van tiep tuc
+            // voi bat ky gia tri nao OS da chap nhan (thuong la gia tri mac dinh).
+        }
     }
 
     @Override
