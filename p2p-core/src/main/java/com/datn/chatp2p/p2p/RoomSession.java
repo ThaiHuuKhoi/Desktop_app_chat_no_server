@@ -63,6 +63,26 @@ public final class RoomSession {
 
     private final Map<EnvelopeType, List<BiConsumer<String, Envelope>>> envelopeHandlers =
             new EnumMap<>(EnvelopeType.class);
+    /**
+     * True ngay khi {@link #leave()} bat dau chay - dung de {@link #onIceConnected}
+     * (chay tren thread rieng cua ice4j, khong dong bo voi leave()) co the tu
+     * nhan biet va BO QUA neu no toi TRE hon leave() da chay xong, thay vi
+     * "hoi sinh" 1 PeerConnection ma khong ai con don dep - xem
+     * RoomSessionLateIceCallbackAfterLeaveTest (da xac nhan bang test that:
+     * truoc khi co co nay, callback tre van them duoc PeerConnection moi vao
+     * peers du leave() da chay va clear() xong).
+     *
+     * <p>Luu y day la giam thieu THEO KIEU BEST-EFFORT, khong phai khoa dong
+     * bo tuyet doi: van con 1 khe ho ly thuyet cuc hep (onIceConnected doc co
+     * nay la false, ngay sau do leave() moi set true va clear() - TOCTOU kinh
+     * dien) - nhung khe ho nay chi xay ra neu callback ICE va leave() chay
+     * GAN NHU DUNG LUC nhau toi tung nano-giay, trong khi truong hop THUC TE
+     * hay gap (callback ICE tre hon leave() rat nhieu, do do tre mang that)
+     * da duoc chan hoan toan. Chap nhan duoc theo cung tinh than voi fix chan
+     * gia mao nguon goi tin o P2pDataChannel (cung la giam thieu mot phan,
+     * khong phai tuyet doi).
+     */
+    private volatile boolean left;
     private volatile Consumer<PeerConnection> onPeerJoinedHandler;
     private volatile Consumer<String> onPeerLeftHandler;
     private volatile BiConsumer<String, Throwable> onConnectionFailedHandler;
@@ -102,12 +122,35 @@ public final class RoomSession {
 
     /** Dong toan bo ket noi voi moi peer, huy cac phien ICE dang cho, roi ngat signaling. */
     public void leave() {
+        left = true;
+        // QUAN TRONG (chiu loi, dung nguyen tac H.1 da ap dung o moi noi khac
+        // trong lop nay - vd broadcast(), dispatchEnvelope()): 2 vong lap ben
+        // duoi TRUOC DAY khong boc try/catch cho tung phan tu - neu 1
+        // connection.close()/establisher.dispose() nem loi (vd Agent.free() cua
+        // ice4j gap trang thai bat thuong, hoac 1 DataChannel that tuong lai co
+        // the nem loi khi dong - cac cai dat hien tai (P2pDataChannel,
+        // LoopbackDataChannel) khong nem, nhung khong nen gia dinh MOI cai dat
+        // DataChannel trong tuong lai deu the), vong lap se dung NGAY LAP TUC -
+        // TAT CA cac peer/establisher CON LAI se khong bao gio duoc dong/giai
+        // phong, VA signalingClient.disconnect() cuoi cung cung khong bao gio
+        // duoc goi - ro ri toan bo phan con lai cua phong ngay tai chinh thoi
+        // diem nguoi dung chu dong roi phong (leave()).
         for (PeerConnection connection : peers.values()) {
-            connection.close();
+            try {
+                connection.close();
+            } catch (RuntimeException e) {
+                // Bo qua, tiep tuc dong cac peer con lai - 1 peer loi khi dong
+                // khong duoc chan viec don dep cac peer khac.
+            }
         }
         peers.clear();
         for (IceP2pConnectionEstablisher establisher : pendingEstablishers.values()) {
-            establisher.dispose();
+            try {
+                establisher.dispose();
+            } catch (RuntimeException e) {
+                // Tuong tu - 1 establisher loi khi giai phong khong duoc chan
+                // viec giai phong cac establisher con lai.
+            }
         }
         pendingEstablishers.clear();
         signalingClient.disconnect();
@@ -317,8 +360,25 @@ public final class RoomSession {
         }
     }
 
-    private void onIceConnected(String peerId, String userName, DataChannel channel) {
+    /**
+     * Goi khi ICE thanh cong voi {@code peerId} - CHU Y: chay tren THREAD RIENG
+     * cua ice4j (khong dong bo voi thread ma app goi {@link #leave()}), nen
+     * hoan toan co the toi SAU KHI leave() da chay xong (do ICE hoan tat qua
+     * mang that, do tre RTT thuong lon hon rat nhieu so voi leave() don dep
+     * trong bo nho). Doi tam nhin tu private sang goi-rieng (package-private)
+     * CHI de test co the mo phong dung truong hop nay 1 cach xac dinh (khong
+     * phu thuoc timing/flaky) - xem RoomSessionLateIceCallbackAfterLeaveTest.
+     */
+    void onIceConnected(String peerId, String userName, DataChannel channel) {
         pendingEstablishers.remove(peerId);
+
+        if (left) {
+            // leave() da chay xong (hoac dang chay) truoc khi callback nay toi -
+            // KHONG duoc them PeerConnection moi vao 1 phong da roi, chi con
+            // dong not channel vua nhan de khong ro ri chinh no.
+            channel.close();
+            return;
+        }
 
         KeyPair ecdhKeyPair = KeyExchangeService.generateKeyPair();
         PeerConnection connection = new PeerConnection(
