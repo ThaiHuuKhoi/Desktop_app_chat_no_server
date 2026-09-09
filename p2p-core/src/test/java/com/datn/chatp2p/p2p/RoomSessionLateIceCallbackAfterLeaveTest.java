@@ -1,6 +1,7 @@
 package com.datn.chatp2p.p2p;
 
 import com.datn.chatp2p.common.channel.DataChannel;
+import com.datn.chatp2p.p2p.ice.IceP2pConnectionEstablisher;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -39,9 +40,13 @@ class RoomSessionLateIceCallbackAfterLeaveTest {
 
         // Mo phong callback ICE "toi tre" - dung 1 dau LoopbackDataChannel bat
         // ky lam channel (khong quan trong noi dung, chi can mot DataChannel
-        // hop le de PeerConnection duoc tao ra).
+        // hop le de PeerConnection duoc tao ra), va 1 IceP2pConnectionEstablisher
+        // that bat ky lam tham so thu 4 (chi can 1 doi tuong hop le de goi
+        // dispose() an toan tren no - noi dung ICE that su cua no khong quan
+        // trong voi dieu test nay dang kiem chung).
         DataChannel lateChannel = LoopbackDataChannel.createPair().endpointA();
-        self.onIceConnected("late-peer", "LateUser", lateChannel);
+        IceP2pConnectionEstablisher lateEstablisher = new IceP2pConnectionEstablisher(List.of());
+        self.onIceConnected("late-peer", "LateUser", lateChannel, lateEstablisher);
 
         // DIEM MAU CHOT: sau khi da leave() xong, RoomSession khong duoc
         // "hoi sinh" bat ky PeerConnection nao nua - neu getPeerConnection tra

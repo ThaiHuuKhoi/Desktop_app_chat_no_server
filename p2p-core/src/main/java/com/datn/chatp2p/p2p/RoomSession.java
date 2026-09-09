@@ -58,6 +58,24 @@ public final class RoomSession {
 
     private final Map<String, PeerConnection> peers = new ConcurrentHashMap<>();
     private final Map<String, IceP2pConnectionEstablisher> pendingEstablishers = new ConcurrentHashMap<>();
+    /**
+     * {@link IceP2pConnectionEstablisher} (va {@code Agent} ice4j ben trong no)
+     * cua TUNG peer DA ket noi xong (khac {@link #pendingEstablishers}, chi
+     * chua cac phien CON DANG CHAY). Truoc day {@code onIceConnected} chi xoa
+     * establisher khoi {@code pendingEstablishers} ma KHONG giu lai o dau ca -
+     * tham chieu CUOI CUNG toi no bi mat, khong con cach nao goi dispose()
+     * (agent.free()) sau nay nua du peer da roi phong that su qua leave()/
+     * PEER_LEFT. {@code P2pDataChannel.close()} (goi qua {@code PeerConnection.close()})
+     * chi dong 1 THAM CHIEU {@code DatagramSocket} lay tu {@code component.getSocket()} -
+     * KHONG du de giai phong that su cong UDP o muc OS (da xac nhan that: van
+     * con {@code BindException} khi thu bind lai dung cong do SAU KHI da
+     * close() PeerConnection nhung CHUA dispose() Agent ben duoi) - phai goi
+     * dung {@code establisher.dispose()} (agent.free()) moi giai phong duoc,
+     * dung nguyen tac da biet tu {@link RoomSessionDuplicateOfferSecurityTest}
+     * (o do la truong hop establisher CHUA hoan tat; day la truong hop establisher
+     * DA hoan tat - cung 1 nguyen nhan goc, khac giai doan vong doi).
+     */
+    private final Map<String, IceP2pConnectionEstablisher> connectedEstablishers = new ConcurrentHashMap<>();
     /** userName cua peer bao qua PEER_JOINED, giu tam de gan vao PeerConnection khi ICE xong (chi dung khi minh la ben tra loi). */
     private final Map<String, String> pendingUserNames = new ConcurrentHashMap<>();
 
@@ -144,6 +162,21 @@ public final class RoomSession {
             }
         }
         peers.clear();
+        // QUAN TRONG: PHAI dispose() establisher cua TUNG peer DA ket noi xong
+        // (xem javadoc cua connectedEstablishers) - connection.close() o vong lap
+        // tren CHI dong duoc 1 tham chieu DatagramSocket, KHONG giai phong that
+        // su Agent/cong UDP o duoi. Thieu vong lap nay, MOI phong da tung ket
+        // noi xong voi it nhat 1 peer se ro ri vinh vien cong UDP cua peer do
+        // ngay ca sau leave() - xac nhan that bang RoomSessionLeaveReleasesEstablishedIcePortsTest.
+        for (IceP2pConnectionEstablisher establisher : connectedEstablishers.values()) {
+            try {
+                establisher.dispose();
+            } catch (RuntimeException e) {
+                // Tuong tu - 1 establisher loi khi giai phong khong duoc chan
+                // viec giai phong cac establisher con lai.
+            }
+        }
+        connectedEstablishers.clear();
         for (IceP2pConnectionEstablisher establisher : pendingEstablishers.values()) {
             try {
                 establisher.dispose();
@@ -264,6 +297,12 @@ public final class RoomSession {
         PeerConnection removed = peers.remove(peerId);
         if (removed != null) {
             removed.close();
+            // Xem javadoc connectedEstablishers - PHAI dispose() rieng, removed.close()
+            // khong du de giai phong that su cong UDP cua peer nay.
+            IceP2pConnectionEstablisher establisher = connectedEstablishers.remove(peerId);
+            if (establisher != null) {
+                establisher.dispose();
+            }
             Consumer<String> handler = onPeerLeftHandler;
             if (handler != null) {
                 handler.accept(peerId);
@@ -293,7 +332,7 @@ public final class RoomSession {
         if (previous != null) {
             previous.dispose();
         }
-        establisher.onConnected(channel -> onIceConnected(peerId, userName, channel));
+        establisher.onConnected(channel -> onIceConnected(peerId, userName, channel, establisher));
         establisher.onFailed(error -> handleIceFailed(peerId, error));
         return establisher;
     }
@@ -369,14 +408,15 @@ public final class RoomSession {
      * CHI de test co the mo phong dung truong hop nay 1 cach xac dinh (khong
      * phu thuoc timing/flaky) - xem RoomSessionLateIceCallbackAfterLeaveTest.
      */
-    void onIceConnected(String peerId, String userName, DataChannel channel) {
+    void onIceConnected(String peerId, String userName, DataChannel channel, IceP2pConnectionEstablisher establisher) {
         pendingEstablishers.remove(peerId);
 
         if (left) {
             // leave() da chay xong (hoac dang chay) truoc khi callback nay toi -
             // KHONG duoc them PeerConnection moi vao 1 phong da roi, chi con
-            // dong not channel vua nhan de khong ro ri chinh no.
+            // dong not channel/establisher vua nhan de khong ro ri chinh chung.
             channel.close();
+            establisher.dispose();
             return;
         }
 
@@ -389,7 +429,30 @@ public final class RoomSession {
                 () -> notifyPeerJoined(peerId));
         connection.setCustomUsername(userName);
 
-        peers.put(peerId, connection);
+        // QUAN TRONG (bao mat - cung 1 lop lo hong voi createEstablisherFor(), xem
+        // javadoc cua no): peers.put() tra ve GIA TRI CU neu peerId nay DA co san 1
+        // PeerConnection dang hoat dong (vd 1 phien ICE THU HAI hoan tat that duoi
+        // CUNG peerId - do bug ket noi lai khong LEAVE truoc, hoac co y gia mao,
+        // Tai-lieu-ky-thuat.md Phan H.2 da xac nhan signaling khong xac thuc/gioi
+        // han ai duoc dung peerId nao). Neu khong dong() gia tri cu truoc khi ghi
+        // de, ket noi CU se "mo coi" vinh vien (ro ri socket/thread that) VA moi
+        // sendTo()/broadcast() sau do se am tham bi chuyen huong sang ket noi MOI -
+        // 1 dang "chiem quyen ket noi" (connection hijack) - da xac nhan THAT bang
+        // RoomSessionEstablishedConnectionOverwriteSecurityTest (BindException khi
+        // co bind lai dung cong cua ket noi cu, truoc khi co dong() nay).
+        //
+        // LUU Y QUAN TRONG HON: rieng connection.close() (dong PeerConnection cu)
+        // KHONG DU de giai phong that su cong UDP - xem javadoc connectedEstablishers.
+        // PHAI dispose() ca establisher cu tuong ung, KHONG chi dong PeerConnection -
+        // da xac nhan that (van con BindException) khi ban dau chi sua rieng dong tren.
+        PeerConnection previous = peers.put(peerId, connection);
+        if (previous != null) {
+            previous.close();
+        }
+        IceP2pConnectionEstablisher previousEstablisher = connectedEstablishers.put(peerId, establisher);
+        if (previousEstablisher != null) {
+            previousEstablisher.dispose();
+        }
         connection.sendEcdhPublicKey();
     }
 
