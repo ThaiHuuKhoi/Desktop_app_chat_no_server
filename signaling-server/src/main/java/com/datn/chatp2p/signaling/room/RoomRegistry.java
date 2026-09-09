@@ -22,13 +22,26 @@ public class RoomRegistry {
 
     private final Map<String, Map<String, PeerSession>> roomsByRoomId = new ConcurrentHashMap<>();
 
-    /** Them mot peer vao phong, tao phong neu chua ton tai. Tra ve danh sach cac peer da co san. */
+    /**
+     * Them mot peer vao phong, tao phong neu chua ton tai. Tra ve danh sach cac
+     * peer da co san.
+     *
+     * <p><b>Phai synchronized tren {@code room}:</b> neu khong, 2 peer JOIN gan
+     * nhu cung luc (2 thread Tomcat khac nhau xu ly 2 WebSocket session khac
+     * nhau) co the CUNG doc duoc {@code existingPeers} rong truoc khi ca 2 kip
+     * them minh vao map - ket qua ca 2 ben deu nghi minh la nguoi dau tien,
+     * khong ai chu dong gui OFFER, ket noi P2P treo vinh vien. Loi nay co that,
+     * phat hien qua {@code RoomSessionRealSignalingServerTest} (module p2p-core)
+     * khi 2 RoomSession that join gan nhu dong thoi qua 1 signaling-server that.
+     */
     public List<PeerSession> join(PeerSession newPeer) {
         Map<String, PeerSession> room =
                 roomsByRoomId.computeIfAbsent(newPeer.getRoomId(), roomId -> new ConcurrentHashMap<>());
-        List<PeerSession> existingPeers = List.copyOf(room.values());
-        room.put(newPeer.getPeerId(), newPeer);
-        return existingPeers;
+        synchronized (room) {
+            List<PeerSession> existingPeers = List.copyOf(room.values());
+            room.put(newPeer.getPeerId(), newPeer);
+            return existingPeers;
+        }
     }
 
     /** Xoa mot peer khoi phong (khi roi phong hoac mat ket noi). Tra ve peer vua bi xoa, neu co. */
@@ -37,11 +50,15 @@ public class RoomRegistry {
         if (room == null) {
             return Optional.empty();
         }
-        PeerSession removed = room.remove(peerId);
-        if (room.isEmpty()) {
-            roomsByRoomId.remove(roomId, room);
+        // Dong bo tren cung 1 doi tuong "room" nhu join() - tranh 1 peer dang
+        // roi phong giua luc peer khac dang doc existingPeers de join.
+        synchronized (room) {
+            PeerSession removed = room.remove(peerId);
+            if (room.isEmpty()) {
+                roomsByRoomId.remove(roomId, room);
+            }
+            return Optional.ofNullable(removed);
         }
-        return Optional.ofNullable(removed);
     }
 
     public Collection<PeerSession> peersInRoom(String roomId) {

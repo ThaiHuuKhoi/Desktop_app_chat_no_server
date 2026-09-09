@@ -10,8 +10,8 @@ import java.util.function.Consumer;
  * truc tiep duoc thiet lap (De-cuong-Chat-P2P-Java.md muc 6, giai doan 3-4).
  *
  * <p>Day la hop dong on dinh de {@link com.datn.chatp2p.p2p.channel.P2pDataChannel}
- * (Thanh vien A) dua vao khi cai dat ICE that; xem
- * {@link WebSocketSignalingClient} cho khung cai dat (chua hoan thien).
+ * (Thanh vien A) dua vao khi cai dat ICE that; xem {@link WebSocketSignalingClient}
+ * cho cai dat that bang {@code java.net.http.HttpClient}.
  */
 public interface SignalingClient {
 
