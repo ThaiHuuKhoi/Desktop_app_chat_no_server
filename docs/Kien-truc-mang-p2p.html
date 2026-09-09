@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kiến Trúc Mạng P2P</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root{
+  --bg:#F5F6F9;
+  --surface:#FFFFFF;
+  --surface-2:#EEF0F5;
+  --ink:#1B2130;
+  --ink-dim:#5B6472;
+  --ink-faint:#8A93A3;
+  --line:#D8DCE3;
+  --line-strong:#B9C0CC;
+  --accent-a:#2E5AAC;
+  --accent-a-soft:#E4EBF9;
+  --accent-b:#9C4F86;
+  --accent-b-soft:#F5E9F1;
+  --accent-infra:#B98A2E;
+  --accent-infra-soft:#F6EEDD;
+  --shadow: 0 1px 2px rgba(20,25,40,.04), 0 8px 24px -12px rgba(20,25,40,.10);
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0F1219;
+    --surface:#171B24;
+    --surface-2:#1D2230;
+    --ink:#E7E9EF;
+    --ink-dim:#A0A8B8;
+    --ink-faint:#6A7280;
+    --line:#2A3040;
+    --line-strong:#3A4256;
+    --accent-a:#7FA3E8;
+    --accent-a-soft:#1E2B45;
+    --accent-b:#D98FC0;
+    --accent-b-soft:#3A2333;
+    --accent-infra:#E0B865;
+    --accent-infra-soft:#3A3020;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px -12px rgba(0,0,0,.5);
+  }
+}
+
+*{box-sizing:border-box}
+html,body{ margin:0; padding:0; }
+body{
+  background:var(--bg);
+  color:var(--ink);
+  font-family:"IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+}
+img{ max-width:100%; }
+.page{
+  max-width:900px;
+  margin:0 auto;
+  padding:56px 24px 80px;
+}
+.mono{ font-family:"IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace; }
+
+header.hero{
+  margin-bottom:40px;
+  padding-bottom:28px;
+  border-bottom:1px solid var(--line);
+}
+.eyebrow{
+  font-family:"IBM Plex Mono", monospace;
+  font-size:11.5px;
+  font-weight:500;
+  letter-spacing:.11em;
+  text-transform:uppercase;
+  color:var(--accent-a);
+  margin:0 0 10px;
+}
+h1{
+  font-size:clamp(28px, 4.2vw, 38px);
+  font-weight:700;
+  letter-spacing:-.01em;
+  margin:0 0 14px;
+  text-wrap:balance;
+}
+.lede{
+  font-size:16px;
+  color:var(--ink-dim);
+  max-width:62ch;
+  margin:0;
+}
+.lede b{ color:var(--ink); font-weight:600; }
+
+section{ margin-bottom:48px; }
+h2{
+  font-size:20px;
+  font-weight:600;
+  margin:0 0 6px;
+  letter-spacing:-.005em;
+}
+.section-note{
+  font-size:14.5px;
+  color:var(--ink-dim);
+  max-width:66ch;
+  margin:0 0 20px;
+}
+
+figure{ margin:0; }
+.diagram-frame{
+  background:var(--surface);
+  border:1px solid var(--line);
+  border-radius:10px;
+  box-shadow:var(--shadow);
+  padding:18px 18px 8px;
+  overflow-x:auto;
+}
+.diagram-frame svg{
+  display:block;
+  width:100%;
+  height:auto;
+  min-width:560px;
+}
+figcaption{
+  font-size:13.5px;
+  color:var(--ink-dim);
+  margin-top:12px;
+  padding:0 2px;
+}
+figcaption b{ color:var(--ink); font-weight:600; }
+
+.legend{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px 18px;
+  margin:16px 2px 0;
+  font-size:12.5px;
+  color:var(--ink-dim);
+}
+.legend span{ display:inline-flex; align-items:center; gap:7px; }
+.legend i{
+  width:10px; height:10px; border-radius:2px; display:inline-block; flex:none;
+}
+
+.table-wrap{ overflow-x:auto; border:1px solid var(--line); border-radius:10px; background:var(--surface); box-shadow:var(--shadow); }
+table{ border-collapse:collapse; width:100%; min-width:640px; font-size:13.5px; }
+thead th{
+  text-align:left;
+  font-family:"IBM Plex Mono", monospace;
+  font-size:11px;
+  font-weight:500;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:var(--ink-faint);
+  padding:13px 16px;
+  border-bottom:1px solid var(--line);
+  background:var(--surface-2);
+}
+tbody td{
+  padding:13px 16px;
+  border-bottom:1px solid var(--line);
+  vertical-align:top;
+  color:var(--ink);
+}
+tbody tr:last-child td{ border-bottom:none; }
+td.tier{ font-family:"IBM Plex Mono", monospace; font-size:12.5px; color:var(--ink-dim); white-space:nowrap; }
+td.comp{ font-weight:600; }
+td.tech{ color:var(--ink-dim); font-size:13px; }
+td.mod{ font-family:"IBM Plex Mono", monospace; font-size:12px; color:var(--ink-dim); white-space:nowrap; }
+.owner{ display:inline-flex; align-items:center; gap:6px; font-family:"IBM Plex Mono", monospace; font-size:12px; white-space:nowrap; }
+.owner i{ width:9px; height:9px; border-radius:50%; display:inline-block; }
+
+.modules{
+  display:flex; flex-wrap:wrap; gap:10px;
+  margin-top:6px;
+}
+.chip{
+  font-family:"IBM Plex Mono", monospace;
+  font-size:12px;
+  padding:7px 12px;
+  border-radius:7px;
+  border:1px solid var(--line);
+  background:var(--surface);
+  color:var(--ink-dim);
+  display:inline-flex; align-items:center; gap:7px;
+}
+.chip i{ width:8px; height:8px; border-radius:50%; }
+
+footer{
+  margin-top:56px;
+  padding-top:20px;
+  border-top:1px solid var(--line);
+  font-size:12.5px;
+  color:var(--ink-faint);
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="hero">
+    <p class="eyebrow">chat-p2p-java · Tài liệu kỹ thuật</p>
+    <h1>Kiến trúc mạng P2P mã hoá đầu-cuối</h1>
+    <p class="lede">Hai peer tự tìm nhau qua 1 <b>signaling server</b> trung gian, rồi tự thiết lập <b>đường truyền UDP trực tiếp</b> bằng ICE — server chỉ relay bản tin thiết lập, không bao giờ chạm vào nội dung chat. Trang này vẽ lại đường đi dữ liệu và 6 tầng thành phần bên trong 1 client, kèm ranh giới ai làm phần nào.</p>
+  </header>
+
+  <section>
+    <h2>Đường đi dữ liệu</h2>
+    <p class="section-note">Vai trò của signaling server đổi hẳn giữa 2 giai đoạn — đây là điểm mấu chốt của kiến trúc: nó chỉ cần thiết để 2 peer <i>tìm và thoả thuận</i> với nhau, sau đó biến mất khỏi đường đi của dữ liệu.</p>
+
+    <figure class="diagram-frame">
+      <svg viewBox="0 0 900 420" role="img" aria-label="Giai đoạn 1-2: Alice và Bob trao đổi JOIN, PEER_LIST, OFFER, ANSWER, ICE_CANDIDATE qua signaling server. Giai đoạn 3: sau khi ICE hoàn tất, Alice và Bob nói chuyện trực tiếp qua UDP, signaling server không còn tham gia.">
+        <defs>
+          <marker id="dpArrowN" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+          </marker>
+          <marker id="dpArrowA" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--accent-a)"/>
+          </marker>
+        </defs>
+
+        <text x="30" y="46" class="mono" font-size="11.5" letter-spacing="1.4" fill="var(--ink-faint)">GIAI ĐOẠN 1–2 · QUA SIGNALING SERVER</text>
+
+        <rect x="30" y="70" width="200" height="80" rx="9" fill="var(--surface)" stroke="var(--line-strong)"/>
+        <text x="130" y="103" text-anchor="middle" font-size="14.5" font-weight="600" fill="var(--ink)">Alice</text>
+        <text x="130" y="122" text-anchor="middle" class="mono" font-size="11" fill="var(--ink-dim)">RoomSession</text>
+
+        <rect x="350" y="70" width="200" height="80" rx="9" fill="var(--accent-infra-soft)" stroke="var(--accent-infra)" stroke-opacity=".55"/>
+        <text x="450" y="99" text-anchor="middle" font-size="14" font-weight="600" fill="var(--ink)">Signaling Server</text>
+        <text x="450" y="118" text-anchor="middle" class="mono" font-size="10.5" fill="var(--ink-dim)">chỉ relay —</text>
+        <text x="450" y="133" text-anchor="middle" class="mono" font-size="10.5" fill="var(--ink-dim)">không đọc/lưu nội dung</text>
+
+        <rect x="670" y="70" width="200" height="80" rx="9" fill="var(--surface)" stroke="var(--line-strong)"/>
+        <text x="770" y="103" text-anchor="middle" font-size="14.5" font-weight="600" fill="var(--ink)">Bob</text>
+        <text x="770" y="122" text-anchor="middle" class="mono" font-size="11" fill="var(--ink-dim)">RoomSession</text>
+
+        <line x1="230" y1="110" x2="350" y2="110" stroke="var(--ink-dim)" stroke-width="1.6" marker-start="url(#dpArrowN)" marker-end="url(#dpArrowN)" color="var(--ink-dim)"/>
+        <text x="290" y="98" text-anchor="middle" class="mono" font-size="10" fill="var(--ink-dim)">JOIN ·</text>
+
+        <line x1="550" y1="110" x2="670" y2="110" stroke="var(--ink-dim)" stroke-width="1.6" marker-start="url(#dpArrowN)" marker-end="url(#dpArrowN)" color="var(--ink-dim)"/>
+        <text x="610" y="98" text-anchor="middle" class="mono" font-size="10" fill="var(--ink-dim)">JOIN ·</text>
+
+        <text x="290" y="175" text-anchor="middle" class="mono" font-size="10" fill="var(--ink-faint)">PEER_LIST / OFFER</text>
+        <text x="290" y="189" text-anchor="middle" class="mono" font-size="10" fill="var(--ink-faint)">ANSWER / ICE_CANDIDATE</text>
+        <text x="610" y="175" text-anchor="middle" class="mono" font-size="10" fill="var(--ink-faint)">PEER_LIST / OFFER</text>
+        <text x="610" y="189" text-anchor="middle" class="mono" font-size="10" fill="var(--ink-faint)">ANSWER / ICE_CANDIDATE</text>
+        <text x="450" y="182" text-anchor="middle" class="mono" font-size="10" fill="var(--ink-faint)">WebSocket · JSON (SignalMessage)</text>
+
+        <line x1="30" y1="210" x2="870" y2="210" stroke="var(--line)" stroke-dasharray="2 5"/>
+
+        <text x="30" y="248" class="mono" font-size="11.5" letter-spacing="1.4" fill="var(--ink-faint)">GIAI ĐOẠN 3 · SAU KHI ICE HOÀN TẤT</text>
+
+        <rect x="30" y="272" width="200" height="80" rx="9" fill="var(--surface)" stroke="var(--line-strong)"/>
+        <text x="130" y="305" text-anchor="middle" font-size="14.5" font-weight="600" fill="var(--ink)">Alice</text>
+        <text x="130" y="324" text-anchor="middle" class="mono" font-size="11" fill="var(--ink-dim)">P2pDataChannel</text>
+
+        <rect x="350" y="272" width="200" height="80" rx="9" fill="none" stroke="var(--line)" stroke-dasharray="4 4" opacity=".6"/>
+        <text x="450" y="308" text-anchor="middle" font-size="12" fill="var(--ink-faint)">Signaling Server</text>
+        <text x="450" y="325" text-anchor="middle" class="mono" font-size="10" fill="var(--ink-faint)">không còn tham gia</text>
+
+        <rect x="670" y="272" width="200" height="80" rx="9" fill="var(--surface)" stroke="var(--line-strong)"/>
+        <text x="770" y="305" text-anchor="middle" font-size="14.5" font-weight="600" fill="var(--ink)">Bob</text>
+        <text x="770" y="324" text-anchor="middle" class="mono" font-size="11" fill="var(--ink-dim)">P2pDataChannel</text>
+
+        <line x1="230" y1="312" x2="670" y2="312" stroke="var(--accent-a)" stroke-width="3" marker-start="url(#dpArrowA)" marker-end="url(#dpArrowA)" color="var(--accent-a)"/>
+        <text x="450" y="296" text-anchor="middle" class="mono" font-size="11" font-weight="600" fill="var(--accent-a)">UDP TRỰC TIẾP</text>
+        <text x="450" y="404" text-anchor="middle" class="mono" font-size="10.5" fill="var(--ink-dim)">ECDH (gói đầu, chưa mã hoá) → Envelope AES-256-GCM (liên tục)</text>
+      </svg>
+    </figure>
+    <figcaption>Trên cùng: <b>2 client</b> chỉ nói chuyện với <b>signaling server</b>, chưa liên lạc trực tiếp. Dưới: sau khi ICE chọn được đường truyền, 2 client nói thẳng với nhau qua <b>UDP</b> — server rớt khỏi bức tranh hoàn toàn.</figcaption>
+  </section>
+
+  <section>
+    <h2>6 tầng bên trong 1 client</h2>
+    <p class="section-note">Alice và Bob chạy đối xứng — cùng 1 chồng tầng này ở cả 2 phía. Tầng 1–2 chỉ <b>bàn giao 1 lần</b> lúc thiết lập rồi rút lui; tầng 3–5 mới là đường dữ liệu <b>chạy liên tục</b> trong suốt phiên chat.</p>
+
+    <figure class="diagram-frame">
+      <svg viewBox="0 0 940 650" role="img" aria-label="Chồng 6 tầng trong 1 client, từ UI trên cùng xuống SignalingClient dưới cùng: UI (client-javafx), Tầng 5 RoomSession, Tầng 4 PeerConnection và EnvelopeCodec, Tầng 3 P2pDataChannel, Tầng 2 IceP2pConnectionEstablisher, Tầng 1 SignalingClient nối ra signaling server bên ngoài qua WebSocket. Mũi tên đặc giữa UI/5/4/3 là luồng dữ liệu liên tục; mũi tên đứt giữa 3-2 và 2-1 là bàn giao một lần lúc thiết lập.">
+        <defs>
+          <marker id="stArrowN" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+          </marker>
+          <marker id="stArrowA" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--accent-a)"/>
+          </marker>
+        </defs>
+
+        <rect x="60" y="30" width="600" height="70" rx="8" fill="var(--surface)" stroke="var(--line-strong)"/>
+        <rect x="60" y="30" width="7" height="70" fill="var(--accent-b)"/>
+        <text x="86" y="58" font-size="14.5" font-weight="600" fill="var(--ink)">Giao diện người dùng</text>
+        <text x="86" y="77" class="mono" font-size="11" fill="var(--ink-dim)">client-javafx</text>
+        <text x="648" y="65" text-anchor="end" class="mono" font-size="10.5" fill="var(--ink-faint)">client-javafx</text>
+
+        <line x1="360" y1="100" x2="360" y2="132" stroke="var(--ink-dim)" stroke-width="1.6" marker-end="url(#stArrowN)" color="var(--ink-dim)"/>
+        <text x="378" y="121" class="mono" font-size="10.5" fill="var(--ink-dim)">gọi API RoomSession (join / leave / send / onEnvelope)</text>
+
+        <rect x="60" y="132" width="600" height="70" rx="8" fill="var(--surface)" stroke="var(--line-strong)"/>
+        <rect x="60" y="132" width="7" height="70" fill="var(--accent-a)"/>
+        <text x="86" y="160" font-size="14.5" font-weight="600" fill="var(--ink)">Tầng 5 · RoomSession</text>
+        <text x="86" y="179" class="mono" font-size="11" fill="var(--ink-dim)">Điều phối mesh N-peer, dispatch Envelope</text>
+        <text x="648" y="167" text-anchor="end" class="mono" font-size="10.5" fill="var(--ink-faint)">p2p-core</text>
+
+        <line x1="360" y1="202" x2="360" y2="234" stroke="var(--ink-dim)" stroke-width="1.6" marker-end="url(#stArrowN)" marker-start="url(#stArrowN)" color="var(--ink-dim)"/>
+        <text x="378" y="223" class="mono" font-size="10.5" fill="var(--ink-dim)">gửi / nhận Envelope · liên tục</text>
+
+        <rect x="60" y="234" width="600" height="70" rx="8" fill="var(--surface)" stroke="var(--line-strong)"/>
+        <rect x="60" y="234" width="7" height="35" fill="var(--accent-a)"/>
+        <rect x="60" y="269" width="7" height="35" fill="var(--accent-b)"/>
+        <text x="86" y="262" font-size="14.5" font-weight="600" fill="var(--ink)">Tầng 4 · PeerConnection + EnvelopeCodec</text>
+        <text x="86" y="281" class="mono" font-size="11" fill="var(--ink-dim)">ECDH secp256r1 → AES-256-GCM</text>
+        <text x="648" y="269" text-anchor="end" class="mono" font-size="10.5" fill="var(--ink-faint)">p2p-core + crypto</text>
+
+        <line x1="360" y1="304" x2="360" y2="336" stroke="var(--ink-dim)" stroke-width="1.6" marker-end="url(#stArrowN)" marker-start="url(#stArrowN)" color="var(--ink-dim)"/>
+        <text x="378" y="325" class="mono" font-size="10.5" fill="var(--ink-dim)">gửi / nhận byte đã mã hoá · liên tục</text>
+
+        <rect x="60" y="336" width="600" height="70" rx="8" fill="var(--surface)" stroke="var(--line-strong)"/>
+        <rect x="60" y="336" width="7" height="70" fill="var(--accent-a)"/>
+        <text x="86" y="364" font-size="14.5" font-weight="600" fill="var(--ink)">Tầng 3 · P2pDataChannel</text>
+        <text x="86" y="383" class="mono" font-size="11" fill="var(--ink-dim)">UDP thô, framing 4-byte length-prefix</text>
+        <text x="648" y="371" text-anchor="end" class="mono" font-size="10.5" fill="var(--ink-faint)">p2p-core</text>
+
+        <line x1="360" y1="406" x2="360" y2="438" stroke="var(--accent-a)" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#stArrowA)"/>
+        <text x="378" y="427" class="mono" font-size="10.5" fill="var(--accent-a)">bàn giao DatagramSocket đã chọn · 1 lần lúc thiết lập</text>
+
+        <rect x="60" y="438" width="600" height="70" rx="8" fill="var(--surface)" stroke="var(--line-strong)"/>
+        <rect x="60" y="438" width="7" height="70" fill="var(--accent-a)"/>
+        <text x="86" y="466" font-size="14.5" font-weight="600" fill="var(--ink)">Tầng 2 · IceP2pConnectionEstablisher</text>
+        <text x="86" y="485" class="mono" font-size="11" fill="var(--ink-dim)">ICE / STUN qua ice4j (RFC 8445)</text>
+        <text x="648" y="473" text-anchor="end" class="mono" font-size="10.5" fill="var(--ink-faint)">p2p-core</text>
+
+        <line x1="360" y1="508" x2="360" y2="540" stroke="var(--accent-a)" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#stArrowA)"/>
+        <text x="378" y="529" class="mono" font-size="10.5" fill="var(--accent-a)">relay OFFER / ANSWER / ICE_CANDIDATE · 1 lần lúc thiết lập</text>
+
+        <rect x="60" y="540" width="600" height="70" rx="8" fill="var(--surface)" stroke="var(--line-strong)"/>
+        <rect x="60" y="540" width="7" height="70" fill="var(--accent-a)"/>
+        <text x="86" y="568" font-size="14.5" font-weight="600" fill="var(--ink)">Tầng 1 · SignalingClient</text>
+        <text x="86" y="587" class="mono" font-size="11" fill="var(--ink-dim)">Tìm nhau + JOIN / PEER_LIST</text>
+        <text x="648" y="575" text-anchor="end" class="mono" font-size="10.5" fill="var(--ink-faint)">p2p-core</text>
+
+        <line x1="660" y1="575" x2="700" y2="575" stroke="var(--ink-dim)" stroke-width="1.6" marker-start="url(#stArrowN)" marker-end="url(#stArrowN)" color="var(--ink-dim)"/>
+        <rect x="700" y="540" width="200" height="70" rx="8" fill="var(--accent-infra-soft)" stroke="var(--accent-infra)" stroke-opacity=".55"/>
+        <text x="800" y="568" text-anchor="middle" font-size="13" font-weight="600" fill="var(--ink)">signaling-server</text>
+        <text x="800" y="586" text-anchor="middle" class="mono" font-size="10" fill="var(--ink-dim)">WebSocket · Spring Boot</text>
+        <text x="800" y="527" text-anchor="middle" class="mono" font-size="9.5" fill="var(--ink-faint)">quá trình riêng, ngoài client</text>
+      </svg>
+    </figure>
+    <figcaption>Cạnh trái mỗi băng là màu sở hữu. Tầng 4 có 2 màu vì <b>khung PeerConnection/EnvelopeCodec</b> do A viết, còn <b>KeyExchangeService/AesGcmCipher</b> bên trong do B viết.</figcaption>
+
+    <div class="legend">
+      <span><i style="background:var(--accent-a)"></i>Thành viên A — Mạng &amp; Kết nối</span>
+      <span><i style="background:var(--accent-b)"></i>Thành viên B — Mã hoá &amp; Giao diện</span>
+      <span><i style="background:var(--accent-infra)"></i>Hạ tầng dùng chung</span>
+    </div>
+  </section>
+
+  <section>
+    <h2>Bảng tra nhanh</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Tầng</th><th>Thành phần</th><th>Công nghệ / giao thức</th><th>Module Maven</th><th>Sở hữu</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="tier">Giao diện</td>
+            <td class="comp">client-javafx UI</td>
+            <td class="tech">JavaFX</td>
+            <td class="mod">client-javafx</td>
+            <td><span class="owner"><i style="background:var(--accent-b)"></i>B</span></td>
+          </tr>
+          <tr>
+            <td class="tier">Tầng 5</td>
+            <td class="comp">RoomSession</td>
+            <td class="tech">Điều phối mesh N-peer (N×(N-1)/2 kết nối)</td>
+            <td class="mod">p2p-core</td>
+            <td><span class="owner"><i style="background:var(--accent-a)"></i>A</span></td>
+          </tr>
+          <tr>
+            <td class="tier">Tầng 4</td>
+            <td class="comp">PeerConnection · EnvelopeCodec</td>
+            <td class="tech">ECDH secp256r1 → AES-256-GCM (IV 12 byte)</td>
+            <td class="mod">p2p-core + crypto</td>
+            <td><span class="owner"><i style="background:var(--accent-a)"></i>A</span> <span class="owner"><i style="background:var(--accent-b)"></i>B</span></td>
+          </tr>
+          <tr>
+            <td class="tier">Tầng 3</td>
+            <td class="comp">P2pDataChannel</td>
+            <td class="tech">UDP thô, length-prefix 4 byte</td>
+            <td class="mod">p2p-core</td>
+            <td><span class="owner"><i style="background:var(--accent-a)"></i>A</span></td>
+          </tr>
+          <tr>
+            <td class="tier">Tầng 2</td>
+            <td class="comp">IceP2pConnectionEstablisher</td>
+            <td class="tech">ICE / STUN qua ice4j (RFC 8445)</td>
+            <td class="mod">p2p-core</td>
+            <td><span class="owner"><i style="background:var(--accent-a)"></i>A</span></td>
+          </tr>
+          <tr>
+            <td class="tier">Tầng 1</td>
+            <td class="comp">SignalingClient</td>
+            <td class="tech">WebSocket + JSON (SignalMessage)</td>
+            <td class="mod">p2p-core</td>
+            <td><span class="owner"><i style="background:var(--accent-a)"></i>A</span></td>
+          </tr>
+          <tr>
+            <td class="tier">Hạ tầng</td>
+            <td class="comp">signaling-server</td>
+            <td class="tech">Spring Boot WebSocket, chỉ relay, không lưu trạng thái</td>
+            <td class="mod">signaling-server</td>
+            <td><span class="owner"><i style="background:var(--accent-a)"></i>A</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>
+    <p style="margin:0 0 12px">5 module Maven trong dự án:</p>
+    <div class="modules">
+      <span class="chip"><i style="background:var(--ink-faint)"></i>common</span>
+      <span class="chip"><i style="background:var(--accent-b)"></i>crypto</span>
+      <span class="chip"><i style="background:var(--accent-a)"></i>p2p-core</span>
+      <span class="chip"><i style="background:var(--accent-a)"></i>signaling-server</span>
+      <span class="chip"><i style="background:var(--accent-b)"></i>client-javafx</span>
+    </div>
+  </footer>
+
+</div>
+</body>
+</html>
