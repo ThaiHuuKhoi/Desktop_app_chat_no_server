@@ -13,6 +13,8 @@ import org.ice4j.ice.IceMediaStream;
 import org.ice4j.ice.IceProcessingState;
 import org.ice4j.ice.RemoteCandidate;
 import org.ice4j.ice.harvest.StunCandidateHarvester;
+import org.ice4j.ice.harvest.TurnCandidateHarvester;
+import org.ice4j.security.LongTermCredential;
 
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
@@ -59,11 +61,16 @@ import java.util.stream.Collectors;
  *
  * <p><b>Chua lam trong ban dau nay</b> (de bo sung sau khi co ket qua test that):
  * <ul>
- *   <li>TURN relay du phong (chi moi co STUN harvester) - Tai-lieu-ky-thuat.md
- *       Phan G.6 va E.6.2 co nhac toi TURN nhung chua cai dat cu the.</li>
  *   <li>Trickle ICE (gui candidate ho tro sau khi da gui offer/answer) - hien
  *       tai gather toan bo candidate xong roi moi gui 1 lan.</li>
  * </ul>
+ *
+ * <p><b>TURN du phong</b> (Tai-lieu-ky-thuat.md Phan G.6/E.6.2): da them qua
+ * {@link #IceP2pConnectionEstablisher(List, List)} - truyen 1 hoac nhieu
+ * {@link TurnServerConfig} de dang ky them {@code TurnCandidateHarvester}
+ * cua ice4j, dung khi STUN thuong khong du (ca 2 peer cung sau NAT doi
+ * xung). {@link IceConnectionStats#usingRelay()} bao dung neu ket noi that
+ * su phai di qua relay nay.
  */
 public final class IceP2pConnectionEstablisher {
 
@@ -135,6 +142,20 @@ public final class IceP2pConnectionEstablisher {
      *                    candidate khi 2 peer khac mang/sau NAT.
      */
     public IceP2pConnectionEstablisher(List<TransportAddress> stunServers) {
+        this(stunServers, List.of());
+    }
+
+    /**
+     * @param stunServers danh sach dia chi STUN server - xem javadoc constructor kia.
+     * @param turnServers danh sach TURN server DU PHONG (co the rong - khong bat
+     *                    buoc phai co) - chi thuc su can khi STUN khong du tim
+     *                    duong truyen truc tiep (vi du ca 2 peer cung sau NAT doi
+     *                    xung/"symmetric NAT", STUN khong the giup xuyen qua duoc
+     *                    truong hop nay - RFC 8445 Muc 5.1.2.1). Khi co TURN,
+     *                    {@code IceConnectionStats.usingRelay()} tra ve true neu
+     *                    ket noi that su phai di qua relay nay.
+     */
+    public IceP2pConnectionEstablisher(List<TransportAddress> stunServers, List<TurnServerConfig> turnServers) {
         // Tat trickle ICE tuong minh (khong phu thuoc gia tri mac dinh cua ice4j):
         // thiet ke nay gather toan bo candidate ngay trong createComponent() roi
         // moi gui 1 lan qua signaling, xem javadoc lop nay va Tai-lieu-ky-thuat.md
@@ -143,6 +164,17 @@ public final class IceP2pConnectionEstablisher {
         agent.setTrickling(false);
         for (TransportAddress stunServer : stunServers) {
             agent.addCandidateHarvester(new StunCandidateHarvester(stunServer));
+        }
+        // TurnCandidateHarvester ke thua StunCandidateHarvester (ice4j) - vua tim
+        // candidate server-reflexive (nhu STUN thuong), vua tu dong xin them 1
+        // candidate RELAYED qua TURN (dung khi khong ben nao trong 2 peer tu ket
+        // noi truc tiep duoc voi nhau, ke ca sau khi da co server-reflexive tu
+        // STUN thuong - xem javadoc constructor nay). TURN BAT BUOC xac thuc
+        // (long-term credential, RFC 5766 Muc 2.2), khac STUN thuong khong can.
+        for (TurnServerConfig turnServer : turnServers) {
+            agent.addCandidateHarvester(new TurnCandidateHarvester(
+                    turnServer.address(),
+                    new LongTermCredential(turnServer.username(), turnServer.password())));
         }
         this.mediaStream = agent.createMediaStream("data");
         // Xoay vong diem bat dau do cong qua tung instance - xem javadoc cua

@@ -8,6 +8,7 @@ import com.datn.chatp2p.common.signal.ice.IceAnswerPayload;
 import com.datn.chatp2p.common.signal.ice.IceOfferPayload;
 import com.datn.chatp2p.crypto.KeyExchangeService;
 import com.datn.chatp2p.p2p.ice.IceP2pConnectionEstablisher;
+import com.datn.chatp2p.p2p.ice.TurnServerConfig;
 import com.datn.chatp2p.p2p.signaling.SignalingClient;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -54,6 +55,7 @@ public final class RoomSession {
     private final String selfUserName;
     private final SignalingClient signalingClient;
     private final List<TransportAddress> stunServers;
+    private final List<TurnServerConfig> turnServers;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private final Map<String, PeerConnection> peers = new ConcurrentHashMap<>();
@@ -120,11 +122,30 @@ public final class RoomSession {
             String selfUserName,
             SignalingClient signalingClient,
             List<TransportAddress> stunServers) {
+        this(roomId, selfPeerId, selfUserName, signalingClient, stunServers, List.of());
+    }
+
+    /**
+     * @param stunServers danh sach STUN server - xem constructor kia.
+     * @param turnServers danh sach TURN server DU PHONG truyen cho MOI
+     *                    {@link IceP2pConnectionEstablisher} moi tao (co the
+     *                    rong) - xem {@code IceP2pConnectionEstablisher} de
+     *                    biet khi nao thuc su can (STUN khong du, ca 2 peer
+     *                    cung sau NAT doi xung).
+     */
+    public RoomSession(
+            String roomId,
+            String selfPeerId,
+            String selfUserName,
+            SignalingClient signalingClient,
+            List<TransportAddress> stunServers,
+            List<TurnServerConfig> turnServers) {
         this.roomId = roomId;
         this.selfPeerId = selfPeerId;
         this.selfUserName = selfUserName;
         this.signalingClient = signalingClient;
         this.stunServers = stunServers;
+        this.turnServers = turnServers;
 
         signalingClient.onPeerList(this::handlePeerList);
         signalingClient.onPeerJoined(this::handlePeerJoinedNotice);
@@ -317,7 +338,7 @@ public final class RoomSession {
      * {@link #handleOffer} truoc day tu lap lai y het doan nay).
      */
     private IceP2pConnectionEstablisher createEstablisherFor(String peerId, String userName) {
-        IceP2pConnectionEstablisher establisher = new IceP2pConnectionEstablisher(stunServers);
+        IceP2pConnectionEstablisher establisher = new IceP2pConnectionEstablisher(stunServers, turnServers);
         // QUAN TRONG (bao mat): pendingEstablishers.put() tra ve GIA TRI CU neu da
         // co san 1 establisher dang cho cho DUNG peerId nay (vd 1 peer gui lai OFFER
         // lan 2 truoc khi lan dau kip hoan tat - do bug o phia ho, hoac CO Y tan
