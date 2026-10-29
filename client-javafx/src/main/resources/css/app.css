@@ -1,128 +1,419 @@
 /*
- * Stylesheet toi gian cho giao dien Chat P2P Java.
- * Phong theo bang mau sang/gon cua chitchatter (khong sao chep code, chi lay
- * cam hung ve mau sac trung tinh + bong bong tin nhan ro rang).
+ * Stylesheet cho giao dien Chat P2P Java, dat TREN theme AtlantaFX (xem
+ * ThemeManager). Chi dung bien mau cua AtlantaFX (-color-bg-*, -color-fg-*,
+ * -color-accent-*, -color-success-*...) thay vi ma mau co dinh, nen tu doi
+ * mau dung khi chuyen giao dien sang/toi.
+ *
+ * Quy uoc mau theo y nghia: xanh la = an toan (ma hoa, da xac thuc, truc
+ * tiep); vang = can chu y (demo, relay, chua xac thuc); do = nguy hiem/huy.
+ *
+ * Bang bien mau: https://mkpaz.github.io/atlantafx/reference/
  */
 
+/* ---------- Chung ---------- */
+
+.avatar-initial {
+    -fx-fill: white;
+    -fx-font-weight: bold;
+}
+
+.error-label {
+    -fx-text-fill: -color-danger-fg;
+}
+
+/* ---------- Man hinh Home ---------- */
+
 .home-root {
-    -fx-background-color: #f5f6fa;
+    -fx-background-color: -color-bg-subtle;
+}
+
+.home-card {
+    -fx-background-color: -color-bg-default;
+    -fx-background-radius: 14;
+    -fx-border-color: -color-border-default;
+    -fx-border-radius: 14;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.18), 28, 0, 0, 6);
+}
+
+.app-logo {
+    -fx-icon-size: 30px;
+    -fx-icon-color: -color-accent-fg;
 }
 
 .app-title {
-    -fx-font-size: 26px;
+    -fx-font-size: 24px;
     -fx-font-weight: bold;
-    -fx-text-fill: #2c3e50;
+    -fx-text-fill: -color-fg-default;
 }
 
 .app-subtitle {
     -fx-font-size: 12px;
-    -fx-text-fill: #7f8c8d;
-    -fx-text-alignment: center;
+    -fx-text-fill: -color-fg-muted;
 }
 
-.error-label {
-    -fx-text-fill: #c0392b;
+.app-subtitle-icon {
+    -fx-icon-size: 12px;
+    -fx-icon-color: -color-success-fg;
 }
 
-.primary-button {
-    -fx-background-color: #2f6feb;
-    -fx-text-fill: white;
+.identity-row {
+    -fx-padding: 12;
+    -fx-background-color: -color-bg-subtle;
+    -fx-background-radius: 10;
+}
+
+.field-label {
     -fx-font-weight: bold;
-    -fx-padding: 8 18 8 18;
-    -fx-background-radius: 6;
+    -fx-text-fill: -color-fg-default;
 }
 
-.primary-button:hover {
-    -fx-background-color: #2558c4;
+.field-hint {
+    -fx-font-size: 11px;
+    -fx-text-fill: -color-fg-subtle;
 }
+
+.join-button {
+    -fx-padding: 10 18 10 18;
+    -fx-font-weight: bold;
+}
+
+/* ---------- Man hinh Room: cot trai ---------- */
 
 .room-root {
-    -fx-background-color: #ffffff;
+    -fx-background-color: -color-bg-default;
 }
 
-.room-header {
-    -fx-background-color: #2c3e50;
-}
-
-.room-title {
-    -fx-text-fill: white;
-    -fx-font-size: 16px;
-    -fx-font-weight: bold;
-}
-
-.peer-panel {
-    -fx-background-color: #f5f6fa;
-    -fx-border-color: #e1e4e8;
+.sidebar {
+    -fx-background-color: -color-bg-subtle;
+    -fx-border-color: -color-border-default;
     -fx-border-width: 0 1 0 0;
+}
+
+.sidebar-header {
+    -fx-padding: 14 12 14 16;
+    -fx-border-color: -color-border-muted;
+    -fx-border-width: 0 0 1 0;
+}
+
+.room-icon {
+    -fx-icon-size: 22px;
+    -fx-icon-color: -color-accent-fg;
+}
+
+.room-name {
+    -fx-font-size: 15px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -color-fg-default;
+}
+
+.room-subtitle-icon {
+    -fx-icon-size: 11px;
+    -fx-icon-color: -color-success-fg;
+}
+
+.room-subtitle {
+    -fx-font-size: 11px;
+    -fx-text-fill: -color-success-fg;
+}
+
+.section-header {
+    -fx-padding: 14 16 6 16;
+}
+
+.section-title-icon {
+    -fx-icon-size: 12px;
+    -fx-icon-color: -color-fg-muted;
 }
 
 .section-title {
     -fx-font-size: 11px;
     -fx-font-weight: bold;
-    -fx-text-fill: #7f8c8d;
+    -fx-text-fill: -color-fg-muted;
 }
 
-.peer-avatar {
-    -fx-fill: #2f6feb;
+.peer-list,
+.peer-list .list-cell {
+    -fx-background-color: transparent;
 }
 
-.peer-avatar-initial {
-    -fx-fill: white;
-    -fx-font-weight: bold;
+.peer-list .list-cell {
+    -fx-padding: 8 12 8 12;
+}
+
+.peer-list .list-cell:hover {
+    -fx-background-color: -color-bg-default;
+}
+
+.status-dot-online {
+    -fx-fill: -color-success-emphasis;
+    -fx-stroke: -color-bg-subtle;
+    -fx-stroke-width: 2;
 }
 
 .peer-name {
     -fx-font-weight: bold;
-    -fx-font-size: 12px;
+    -fx-font-size: 13px;
+    -fx-text-fill: -color-fg-default;
 }
 
 .peer-fingerprint {
     -fx-font-family: monospace;
-    -fx-font-size: 9px;
-    -fx-text-fill: #95a5a6;
-}
-
-.peer-verify-button {
     -fx-font-size: 10px;
-    -fx-padding: 2 8 2 8;
+    -fx-text-fill: -color-fg-subtle;
 }
 
-.peer-verified-badge {
-    -fx-text-fill: #27ae60;
-    -fx-font-size: 10px;
-    -fx-font-weight: bold;
+.peer-verified-badge .ikonli-font-icon {
+    -fx-icon-size: 18px;
+    -fx-icon-color: -color-success-fg;
 }
 
-.chat-panel {
-    -fx-background-color: #ffffff;
-}
-
-.transcript {
-    -fx-background-color: transparent;
-    -fx-padding: 8;
-}
-
-.message-input-bar {
-    -fx-background-color: #f5f6fa;
-    -fx-border-color: #e1e4e8;
+.self-card {
+    -fx-padding: 10 10 10 14;
+    -fx-border-color: -color-border-muted;
     -fx-border-width: 1 0 0 0;
 }
 
-.message-meta {
-    -fx-font-size: 9px;
-    -fx-text-fill: #95a5a6;
+.self-name {
+    -fx-font-weight: bold;
+    -fx-text-fill: -color-fg-default;
+}
+
+.self-subtitle {
+    -fx-font-size: 11px;
+    -fx-text-fill: -color-fg-muted;
+}
+
+/* ---------- Man hinh Room: khung chat ---------- */
+
+.chat-panel {
+    -fx-background-color: -color-bg-default;
+}
+
+.chat-header {
+    -fx-padding: 12 20 12 20;
+    -fx-border-color: -color-border-default;
+    -fx-border-width: 0 0 1 0;
+}
+
+.chat-title {
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -color-fg-default;
+}
+
+.status-chip {
+    -fx-font-size: 11px;
+    -fx-padding: 3 9 3 8;
+    -fx-background-radius: 999;
+    -fx-graphic-text-gap: 5;
+}
+
+.status-chip .ikonli-font-icon {
+    -fx-icon-size: 12px;
+}
+
+.chip-success {
+    -fx-background-color: -color-success-subtle;
+    -fx-text-fill: -color-success-fg;
+}
+
+.chip-success .ikonli-font-icon {
+    -fx-icon-color: -color-success-fg;
+}
+
+.chip-warning {
+    -fx-background-color: -color-warning-subtle;
+    -fx-text-fill: -color-warning-fg;
+}
+
+.chip-warning .ikonli-font-icon {
+    -fx-icon-color: -color-warning-fg;
+}
+
+.chip-neutral {
+    -fx-background-color: -color-neutral-subtle;
+    -fx-text-fill: -color-fg-muted;
+}
+
+.chip-neutral .ikonli-font-icon {
+    -fx-icon-color: -color-fg-muted;
+}
+
+.transcript,
+.transcript .list-cell {
+    -fx-background-color: -color-bg-default;
+}
+
+.transcript .list-cell {
+    -fx-padding: 0 20 0 20;
+}
+
+.message-author {
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -color-fg-muted;
+}
+
+.bubble-mine {
+    -fx-background-color: -color-accent-emphasis;
+    -fx-background-radius: 16 16 4 16;
+    -fx-padding: 8 12 6 12;
+}
+
+.bubble-other {
+    -fx-background-color: -color-bg-subtle;
+    -fx-background-radius: 16 16 16 4;
+    -fx-border-color: -color-border-muted;
+    -fx-border-radius: 16 16 16 4;
+    -fx-padding: 8 12 6 12;
 }
 
 .message-text {
     -fx-font-size: 13px;
+    -fx-text-fill: -color-fg-default;
 }
 
-.message-bubble-mine {
-    -fx-background-color: #d6e4ff;
-    -fx-background-radius: 12;
+.message-time {
+    -fx-font-size: 10px;
+    -fx-text-fill: -color-fg-subtle;
+    -fx-graphic-text-gap: 3;
 }
 
-.message-bubble-other {
-    -fx-background-color: #eef0f3;
-    -fx-background-radius: 12;
+.message-time .ikonli-font-icon {
+    -fx-icon-size: 11px;
+}
+
+.bubble-mine .message-text {
+    -fx-text-fill: -color-fg-emphasis;
+}
+
+.bubble-mine .message-time {
+    -fx-text-fill: -color-fg-emphasis;
+    -fx-opacity: 0.8;
+}
+
+.bubble-mine .message-time .ikonli-font-icon {
+    -fx-icon-color: -color-fg-emphasis;
+}
+
+.system-notice {
+    -fx-font-size: 11px;
+    -fx-padding: 4 12 4 10;
+    -fx-background-radius: 999;
+    -fx-graphic-text-gap: 6;
+    -fx-background-color: -color-neutral-subtle;
+    -fx-text-fill: -color-fg-muted;
+}
+
+.system-notice .ikonli-font-icon {
+    -fx-icon-size: 12px;
+    -fx-icon-color: -color-fg-muted;
+}
+
+.notice-secure {
+    -fx-background-color: -color-success-subtle;
+    -fx-text-fill: -color-success-fg;
+}
+
+.notice-secure .ikonli-font-icon {
+    -fx-icon-color: -color-success-fg;
+}
+
+.notice-warning {
+    -fx-background-color: -color-danger-subtle;
+    -fx-text-fill: -color-danger-fg;
+}
+
+.notice-warning .ikonli-font-icon {
+    -fx-icon-color: -color-danger-fg;
+}
+
+.empty-state {
+    -fx-padding: 28;
+    -fx-background-color: -color-bg-subtle;
+    -fx-background-radius: 14;
+    -fx-border-color: -color-border-muted;
+    -fx-border-radius: 14;
+}
+
+.empty-state-icon {
+    -fx-icon-size: 36px;
+    -fx-icon-color: -color-accent-fg;
+}
+
+.empty-state-title {
+    -fx-font-size: 15px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -color-fg-default;
+}
+
+.empty-state-text {
+    -fx-text-fill: -color-fg-muted;
+}
+
+.empty-state-room {
+    -fx-font-family: monospace;
+    -fx-font-size: 14px;
+    -fx-padding: 6 12 6 12;
+    -fx-background-color: -color-bg-default;
+    -fx-background-radius: 8;
+    -fx-text-fill: -color-fg-default;
+}
+
+/* ---------- O nhap tin nhan ---------- */
+
+.message-input-bar {
+    -fx-padding: 10 20 8 20;
+    -fx-border-color: -color-border-default;
+    -fx-border-width: 1 0 0 0;
+}
+
+.message-area {
+    -fx-pref-height: 54px;
+    -fx-max-height: 120px;
+}
+
+.send-button {
+    -fx-min-width: 42px;
+    -fx-min-height: 42px;
+}
+
+.input-hint-icon {
+    -fx-icon-size: 10px;
+    -fx-icon-color: -color-success-fg;
+}
+
+.input-hint {
+    -fx-font-size: 10px;
+    -fx-text-fill: -color-fg-subtle;
+}
+
+/* ---------- Hop thoai van tay ---------- */
+
+.fingerprint-block {
+    -fx-padding: 12;
+    -fx-background-color: -color-bg-subtle;
+    -fx-background-radius: 10;
+}
+
+.fingerprint-title {
+    -fx-font-weight: bold;
+    -fx-text-fill: -color-fg-muted;
+}
+
+.fingerprint-value {
+    -fx-font-family: monospace;
+    -fx-font-size: 16px;
+    -fx-text-fill: -color-fg-default;
+    -fx-line-spacing: 4;
+}
+
+.fingerprint-warning {
+    -fx-font-size: 11px;
+    -fx-text-fill: -color-warning-fg;
+    -fx-graphic-text-gap: 6;
+}
+
+.fingerprint-warning .ikonli-font-icon {
+    -fx-icon-color: -color-warning-fg;
 }
