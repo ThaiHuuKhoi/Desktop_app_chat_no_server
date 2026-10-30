@@ -28,10 +28,10 @@ import javax.crypto.SecretKey;
 public final class DemoPeerSimulator {
 
     private static final List<String> CANNED_REPLIES = List.of(
-            "Da nhan tin nhan cua ban qua kenh ma hoa!",
-            "Xin chao, day la peer mo phong (chua qua mang that).",
-            "Noi dung nay duoc giai ma bang AES-GCM sau khi qua ECDH.",
-            "Ban tin da toi noi an toan."
+            "Đã nhận tin nhắn của bạn qua kênh mã hoá!",
+            "Xin chào, mình là peer mô phỏng (chưa qua mạng thật).",
+            "Nội dung này được giải mã bằng AES-GCM sau khi trao khoá ECDH.",
+            "Bản tin đã tới nơi an toàn."
     );
 
     private final String peerId = UUID.randomUUID().toString();

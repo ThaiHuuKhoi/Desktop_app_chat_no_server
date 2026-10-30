@@ -21,6 +21,11 @@
     P2pDataChannel that o tuan tich hop. Phu trach: Thanh vien B.
   </description>
 
+  <properties>
+    <atlantafx.version>2.0.1</atlantafx.version>
+    <ikonli.version>12.3.1</ikonli.version>
+  </properties>
+
   <dependencies>
     <dependency>
       <groupId>com.datn.chatp2p</groupId>
@@ -44,6 +49,24 @@
       <groupId>org.openjfx</groupId>
       <artifactId>javafx-fxml</artifactId>
       <version>${javafx.version}</version>
+    </dependency>
+
+    <!-- Theme hien dai cho JavaFX (sang/toi, mau theo bien CSS) - https://github.com/mkpaz/atlantafx -->
+    <dependency>
+      <groupId>io.github.mkpaz</groupId>
+      <artifactId>atlantafx-base</artifactId>
+      <version>${atlantafx.version}</version>
+    </dependency>
+    <!-- Icon dang font (bo Feather), dung duoc ca trong FXML lan Java - https://kordamp.org/ikonli/ -->
+    <dependency>
+      <groupId>org.kordamp.ikonli</groupId>
+      <artifactId>ikonli-javafx</artifactId>
+      <version>${ikonli.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.kordamp.ikonli</groupId>
+      <artifactId>ikonli-feather-pack</artifactId>
+      <version>${ikonli.version}</version>
     </dependency>
 
     <dependency>
