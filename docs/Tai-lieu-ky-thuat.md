@@ -129,7 +129,7 @@ Không làm: tài khoản người dùng bền vững/danh bạ liên hệ lâu 
 | `crypto` | `com.datn.chatp2p.crypto` | `KeyExchangeService` (ECDH secp256r1), `AesGcmCipher`, `Fingerprint` | `KeyExchangeServiceTest`, `AesGcmCipherTest` (5 test) | Hoàn chỉnh, đã test pass; cần thêm `IdentitySignatureService` (Phần E, mục 5.1) |
 | `p2p-core` | `com.datn.chatp2p.p2p` | `LoopbackDataChannel` (dùng thật cho demo), `P2pDataChannel` (stub), `SignalingClient`/`WebSocketSignalingClient` (stub) | `LoopbackDataChannelTest` | Chỉ phần loopback là thật; `P2pDataChannel`/`WebSocketSignalingClient` cần hoàn thiện theo Phần E, mục 6 |
 | `signaling-server` | `com.datn.chatp2p.signaling` | `SignalingServerApplication`, `SignalingWebSocketHandler`, `RoomRegistry`, `PeerSession`, `WebSocketConfig` | `SignalingWebSocketHandlerTest` (integration test WebSocket thật) | Hoàn chỉnh cho vai trò relay JOIN/PEER_LIST/PEER_JOINED/PEER_LEFT/OFFER/ANSWER/ICE_CANDIDATE |
-| `client-javafx` | `com.datn.chatp2p.client` | `ChatApplication`, `HomeController`, `RoomController`, `PeerListCell`, `MessageListCell`, `DemoPeerSimulator`, `RoomNameGenerator` | `RoomNameGeneratorTest` | UI hoàn chỉnh cho demo loopback; cần đấu nối `RoomSession` thật (Phần E, mục 10) |
+| `client-javafx` | `com.datn.chatp2p.client` | `ChatApplication`, `HomeController`, `RoomController`, `PeerListCell`, `RoomNameGenerator` | `RoomNameGeneratorTest` | UI client P2P thật, kết nối qua `RoomSession` |
 
 **Phụ thuộc giữa các module** (Maven `dependencyManagement` ở pom cha):
 
@@ -767,7 +767,7 @@ Java không có WebRTC/codec built-in. Đề xuất phương án **đơn giản 
 
 ## E.10 Việc phải sửa trong code hiện có khi bắt tay vào bước 1-4
 
-- `RoomController.start(...)`: thay đoạn tạo `LoopbackDataChannel.Pair` + `DemoPeerSimulator` bằng tạo `RoomSession` thật (`new RoomSession(roomId, selfPeerId, identityKeyPair, webSocketSignalingClient)`), gọi `roomSession.join()`.
+- `RoomController.start(...)`: tạo `RoomSession` thật và gọi `roomSession.join()`.
 - `RoomController.onSendMessage()`: đổi `myChannel.send(AesGcmCipher.encrypt(...))` thành `roomSession.broadcast(EnvelopeType.MESSAGE, new MessagePayload(...))` — bỏ hẳn việc gọi `AesGcmCipher` trực tiếp ở tầng UI (chuyển xuống `EnvelopeCodec`, đúng nguyên tắc tách lớp).
 - `PeerListCell`: bỏ nút "Xác thực" thủ công + `RoomController.onVerifyRequested(...)`, thay bằng lắng nghe `verificationState` cập nhật tự động từ `RoomSession`.
 - `P2pDataChannel`, `WebSocketSignalingClient`: xoá `UnsupportedOperationException`, cài đặt thật theo mục E.6.

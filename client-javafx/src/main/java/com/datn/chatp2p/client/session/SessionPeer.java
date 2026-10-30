@@ -23,8 +23,6 @@ public record SessionPeer(
 
     /** Duong truyen dang dung voi peer - hien tren header de nguoi dung biet. */
     public enum ConnectionKind {
-        /** Peer gia lap trong cung tien trinh (che do demo). */
-        DEMO,
         /** P2P truc tiep sau ICE. */
         DIRECT,
         /** Di vong qua TURN relay (van ma hoa dau-cuoi). */

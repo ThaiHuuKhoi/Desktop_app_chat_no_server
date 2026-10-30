@@ -8,24 +8,7 @@ import com.datn.chatp2p.common.model.ChatMessage;
  * {@code DataChannel} hay {@code RoomSession} - dung huong Tai-lieu-ky-thuat.md
  * muc E.10 (bo viec UI tu goi ma hoa).
  *
- * <p>Hai cai dat:
- * <ul>
- *   <li>{@link DemoChatSession} - peer gia lap qua {@code LoopbackDataChannel},
- *       ma hoa that (ECDH + AES-GCM), khong can mang.</li>
- *   <li>Ban that (tich hop voi {@code RoomSession} cua p2p-core) - chi can them
- *       1 lop moi va dang ky trong {@link ChatSessions#create}:
- *       <ul>
- *         <li>{@link #start}: dang ky {@code roomSession.onPeerJoined / onPeerLeft /
- *             onConnectionFailed / onEnvelope(MESSAGE, ...)} roi goi {@code join(serverUri)}.</li>
- *         <li>{@link #sendGroupMessage}: {@code roomSession.broadcast(EnvelopeType.MESSAGE,
- *             new MessagePayload(id, authorId, text, timeSent))}.</li>
- *         <li>{@link #leave}: {@code roomSession.leave()}.</li>
- *         <li>De hien van tay va kieu ket noi trong {@link SessionPeer}, can
- *             {@code PeerConnection} cung cap them public key ECDH cua 2 ben va
- *             thong tin truc tiep/relay (tu {@code IceConnectionStats}).</li>
- *       </ul>
- *   </li>
- * </ul>
+ * <p>Implementation hien tai tich hop voi {@code RoomSession} cua p2p-core.
  *
  * <p>Moi callback cua {@link ChatSessionListener} co the duoc goi tu thread
  * mang - giao dien tu chuyen ve JavaFX thread.

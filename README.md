@@ -68,7 +68,7 @@ mvn -pl client-javafx javafx:run
 
 Demo JavaFX: nhap ten hien thi -> tao/vao phong -> man hinh Room hien hai
 "peer": ban va mot "Nguoi dung demo" (mo phong noi bo qua `LoopbackDataChannel`
-va `DemoPeerSimulator`, xem [client-javafx/.../demo](client-javafx/src/main/java/com/datn/chatp2p/client/demo)).
+va client P2P that qua signaling server.
 Goi tin nhan se duoc ma hoa AES-GCM that (khoa phien sinh tu ECDH that) truoc
 khi gui qua kenh, va Nguoi dung demo se tu dong tra loi sau ~1 giay - chung
 minh tron pipeline UI + ma hoa + DataChannel hoat dong dung truoc khi lap
@@ -85,7 +85,7 @@ Buoc tiep theo, anh xa vao [Phan-cong-cong-viec.md](docs/Phan-cong-cong-viec.md)
 
 - **Thanh vien A**: cai dat that `P2pDataChannel` va `WebSocketSignalingClient`
   (module `p2p-core`) bang ice4j - xem cac TODO trong hai file do.
-- **Thanh vien B**: khi A xong, thay `LoopbackDataChannel` + `DemoPeerSimulator`
+- **Thanh vien B**: tich hop client JavaFX voi `RoomSession` that
   trong [RoomController](client-javafx/src/main/java/com/datn/chatp2p/client/view/RoomController.java)
   bang ket noi that toi cac peer khac trong phong (qua `SignalingClient` +
   `P2pDataChannel`); logic ma hoa/UI giu nguyen. Sau do them truyen file

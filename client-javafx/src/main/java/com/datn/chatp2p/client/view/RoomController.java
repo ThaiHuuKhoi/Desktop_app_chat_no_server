@@ -128,7 +128,7 @@ public class RoomController implements ChatSessionListener {
         stage.setOnCloseRequest(event -> session.leave());
 
         notice(NoticeKind.INFO, "Bạn đã vào phòng " + config.roomName()
-                + (config.demoMode() ? " (chế độ demo)" : ""));
+                + ".");
         refreshRoomState();
         session.start(this);
         Platform.runLater(messageArea::requestFocus);
@@ -303,9 +303,7 @@ public class RoomController implements ChatSessionListener {
         }
 
         Label connection;
-        if (peers.stream().anyMatch(p -> p.peer.connectionKind() == ConnectionKind.DEMO)) {
-            connection = chip(Feather.CPU, "Kết nối giả lập (demo)", "chip-warning");
-        } else if (peers.stream().anyMatch(p -> p.peer.connectionKind() == ConnectionKind.RELAY)) {
+        if (peers.stream().anyMatch(p -> p.peer.connectionKind() == ConnectionKind.RELAY)) {
             connection = chip(Feather.SHUFFLE, "Có kết nối qua relay", "chip-warning");
         } else {
             connection = chip(Feather.ZAP, "P2P trực tiếp", "chip-success");

@@ -6,7 +6,6 @@ import com.datn.chatp2p.client.util.ThemeManager;
 import javafx.animation.PauseTransition;
 import javafx.fxml.FXML;
 import javafx.scene.control.Button;
-import javafx.scene.control.CheckBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextField;
 import javafx.scene.input.ClipboardContent;
@@ -45,9 +44,6 @@ public class HomeController {
     private TextField serverField;
 
     @FXML
-    private CheckBox demoModeCheckBox;
-
-    @FXML
     private Label errorLabel;
 
     @FXML
@@ -61,8 +57,6 @@ public class HomeController {
         userNameField.setText("Khách-" + (1000 + RANDOM.nextInt(9000)));
         roomNameField.setText(RoomNameGenerator.generate());
         serverField.setText(DEFAULT_SERVER_URI);
-        demoModeCheckBox.setSelected(true);
-        serverField.disableProperty().bind(demoModeCheckBox.selectedProperty());
 
         ThemeManager.installToggle(themeToggleButton);
         // Chi chiem cho trong the khi thuc su co loi de hien
@@ -102,15 +96,15 @@ public class HomeController {
             errorLabel.setText("Vui lòng nhập tên hiển thị và tên phòng.");
             return;
         }
-        if (!demoModeCheckBox.isSelected() && serverUri.isEmpty()) {
+        if (serverUri.isEmpty()) {
             errorLabel.setText("Vui lòng nhập địa chỉ signaling server.");
             return;
         }
 
         try {
-            Navigator.showRoom(stage, new RoomConfig(userName, roomName, serverUri, demoModeCheckBox.isSelected()));
-        } catch (UnsupportedOperationException e) {
-            errorLabel.setText(e.getMessage());
+            Navigator.showRoom(stage, new RoomConfig(userName, roomName, serverUri));
+        } catch (RuntimeException e) {
+            errorLabel.setText(e.getMessage() == null ? "Không thể vào phòng." : e.getMessage());
         }
     }
 
