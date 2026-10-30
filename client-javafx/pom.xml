@@ -39,6 +39,10 @@
       <groupId>com.datn.chatp2p</groupId>
       <artifactId>p2p-core</artifactId>
     </dependency>
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+    </dependency>
 
     <dependency>
       <groupId>org.openjfx</groupId>
