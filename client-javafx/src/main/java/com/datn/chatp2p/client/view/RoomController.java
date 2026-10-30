@@ -13,7 +13,6 @@ import com.datn.chatp2p.client.view.TranscriptEntry.UserMessage;
 import com.datn.chatp2p.common.model.ChatMessage;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
-import javafx.collections.ListChangeListener;
 import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
 import javafx.scene.control.Alert;
@@ -22,7 +21,6 @@ import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
-import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.control.TextArea;
 import javafx.scene.input.Clipboard;
@@ -90,15 +88,13 @@ public class RoomController implements ChatSessionListener {
     private TextArea messageArea;
 
     private final ObservableList<PeerItem> peers = FXCollections.observableArrayList();
-    private final ObservableList<TranscriptEntry> transcript = FXCollections.observableArrayList();
     private final Map<String, String> displayNames = new HashMap<>();
     private final Map<String, SessionPeer> pendingPeerUpdates = new HashMap<>();
-    private final Map<String, ObservableList<TranscriptEntry>> directTranscripts = new HashMap<>();
-    private final Map<String, ListView<TranscriptEntry>> directViews = new HashMap<>();
 
     private Stage stage;
     private RoomConfig config;
     private ChatSession session;
+    private ChatTranscriptManager transcriptManager;
 
     @FXML
     private void initialize() {
@@ -123,11 +119,10 @@ public class RoomController implements ChatSessionListener {
         peerListView.setCellFactory(list -> new PeerListCell(this::openDirectMessage));
         peerListView.setPlaceholder(new Label("Chưa có ai khác"));
 
-        transcriptListView.setItems(transcript);
-        transcriptListView.setCellFactory(list -> new TranscriptCell(session.selfPeerId(),
-                peerId -> displayNames.getOrDefault(peerId, "Người lạ")));
-        transcript.addListener((ListChangeListener<TranscriptEntry>) change ->
-                transcriptListView.scrollTo(transcript.size() - 1));
+        transcriptManager = new ChatTranscriptManager(
+                session.selfPeerId(),
+                peerId -> displayNames.getOrDefault(peerId, "Người lạ"));
+        transcriptManager.configure(chatTabs, transcriptListView);
 
         // Dong cua so khi dang trong phong cung phai roi phong dang hoang (dong ket noi P2P/signaling)
         stage.setOnCloseRequest(event -> session.leave());
@@ -187,7 +182,7 @@ public class RoomController implements ChatSessionListener {
     @Override
     public void onMessageReceived(ChatMessage message) {
         Platform.runLater(() -> {
-            transcript.add(new UserMessage(message));
+            transcriptManager.addGroup(new UserMessage(message));
             refreshRoomState();
         });
     }
@@ -195,10 +190,10 @@ public class RoomController implements ChatSessionListener {
     @Override
     public void onDirectMessageReceived(String peerId, ChatMessage message) {
         Platform.runLater(() -> {
-            openDirectMessage(peerId);
-            directTranscripts.computeIfAbsent(peerId, ignored -> FXCollections.observableArrayList())
-                    .add(new UserMessage(message));
-            directViews.get(peerId).refresh();
+            transcriptManager.addDirect(
+                    peerId,
+                    displayNames.getOrDefault(peerId, "Người lạ"),
+                    message);
         });
     }
 
@@ -229,20 +224,22 @@ public class RoomController implements ChatSessionListener {
             return;
         }
         ChatMessage message = new ChatMessage(session.selfPeerId(), text);
-        if (chatTabs.getSelectionModel().getSelectedIndex() == 0) {
-            transcript.add(new UserMessage(message));
+        String directPeerId = transcriptManager.selectedDirectPeerId();
+        if (directPeerId == null) {
+            transcriptManager.addGroup(new UserMessage(message));
         }
         messageArea.clear();
         refreshRoomState();
 
         try {
-            Tab selected = chatTabs.getSelectionModel().getSelectedItem();
-            if (selected == null || selected.getUserData() == null) {
+            if (directPeerId == null) {
                 session.sendGroupMessage(message);
             } else {
-                session.sendDirectMessage((String) selected.getUserData(), message);
-                directTranscripts.get((String) selected.getUserData()).add(new UserMessage(message));
-                directViews.get((String) selected.getUserData()).refresh();
+                session.sendDirectMessage(directPeerId, message);
+                transcriptManager.addDirect(
+                        directPeerId,
+                        displayNames.getOrDefault(directPeerId, "Người lạ"),
+                        message);
             }
         } catch (RuntimeException e) {
             // Khong im lang khi gui loi (bai hoc tu issue #618 cua chitchatter)
@@ -251,28 +248,9 @@ public class RoomController implements ChatSessionListener {
     }
 
     private void openDirectMessage(PeerItem item) {
-        openDirectMessage(item.peer.peerId());
-    }
-
-    private void openDirectMessage(String peerId) {
-        for (Tab tab : chatTabs.getTabs()) {
-            if (peerId.equals(tab.getUserData())) {
-                chatTabs.getSelectionModel().select(tab);
-                return;
-            }
-        }
-        String displayName = displayNames.getOrDefault(peerId, "Người lạ");
-        ObservableList<TranscriptEntry> messages =
-                directTranscripts.computeIfAbsent(peerId, ignored -> FXCollections.observableArrayList());
-        ListView<TranscriptEntry> view = new ListView<>(messages);
-        view.setStyle("-fx-background-color: transparent;");
-        view.setCellFactory(list -> new TranscriptCell(session.selfPeerId(),
-                id -> displayNames.getOrDefault(id, displayName)));
-        directViews.put(peerId, view);
-        Tab tab = new Tab("DM: " + displayName, view);
-        tab.setUserData(peerId);
-        chatTabs.getTabs().add(tab);
-        chatTabs.getSelectionModel().select(tab);
+        transcriptManager.openDirect(
+                item.peer.peerId(),
+                displayNames.getOrDefault(item.peer.peerId(), "Người lạ"));
     }
 
     @FXML
@@ -304,7 +282,7 @@ public class RoomController implements ChatSessionListener {
     // ---------- Cap nhat giao dien ----------
 
     private void notice(NoticeKind kind, String text) {
-        transcript.add(new SystemNotice(kind, text));
+        transcriptManager.addGroup(new SystemNotice(kind, text));
     }
 
     private void refreshRoomState() {
@@ -312,7 +290,7 @@ public class RoomController implements ChatSessionListener {
         roomSubtitleLabel.setText(total + " người · mã hoá đầu-cuối");
         peerSectionLabel.setText("NGƯỜI KHÁC TRONG PHÒNG (" + peers.size() + ")");
 
-        boolean hasUserMessages = transcript.stream().anyMatch(entry -> entry instanceof UserMessage);
+        boolean hasUserMessages = transcriptManager.hasGroupUserMessages();
         emptyState.setVisible(peers.isEmpty() && !hasUserMessages);
 
         statusChips.getChildren().setAll(buildStatusChips());

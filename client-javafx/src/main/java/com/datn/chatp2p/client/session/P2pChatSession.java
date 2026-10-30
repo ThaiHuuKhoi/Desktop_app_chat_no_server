@@ -7,9 +7,6 @@ import com.datn.chatp2p.common.protocol.EnvelopeType;
 import com.datn.chatp2p.common.protocol.IdentityPayload;
 import com.datn.chatp2p.common.protocol.MessagePayload;
 import com.datn.chatp2p.common.protocol.EnvelopeNamespace;
-import com.datn.chatp2p.crypto.Fingerprint;
-import com.datn.chatp2p.crypto.IdentityKeyStore;
-import com.datn.chatp2p.crypto.IdentitySignatureService;
 import com.datn.chatp2p.p2p.PeerConnection;
 import com.datn.chatp2p.p2p.RoomSession;
 import com.datn.chatp2p.p2p.ice.TurnServerConfig;
@@ -19,10 +16,6 @@ import org.ice4j.Transport;
 import org.ice4j.TransportAddress;
 
 import java.io.IOException;
-import java.nio.file.Path;
-import java.security.KeyPair;
-import java.security.PublicKey;
-import java.util.Base64;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledExecutorService;
@@ -43,9 +36,7 @@ public final class P2pChatSession implements ChatSession {
 
     private final RoomConfig config;
     private final String selfPeerId = UUID.randomUUID().toString();
-    private final KeyPair identityKeyPair = IdentityKeyStore.loadOrCreate(
-            Path.of(System.getProperty("user.home"), ".chat-p2p-java", "identity.properties"));
-    private final String localFingerprint = Fingerprint.of(identityKeyPair.getPublic());
+    private final PeerIdentityService identityService = new PeerIdentityService();
     private final Map<String, SessionPeer> knownPeers = new ConcurrentHashMap<>();
     private final Map<String, String> verifiedRemoteFingerprints = new ConcurrentHashMap<>();
     private final ScheduledExecutorService identityRetryExecutor =
@@ -155,7 +146,7 @@ public final class P2pChatSession implements ChatSession {
                 connection.getCustomUsername() == null
                         ? "Người dùng " + connection.getPeerId()
                         : connection.getCustomUsername(),
-                localFingerprint,
+                identityService.localFingerprint(),
                 remoteFingerprint,
                 SessionPeer.ConnectionKind.DIRECT,
                 remoteFingerprint == null
@@ -182,11 +173,7 @@ public final class P2pChatSession implements ChatSession {
     }
 
     private void sendIdentity(PeerConnection connection) {
-        IdentityPayload payload = new IdentityPayload(
-                Base64.getEncoder().encodeToString(identityKeyPair.getPublic().getEncoded()),
-                Base64.getEncoder().encodeToString(IdentitySignatureService.sign(
-                        identityKeyPair.getPrivate(),
-                        IdentitySignatureService.challengeFor(config.roomName(), selfPeerId))));
+        IdentityPayload payload = identityService.createPayload(config.roomName(), selfPeerId);
         try {
             connection.send(EnvelopeType.PEER_IDENTITY, payload);
         } catch (RuntimeException error) {
@@ -197,19 +184,14 @@ public final class P2pChatSession implements ChatSession {
     private void handlePeerIdentity(String peerId, Envelope envelope) {
         try {
             IdentityPayload payload = OBJECT_MAPPER.readValue(envelope.payload(), IdentityPayload.class);
-            PublicKey publicKey = IdentitySignatureService.decodePublicKey(
-                    Base64.getDecoder().decode(payload.publicKey()));
-            byte[] signature = Base64.getDecoder().decode(payload.signature());
-            boolean valid = IdentitySignatureService.verify(
-                    publicKey,
-                    signature,
-                    IdentitySignatureService.challengeFor(config.roomName(), peerId));
-            if (!valid) {
+            PeerIdentityService.Verification verification =
+                    identityService.verify(payload, config.roomName(), peerId);
+            if (!verification.valid()) {
                 notifyConnectionFailed(peerId, new SecurityException("Identity peer khong hop le"));
                 return;
             }
 
-            String remoteFingerprint = Fingerprint.of(publicKey);
+            String remoteFingerprint = verification.fingerprint();
             verifiedRemoteFingerprints.put(peerId, remoteFingerprint);
             SessionPeer current = knownPeers.get(peerId);
             if (current == null) {
