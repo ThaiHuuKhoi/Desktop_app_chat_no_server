@@ -11,7 +11,6 @@ import com.datn.chatp2p.client.view.TranscriptEntry.NoticeKind;
 import com.datn.chatp2p.client.view.TranscriptEntry.SystemNotice;
 import com.datn.chatp2p.client.view.TranscriptEntry.UserMessage;
 import com.datn.chatp2p.common.model.ChatMessage;
-import com.datn.chatp2p.common.model.PeerVerificationState;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ListChangeListener;
@@ -88,6 +87,7 @@ public class RoomController implements ChatSessionListener {
     private final ObservableList<PeerItem> peers = FXCollections.observableArrayList();
     private final ObservableList<TranscriptEntry> transcript = FXCollections.observableArrayList();
     private final Map<String, String> displayNames = new HashMap<>();
+    private final Map<String, SessionPeer> pendingPeerUpdates = new HashMap<>();
 
     private Stage stage;
     private RoomConfig config;
@@ -113,7 +113,7 @@ public class RoomController implements ChatSessionListener {
         selfAvatarHolder.getChildren().setAll(Avatars.create(config.userName(), 16));
 
         peerListView.setItems(peers);
-        peerListView.setCellFactory(list -> new PeerListCell(this::onVerifyRequested));
+        peerListView.setCellFactory(list -> new PeerListCell());
         peerListView.setPlaceholder(new Label("Chưa có ai khác"));
 
         transcriptListView.setItems(transcript);
@@ -137,11 +137,32 @@ public class RoomController implements ChatSessionListener {
     @Override
     public void onPeerJoined(SessionPeer peer) {
         Platform.runLater(() -> {
-            displayNames.put(peer.peerId(), peer.displayName());
-            peers.add(new PeerItem(peer));
-            notice(NoticeKind.JOINED, peer.displayName() + " đã vào phòng");
-            notice(NoticeKind.SECURE, "Đã thiết lập kênh mã hoá đầu-cuối với " + peer.displayName()
-                    + ". Hãy so sánh vân tay để xác thực.");
+            SessionPeer joinedPeer = pendingPeerUpdates.remove(peer.peerId());
+            SessionPeer effectivePeer = joinedPeer == null ? peer : joinedPeer;
+            displayNames.put(effectivePeer.peerId(), effectivePeer.displayName());
+            peers.add(new PeerItem(effectivePeer));
+            notice(NoticeKind.JOINED, effectivePeer.displayName() + " đã vào phòng");
+            notice(NoticeKind.SECURE, "Đã thiết lập kênh mã hoá đầu-cuối với " + effectivePeer.displayName()
+                    + ".");
+            refreshRoomState();
+        });
+    }
+
+    @Override
+    public void onPeerIdentityUpdated(SessionPeer peer) {
+        Platform.runLater(() -> {
+            boolean updated = false;
+            for (int i = 0; i < peers.size(); i++) {
+                if (peers.get(i).peer.peerId().equals(peer.peerId())) {
+                    peers.set(i, new PeerItem(peer));
+                    updated = true;
+                    break;
+                }
+            }
+            if (!updated) {
+                pendingPeerUpdates.put(peer.peerId(), peer);
+            }
+            peerListView.refresh();
             refreshRoomState();
         });
     }
@@ -150,6 +171,7 @@ public class RoomController implements ChatSessionListener {
     public void onPeerLeft(String peerId) {
         Platform.runLater(() -> {
             peers.removeIf(item -> item.peer.peerId().equals(peerId));
+            pendingPeerUpdates.remove(peerId);
             notice(NoticeKind.LEFT, displayNames.getOrDefault(peerId, "Một người") + " đã rời phòng");
             refreshRoomState();
         });
@@ -208,20 +230,6 @@ public class RoomController implements ChatSessionListener {
         content.putString(config.roomName());
         Clipboard.getSystemClipboard().setContent(content);
         notice(NoticeKind.INFO, "Đã sao chép tên phòng — gửi cho người bạn muốn chat cùng");
-    }
-
-    private void onVerifyRequested(PeerItem item) {
-        FingerprintDialog.Result result = FingerprintDialog.show(stage, item);
-        if (result == FingerprintDialog.Result.MATCH) {
-            item.verificationState = PeerVerificationState.VERIFIED;
-            notice(NoticeKind.SECURE, "Bạn đã xác thực " + item.peer.displayName() + " bằng vân tay");
-        } else if (result == FingerprintDialog.Result.MISMATCH) {
-            item.verificationState = PeerVerificationState.UNVERIFIED;
-            notice(NoticeKind.WARNING, "Vân tay của " + item.peer.displayName()
-                    + " KHÔNG khớp — có thể có người xen giữa. Đừng gửi thông tin nhạy cảm.");
-        }
-        peerListView.refresh();
-        refreshRoomState();
     }
 
     @FXML

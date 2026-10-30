@@ -1,15 +1,14 @@
 package com.datn.chatp2p.common.model;
 
 /**
- * Trang thai xac thuc danh tinh doi phuong qua "van tay" khoa cong khai
- * (xem De-cuong-Chat-P2P-Java.md muc 2, muc 5). Phong theo
- * {@code PeerVerificationState} trong {@code models/chat.ts} cua chitchatter.
+ * Trang thai xac thuc danh tinh doi phuong bang chu ky identity ECDSA
+ * (xem Tai-lieu-ky-thuat.md muc E.5).
  */
 public enum PeerVerificationState {
-    /** Dang cho nguoi dung tu tay so khop fingerprint. */
+    /** Dang cho peer gui identity payload va hoan tat xac minh. */
     VERIFYING,
-    /** Nguoi dung chua xac thuc / xac thuc that bai. */
+    /** Identity chua toi hoac chu ky khong hop le. */
     UNVERIFIED,
-    /** Nguoi dung da xac nhan fingerprint khop. */
+    /** Chu ky identity hop le voi challenge cua phong. */
     VERIFIED
 }

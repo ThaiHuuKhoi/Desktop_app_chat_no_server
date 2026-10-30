@@ -3,6 +3,7 @@ package com.datn.chatp2p.client.session;
 import com.datn.chatp2p.client.demo.DemoPeerSimulator;
 import com.datn.chatp2p.common.channel.DataChannel;
 import com.datn.chatp2p.common.model.ChatMessage;
+import com.datn.chatp2p.common.model.PeerVerificationState;
 import com.datn.chatp2p.crypto.AesGcmCipher;
 import com.datn.chatp2p.crypto.Fingerprint;
 import com.datn.chatp2p.crypto.KeyExchangeService;
@@ -70,7 +71,8 @@ public final class DemoChatSession implements ChatSession {
                 DEMO_PEER_NAME,
                 Fingerprint.of(myKeyPair.getPublic()),
                 Fingerprint.of(peer.getPublicKey()),
-                SessionPeer.ConnectionKind.DEMO));
+                SessionPeer.ConnectionKind.DEMO,
+                PeerVerificationState.VERIFIED));
     }
 
     @Override

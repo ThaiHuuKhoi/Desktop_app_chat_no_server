@@ -1,8 +1,6 @@
 package com.datn.chatp2p.client.view;
 
-import atlantafx.base.theme.Styles;
 import javafx.geometry.Pos;
-import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.Tooltip;
@@ -14,21 +12,15 @@ import javafx.scene.shape.Circle;
 import org.kordamp.ikonli.feather.Feather;
 import org.kordamp.ikonli.javafx.FontIcon;
 
-import java.util.function.Consumer;
-
 /**
  * 1 dong trong danh sach nguoi trong phong: avatar + cham trang thai ket noi,
- * ten, van tay rut gon, va nut xac thuc van tay (De-cuong muc 5: "xac thuc
- * doi phuong qua van tay khoa cong khai").
+ * ten, van tay rut gon, va trang thai identity tu dong.
  */
 class PeerListCell extends ListCell<PeerItem> {
 
     private static final int SHORT_FINGERPRINT_LENGTH = 14;
 
-    private final Consumer<PeerItem> onVerifyRequested;
-
-    PeerListCell(Consumer<PeerItem> onVerifyRequested) {
-        this.onVerifyRequested = onVerifyRequested;
+    PeerListCell() {
         // Vua khit chieu rong cot, ten dai thi rut gon "..." thay vi hien thanh cuon ngang
         setPrefWidth(0);
     }
@@ -69,12 +61,12 @@ class PeerListCell extends ListCell<PeerItem> {
             verifiedBadge.setTooltip(new Tooltip("Đã xác thực vân tay"));
             row.getChildren().add(verifiedBadge);
         } else {
-            Button verifyButton = new Button("Xác thực", new FontIcon(Feather.SHIELD));
-            verifyButton.getStyleClass().addAll(Styles.SMALL, Styles.BUTTON_OUTLINED, Styles.WARNING);
-            verifyButton.setTooltip(new Tooltip("So sánh vân tay khoá công khai với người này"));
-            verifyButton.setDisable(fingerprint == null);
-            verifyButton.setOnAction(e -> onVerifyRequested.accept(item));
-            row.getChildren().add(verifyButton);
+            Label status = new Label(
+                    fingerprint == null ? "Đang xác minh" : "Chưa xác minh",
+                    new FontIcon(Feather.ALERT_TRIANGLE));
+            status.getStyleClass().add("peer-unverified-badge");
+            status.setTooltip(new Tooltip("Chữ ký identity chưa được xác minh"));
+            row.getChildren().add(status);
         }
 
         setGraphic(row);

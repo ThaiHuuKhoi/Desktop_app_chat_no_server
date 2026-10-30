@@ -980,6 +980,13 @@ Hiện tại (bản demo) không cần cấu hình gì — dùng `LoopbackDataCh
 - Địa chỉ `signaling-server` (host:port hoặc URL đầy đủ `ws://.../ws`) — nên cho phép người dùng nhập ở màn hình cài đặt hoặc đọc từ file cấu hình cục bộ (mục E.8.6), không hardcode.
 - Danh sách STUN/TURN server cho ice4j (mục E.6.2) — cùng cơ chế cấu hình như trên.
 
+Client hiện đọc TURN tùy chọn từ các biến môi trường hoặc system property:
+`CHAT_P2P_TURN_HOST`, `CHAT_P2P_TURN_PORT`, `CHAT_P2P_TURN_USERNAME` và
+`CHAT_P2P_TURN_PASSWORD`. Khi đã đặt một biến, phải đặt đủ cả bốn biến; nếu
+không đặt biến nào thì client chỉ dùng STUN. Identity ECDSA được lưu tại
+`~/.chat-p2p-java/identity.properties`, còn `PEER_IDENTITY` được gửi sau khi
+ECDH hoàn tất và được kiểm tra bằng challenge `roomId + "_" + peerId`.
+
 ## G.5 Vấn đề đã phát hiện thực tế & cách khắc phục
 
 **Đường dẫn dự án chứa dấu tiếng Việt (`...\Máy tính\...`) làm `mvn spring-boot:run` báo lỗi trên Windows.**
