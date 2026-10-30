@@ -43,6 +43,37 @@ class AesGcmCipherTest {
         assertThrows(IllegalStateException.class, () -> AesGcmCipher.decrypt(wrongKey, ciphertext));
     }
 
+    @Test
+    void decryptFailsWhenCiphertextIsTampered() {
+        SecretKey key = sharedKeyBetweenTwoDemoPeers();
+        byte[] ciphertext = AesGcmCipher.encrypt(key, "chuyen 100k cho Khoi".getBytes(StandardCharsets.UTF_8));
+
+        // Sua 1 bit ngay sau IV (byte dau tien cua phan ciphertext that)
+        ciphertext[12] ^= 0x01;
+
+        assertThrows(IllegalStateException.class, () -> AesGcmCipher.decrypt(key, ciphertext),
+                "GCM tag phai phat hien du lieu bi sua tren duong truyen");
+    }
+
+    @Test
+    void encryptingSamePlaintextTwiceGivesDifferentOutputs() {
+        SecretKey key = sharedKeyBetweenTwoDemoPeers();
+        byte[] plaintext = "xin chao".getBytes(StandardCharsets.UTF_8);
+
+        byte[] first = AesGcmCipher.encrypt(key, plaintext);
+        byte[] second = AesGcmCipher.encrypt(key, plaintext);
+
+        assertFalse(java.util.Arrays.equals(first, second),
+                "Moi lan ma hoa phai dung IV ngau nhien moi");
+    }
+
+    @Test
+    void decryptRejectsInputShorterThanIv() {
+        SecretKey key = sharedKeyBetweenTwoDemoPeers();
+
+        assertThrows(IllegalArgumentException.class, () -> AesGcmCipher.decrypt(key, new byte[11]));
+    }
+
     private static SecretKey sharedKeyBetweenTwoDemoPeers() {
         KeyPair alice = KeyExchangeService.generateKeyPair();
         KeyPair bob = KeyExchangeService.generateKeyPair();
