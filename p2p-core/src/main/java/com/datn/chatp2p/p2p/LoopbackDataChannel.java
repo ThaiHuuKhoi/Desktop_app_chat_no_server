@@ -56,7 +56,21 @@ public final class LoopbackDataChannel implements DataChannel {
         deliveryExecutor.execute(() -> {
             Consumer<byte[]> handler = peer.receiveHandler;
             if (handler != null && !peer.closed) {
-                handler.accept(data);
+                try {
+                    handler.accept(data);
+                } catch (RuntimeException e) {
+                    // Giong het ly do o P2pDataChannel (ban that dung UDP): handler
+                    // (thuong la PeerConnection.handleIncoming) co the nem loi voi
+                    // 1 goi tin hop le ve mat van chuyen nhung noi dung khong con
+                    // hop le nua - vi du ban sao GUI LAI cua public key ECDH
+                    // (PeerConnection#sendEcdhPublicKey tu dong gui lai toi 5 lan)
+                    // toi SAU KHI phia nhan da hoan tat handshake tu ban sao truoc
+                    // do, se bi hieu nham la du lieu ma hoa va giai ma AES-GCM that
+                    // bai. Day la tinh huong VO HAI, khong duoc de loi in ra console
+                    // nhu 1 loi nghiem trong (truoc khi sua: ExecutorService tu thay
+                    // worker thread chet nen kenh khong "chet han" nhu P2pDataChannel,
+                    // nhung van in stack trace gay nham lan).
+                }
             }
         });
     }

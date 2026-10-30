@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="920" viewBox="0 0 1440 920" role="img" aria-labelledby="title description">
+  <title id="title">Sơ đồ thực thể lưu trong RAM của Chat P2P Java</title>
+  <desc id="description">Phân biệt trạng thái trong RAM của signaling server với dữ liệu riêng trong bộ nhớ của từng ứng dụng client.</desc>
+  <defs>
+    <style>
+      text { font-family: "Segoe UI", Arial, sans-serif; fill: #172033; }
+      .title { font-size: 30px; font-weight: 700; }
+      .subtitle { font-size: 15px; fill: #526078; }
+      .zone-title { font-size: 20px; font-weight: 700; }
+      .entity-title { font-size: 17px; font-weight: 700; }
+      .body { font-size: 14px; fill: #3e4b61; }
+      .note { font-size: 13px; fill: #526078; }
+      .relation { font-size: 12px; font-weight: 600; fill: #40506a; }
+    </style>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#64748b"/>
+    </marker>
+    <marker id="arrow-blue" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/>
+    </marker>
+  </defs>
+
+  <rect width="1440" height="920" fill="#f5f7fb"/>
+  <text x="720" y="58" text-anchor="middle" class="title">Sơ đồ thực thể lưu trong RAM</text>
+  <text x="720" y="88" text-anchor="middle" class="subtitle">Chat P2P Java · Trạng thái tồn tại trong lúc chạy, không phải cơ sở dữ liệu</text>
+
+  <rect x="55" y="125" width="625" height="690" rx="20" fill="#eef5ff" stroke="#9bbcf4" stroke-width="2"/>
+  <text x="85" y="165" class="zone-title" fill="#1d4ed8">Signaling server · RAM</text>
+  <text x="85" y="190" class="note">Chỉ quản lý phòng và phiên WebSocket; không lưu nội dung chat</text>
+
+  <rect x="100" y="235" width="535" height="105" rx="14" fill="#ffffff" stroke="#6b9cf0" stroke-width="2"/>
+  <text x="125" y="270" class="entity-title">RoomRegistry</text>
+  <text x="125" y="298" class="body">roomsByRoomId: Map&lt;roomId, Map&lt;peerId, PeerSession&gt;&gt;</text>
+  <text x="125" y="321" class="note">Bản đồ tổng hợp trạng thái các phòng đang hoạt động</text>
+
+  <rect x="130" y="405" width="220" height="105" rx="14" fill="#ffffff" stroke="#6b9cf0" stroke-width="2"/>
+  <text x="240" y="441" text-anchor="middle" class="entity-title">Phòng</text>
+  <text x="240" y="469" text-anchor="middle" class="body">roomId</text>
+  <text x="240" y="491" text-anchor="middle" class="note">Khóa trong Map, không có lớp riêng</text>
+
+  <rect x="400" y="385" width="230" height="150" rx="14" fill="#ffffff" stroke="#6b9cf0" stroke-width="2"/>
+  <text x="515" y="420" text-anchor="middle" class="entity-title">PeerSession</text>
+  <text x="425" y="450" class="body">peerId · userName</text>
+  <text x="425" y="474" class="body">roomId · WebSocketSession</text>
+  <text x="425" y="510" text-anchor="middle" class="note">Thông tin kết nối tạm thời</text>
+
+  <path d="M240 340 L240 397" fill="none" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="252" y="375" class="relation">roomId → phòng</text>
+  <path d="M350 458 L392 458" fill="none" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="371" y="445" text-anchor="middle" class="relation">peerId →</text>
+
+  <rect x="105" y="585" width="525" height="145" rx="14" fill="#fff" stroke="#d3dded"/>
+  <text x="130" y="620" class="entity-title">Khi peer tham gia / rời phòng</text>
+  <text x="130" y="650" class="body">JOIN → thêm PeerSession, gửi PEER_LIST và PEER_JOINED</text>
+  <text x="130" y="678" class="body">LEAVE / đóng socket → xóa PeerSession, gửi PEER_LEFT</text>
+  <text x="130" y="708" class="note">Server khởi động lại thì toàn bộ trạng thái phòng trong RAM mất</text>
+
+  <rect x="760" y="125" width="625" height="690" rx="20" fill="#eefbf5" stroke="#8bd3ad" stroke-width="2"/>
+  <text x="790" y="165" class="zone-title" fill="#15803d">Mỗi ứng dụng client · RAM riêng</text>
+  <text x="790" y="190" class="note">Mỗi máy giữ bản sao trạng thái riêng; đóng ứng dụng thì dữ liệu tạm mất</text>
+
+  <rect x="800" y="235" width="250" height="145" rx="14" fill="#fff" stroke="#50b982" stroke-width="2"/>
+  <text x="925" y="272" text-anchor="middle" class="entity-title">RoomSession</text>
+  <text x="825" y="305" class="body">roomId · selfPeerId</text>
+  <text x="825" y="330" class="body">quản lý phiên trong phòng</text>
+  <text x="925" y="359" text-anchor="middle" class="note">p2p-core khi dùng kết nối thật</text>
+
+  <rect x="1090" y="235" width="250" height="145" rx="14" fill="#fff" stroke="#50b982" stroke-width="2"/>
+  <text x="1215" y="272" text-anchor="middle" class="entity-title">PeerConnection</text>
+  <text x="1115" y="305" class="body">peerId · DataChannel</text>
+  <text x="1115" y="330" class="body">kênh trực tiếp với một peer</text>
+  <text x="1215" y="359" text-anchor="middle" class="note">kèm trạng thái/khoá phiên</text>
+
+  <path d="M1050 307 L1082 307" fill="none" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="1066" y="293" text-anchor="middle" class="relation">peerId</text>
+
+  <rect x="800" y="445" width="250" height="135" rx="14" fill="#fff" stroke="#50b982" stroke-width="2"/>
+  <text x="925" y="480" text-anchor="middle" class="entity-title">Peer (trên client)</text>
+  <text x="825" y="512" class="body">peerId · tên hiển thị</text>
+  <text x="825" y="537" class="body">fingerprint · trạng thái xác thực</text>
+  <text x="925" y="563" text-anchor="middle" class="note">đối tượng hiển thị trong UI</text>
+
+  <rect x="1090" y="445" width="250" height="135" rx="14" fill="#fff" stroke="#50b982" stroke-width="2"/>
+  <text x="1215" y="480" text-anchor="middle" class="entity-title">ChatMessage</text>
+  <text x="1115" y="512" class="body">id · authorId · text</text>
+  <text x="1115" y="537" class="body">timeSent · timeReceived</text>
+  <text x="1215" y="563" text-anchor="middle" class="note">danh sách tin nhắn trong UI demo</text>
+
+  <path d="M925 380 L925 437" fill="none" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="938" y="414" class="relation">danh sách peer</text>
+  <path d="M1050 513 L1082 513" fill="none" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="1066" y="499" text-anchor="middle" class="relation">gửi</text>
+  <text x="1066" y="531" text-anchor="middle" class="relation">nhận</text>
+
+  <rect x="800" y="635" width="540" height="95" rx="14" fill="#fff" stroke="#d3dded"/>
+  <text x="825" y="671" class="entity-title">Lưu ý về trạng thái triển khai</text>
+  <text x="825" y="698" class="body">UI hiện tại dùng LoopbackDataChannel + peer mô phỏng; RoomSession chưa nối vào UI.</text>
+  <text x="825" y="720" class="note">ChatMessage không được gửi/lưu trên signaling server.</text>
+
+  <path d="M680 315 C715 315 720 315 753 315" fill="none" stroke="#2563eb" stroke-width="2" stroke-dasharray="7 6" marker-end="url(#arrow-blue)"/>
+  <text x="716" y="288" text-anchor="middle" class="relation" fill="#1d4ed8">signaling: roomId / peerId</text>
+  <path d="M680 475 C720 475 730 510 790 510" fill="none" stroke="#2563eb" stroke-width="2" stroke-dasharray="7 6" marker-end="url(#arrow-blue)"/>
+  <text x="720" y="456" text-anchor="middle" class="relation" fill="#1d4ed8">cùng danh tính logic</text>
+
+  <rect x="390" y="850" width="660" height="42" rx="12" fill="#172033"/>
+  <text x="720" y="877" text-anchor="middle" font-size="14" font-weight="600" fill="#fff">Không có database · dữ liệu tạm chỉ tồn tại trong RAM của từng tiến trình</text>
+</svg>

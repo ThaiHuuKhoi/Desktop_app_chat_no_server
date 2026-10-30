@@ -14,9 +14,14 @@
   <packaging>jar</packaging>
   <name>chat-p2p-java :: p2p-core</name>
   <description>
-    Cac cai dat cua interface DataChannel: LoopbackDataChannel (gia lap, dung
-    ngay) va P2pDataChannel (khung viec, se hoan thien bang ice4j o tuan 7-9),
-    cung SignalingClient. Phu trach: Thanh vien A (Phan-cong-cong-viec.md muc 2).
+    Cac cai dat cua interface DataChannel: LoopbackDataChannel (gia lap),
+    P2pDataChannel (that, tren UDP socket do ice4j chon) va SignalingClient
+    (WebSocketSignalingClient, dung java.net.http.HttpClient); giao thuc
+    Envelope/EnvelopeCodec va PeerConnection (trao khoa ECDH + ma hoa
+    AES-GCM tren tung ket noi peer). Phu trach: Thanh vien A
+    (Phan-cong-cong-viec.md muc 2), rieng EnvelopeCodec la diem giao thoa
+    voi B - dung lai AesGcmCipher/KeyExchangeService cua module crypto,
+    khong viet lai (xem Phan-cong-cong-viec.md muc 3.2).
   </description>
 
   <dependencies>
@@ -24,9 +29,37 @@
       <groupId>com.datn.chatp2p</groupId>
       <artifactId>common</artifactId>
     </dependency>
+    <!-- ECDH trao khoa phien + AES-GCM ma hoa noi dung - da co san, viet boi
+         Thanh vien B. p2p-core chi DUNG LAI qua EnvelopeCodec/PeerConnection,
+         khong viet lai logic ma hoa. -->
+    <dependency>
+      <groupId>com.datn.chatp2p</groupId>
+      <artifactId>crypto</artifactId>
+    </dependency>
+    <!-- De (de)serialize SignalMessage va cac payload ICE (IceOfferPayload/
+         IceAnswerPayload) sang/tu JSON trong WebSocketSignalingClient. -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+    </dependency>
+    <!-- ICE/STUN/TURN that cho P2pDataChannel - xem Tai-lieu-ky-thuat.md Phan E.6. -->
+    <dependency>
+      <groupId>org.jitsi</groupId>
+      <artifactId>ice4j</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!-- CHI test-scope: de RoomSessionRealSignalingServerTest tu boot 1 instance
+         signaling-server THAT (SpringApplication.run that tren cong ngau nhien),
+         khac voi RoomSessionTest (dung LoopbackSignalingClient gia lap). Khong
+         anh huong toi jar chinh cua p2p-core - signaling-server van khong phai
+         dependency runtime cua p2p-core. -->
+    <dependency>
+      <groupId>com.datn.chatp2p</groupId>
+      <artifactId>signaling-server</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>
