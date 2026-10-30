@@ -11,6 +11,7 @@ import javafx.scene.layout.VBox;
 import javafx.scene.shape.Circle;
 import org.kordamp.ikonli.feather.Feather;
 import org.kordamp.ikonli.javafx.FontIcon;
+import java.util.function.Consumer;
 
 /**
  * 1 dong trong danh sach nguoi trong phong: avatar + cham trang thai ket noi,
@@ -19,8 +20,10 @@ import org.kordamp.ikonli.javafx.FontIcon;
 class PeerListCell extends ListCell<PeerItem> {
 
     private static final int SHORT_FINGERPRINT_LENGTH = 14;
+    private final Consumer<PeerItem> onDirectMessageRequested;
 
-    PeerListCell() {
+    PeerListCell(Consumer<PeerItem> onDirectMessageRequested) {
+        this.onDirectMessageRequested = onDirectMessageRequested;
         // Vua khit chieu rong cot, ten dai thi rut gon "..." thay vi hien thanh cuon ngang
         setPrefWidth(0);
     }
@@ -68,6 +71,11 @@ class PeerListCell extends ListCell<PeerItem> {
             status.setTooltip(new Tooltip("Chữ ký identity chưa được xác minh"));
             row.getChildren().add(status);
         }
+        Label direct = new Label(null, new FontIcon(Feather.MESSAGE_CIRCLE));
+        direct.getStyleClass().add("peer-dm-button");
+        direct.setTooltip(new Tooltip("Mở tin nhắn riêng"));
+        direct.setOnMouseClicked(event -> onDirectMessageRequested.accept(item));
+        row.getChildren().add(direct);
 
         setGraphic(row);
         setText(null);

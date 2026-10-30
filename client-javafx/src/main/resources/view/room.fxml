@@ -5,6 +5,8 @@
 <?import javafx.scene.control.Label?>
 <?import javafx.scene.control.ListView?>
 <?import javafx.scene.control.TextArea?>
+<?import javafx.scene.control.Tab?>
+<?import javafx.scene.control.TabPane?>
 <?import javafx.scene.control.Tooltip?>
 <?import javafx.scene.layout.BorderPane?>
 <?import javafx.scene.layout.HBox?>
@@ -76,22 +78,28 @@
             </top>
 
             <center>
-                <StackPane>
-                    <ListView fx:id="transcriptListView" styleClass="transcript, edge-to-edge"/>
-                    <VBox fx:id="emptyState" styleClass="empty-state" spacing="10" alignment="CENTER"
-                          maxWidth="420" maxHeight="-Infinity" mouseTransparent="false">
-                        <FontIcon iconLiteral="fth-user-plus" styleClass="empty-state-icon"/>
-                        <Label text="Chưa có ai khác trong phòng" styleClass="empty-state-title"/>
-                        <Label text="Gửi tên phòng dưới đây cho bạn bè qua một kênh khác. Khi họ vào phòng, kênh mã hoá đầu-cuối sẽ tự được thiết lập."
-                               styleClass="empty-state-text" wrapText="true" textAlignment="CENTER"/>
-                        <Label fx:id="emptyStateRoomLabel" styleClass="empty-state-room"/>
-                        <Button text="Sao chép tên phòng" onAction="#onCopyRoomName" styleClass="accent">
-                            <graphic>
-                                <FontIcon iconLiteral="fth-copy"/>
-                            </graphic>
-                        </Button>
-                    </VBox>
-                </StackPane>
+                <TabPane fx:id="chatTabs" tabClosingPolicy="UNAVAILABLE">
+                    <Tab text="Nhóm">
+                        <content>
+                            <StackPane>
+                                <ListView fx:id="transcriptListView" styleClass="transcript, edge-to-edge"/>
+                                <VBox fx:id="emptyState" styleClass="empty-state" spacing="10" alignment="CENTER"
+                                      maxWidth="420" maxHeight="-Infinity" mouseTransparent="false">
+                                    <FontIcon iconLiteral="fth-user-plus" styleClass="empty-state-icon"/>
+                                    <Label text="Chưa có ai khác trong phòng" styleClass="empty-state-title"/>
+                                    <Label text="Gửi tên phòng dưới đây cho bạn bè qua một kênh khác. Khi họ vào phòng, kênh mã hoá đầu-cuối sẽ tự được thiết lập."
+                                           styleClass="empty-state-text" wrapText="true" textAlignment="CENTER"/>
+                                    <Label fx:id="emptyStateRoomLabel" styleClass="empty-state-room"/>
+                                    <Button text="Sao chép tên phòng" onAction="#onCopyRoomName" styleClass="accent">
+                                        <graphic>
+                                            <FontIcon iconLiteral="fth-copy"/>
+                                        </graphic>
+                                    </Button>
+                                </VBox>
+                            </StackPane>
+                        </content>
+                    </Tab>
+                </TabPane>
             </center>
 
             <bottom>

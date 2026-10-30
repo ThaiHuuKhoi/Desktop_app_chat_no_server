@@ -6,6 +6,7 @@ import com.datn.chatp2p.common.protocol.Envelope;
 import com.datn.chatp2p.common.protocol.EnvelopeType;
 import com.datn.chatp2p.common.protocol.IdentityPayload;
 import com.datn.chatp2p.common.protocol.MessagePayload;
+import com.datn.chatp2p.common.protocol.EnvelopeNamespace;
 import com.datn.chatp2p.crypto.Fingerprint;
 import com.datn.chatp2p.crypto.IdentityKeyStore;
 import com.datn.chatp2p.crypto.IdentitySignatureService;
@@ -120,6 +121,19 @@ public final class P2pChatSession implements ChatSession {
     }
 
     @Override
+    public void sendDirectMessage(String peerId, ChatMessage message) {
+        if (left) {
+            throw new IllegalStateException("Da roi phong, khong the gui tin nhan");
+        }
+        MessagePayload payload = new MessagePayload(
+                UUID.randomUUID().toString(),
+                message.getAuthorId(),
+                message.getText(),
+                System.currentTimeMillis());
+        roomSession.sendTo(peerId, EnvelopeType.MESSAGE, EnvelopeNamespace.DIRECT_MESSAGE, payload);
+    }
+
+    @Override
     public void leave() {
         if (left) {
             return;
@@ -159,7 +173,11 @@ public final class P2pChatSession implements ChatSession {
 
         ChatSessionListener currentListener = listener;
         if (currentListener != null && !left) {
-            currentListener.onMessageReceived(message);
+            if (EnvelopeNamespace.DIRECT_MESSAGE.equals(envelope.namespace())) {
+                currentListener.onDirectMessageReceived(peerId, message);
+            } else {
+                currentListener.onMessageReceived(message);
+            }
         }
     }
 

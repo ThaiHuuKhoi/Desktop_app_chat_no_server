@@ -250,11 +250,16 @@ public final class RoomSession {
 
     /** Gui toi DUNG 1 peer (dung cho direct message hoac dieu khien). */
     public void sendTo(String peerId, EnvelopeType type, Object payload) {
+        sendTo(peerId, type, null, payload);
+    }
+
+    /** Gui toi mot peer voi namespace logic (group hoac direct message). */
+    public void sendTo(String peerId, EnvelopeType type, String namespace, Object payload) {
         PeerConnection connection = peers.get(peerId);
         if (connection == null) {
             throw new IllegalArgumentException("Khong co ket noi voi peer " + peerId + " (chua ket noi xong hoac da roi phong)");
         }
-        connection.send(type, payload);
+        connection.send(type, namespace, payload);
     }
 
     /** Danh sach peerId da ket noi xong (khong bao gom cac phien ICE dang cho). */

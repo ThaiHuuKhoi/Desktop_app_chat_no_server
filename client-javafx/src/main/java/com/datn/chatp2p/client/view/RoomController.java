@@ -22,6 +22,8 @@ import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
+import javafx.scene.control.Tab;
+import javafx.scene.control.TabPane;
 import javafx.scene.control.TextArea;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
@@ -61,6 +63,9 @@ public class RoomController implements ChatSessionListener {
     private ListView<PeerItem> peerListView;
 
     @FXML
+    private TabPane chatTabs;
+
+    @FXML
     private StackPane selfAvatarHolder;
 
     @FXML
@@ -88,6 +93,8 @@ public class RoomController implements ChatSessionListener {
     private final ObservableList<TranscriptEntry> transcript = FXCollections.observableArrayList();
     private final Map<String, String> displayNames = new HashMap<>();
     private final Map<String, SessionPeer> pendingPeerUpdates = new HashMap<>();
+    private final Map<String, ObservableList<TranscriptEntry>> directTranscripts = new HashMap<>();
+    private final Map<String, ListView<TranscriptEntry>> directViews = new HashMap<>();
 
     private Stage stage;
     private RoomConfig config;
@@ -113,7 +120,7 @@ public class RoomController implements ChatSessionListener {
         selfAvatarHolder.getChildren().setAll(Avatars.create(config.userName(), 16));
 
         peerListView.setItems(peers);
-        peerListView.setCellFactory(list -> new PeerListCell());
+        peerListView.setCellFactory(list -> new PeerListCell(this::openDirectMessage));
         peerListView.setPlaceholder(new Label("Chưa có ai khác"));
 
         transcriptListView.setItems(transcript);
@@ -186,6 +193,16 @@ public class RoomController implements ChatSessionListener {
     }
 
     @Override
+    public void onDirectMessageReceived(String peerId, ChatMessage message) {
+        Platform.runLater(() -> {
+            openDirectMessage(peerId);
+            directTranscripts.computeIfAbsent(peerId, ignored -> FXCollections.observableArrayList())
+                    .add(new UserMessage(message));
+            directViews.get(peerId).refresh();
+        });
+    }
+
+    @Override
     public void onPeerConnectionFailed(String peerId, String reason) {
         Platform.runLater(() -> notice(NoticeKind.WARNING,
                 "Không kết nối được với " + displayNames.getOrDefault(peerId, "một người") + ": " + reason));
@@ -212,16 +229,50 @@ public class RoomController implements ChatSessionListener {
             return;
         }
         ChatMessage message = new ChatMessage(session.selfPeerId(), text);
-        transcript.add(new UserMessage(message));
+        if (chatTabs.getSelectionModel().getSelectedIndex() == 0) {
+            transcript.add(new UserMessage(message));
+        }
         messageArea.clear();
         refreshRoomState();
 
         try {
-            session.sendGroupMessage(message);
+            Tab selected = chatTabs.getSelectionModel().getSelectedItem();
+            if (selected == null || selected.getUserData() == null) {
+                session.sendGroupMessage(message);
+            } else {
+                session.sendDirectMessage((String) selected.getUserData(), message);
+                directTranscripts.get((String) selected.getUserData()).add(new UserMessage(message));
+                directViews.get((String) selected.getUserData()).refresh();
+            }
         } catch (RuntimeException e) {
             // Khong im lang khi gui loi (bai hoc tu issue #618 cua chitchatter)
             notice(NoticeKind.WARNING, "Gửi tin thất bại: " + e.getMessage());
         }
+    }
+
+    private void openDirectMessage(PeerItem item) {
+        openDirectMessage(item.peer.peerId());
+    }
+
+    private void openDirectMessage(String peerId) {
+        for (Tab tab : chatTabs.getTabs()) {
+            if (peerId.equals(tab.getUserData())) {
+                chatTabs.getSelectionModel().select(tab);
+                return;
+            }
+        }
+        String displayName = displayNames.getOrDefault(peerId, "Người lạ");
+        ObservableList<TranscriptEntry> messages =
+                directTranscripts.computeIfAbsent(peerId, ignored -> FXCollections.observableArrayList());
+        ListView<TranscriptEntry> view = new ListView<>(messages);
+        view.setStyle("-fx-background-color: transparent;");
+        view.setCellFactory(list -> new TranscriptCell(session.selfPeerId(),
+                id -> displayNames.getOrDefault(id, displayName)));
+        directViews.put(peerId, view);
+        Tab tab = new Tab("DM: " + displayName, view);
+        tab.setUserData(peerId);
+        chatTabs.getTabs().add(tab);
+        chatTabs.getSelectionModel().select(tab);
     }
 
     @FXML

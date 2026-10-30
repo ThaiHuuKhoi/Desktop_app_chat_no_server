@@ -650,9 +650,10 @@ Không cần thiết kế thêm — hệ quả tự nhiên của `RoomSession` (
 
 ### E.8.2 Direct message (DM)
 
-- UI: click vào 1 peer trong `PeerListCell` → mở 1 tab/panel chat riêng (bổ sung `TabPane` trong `room.fxml`, 1 tab "Nhóm" + N tab theo từng peer đang chat riêng).
-- Gửi: `roomSession.sendTo(peerId, EnvelopeType.MESSAGE, payload)` với `namespace = "dm"`.
-- Lưu trữ: `RoomController` giữ `Map<String peerId, ObservableList<ChatMessage>> directMessageLogs` tách biệt khỏi `ObservableList<ChatMessage> groupMessages` — tương đương `ShellMessageLog.directMessageLog` của chitchatter.
+- Đã triển khai: nút tin nhắn trong `PeerListCell` mở một tab DM riêng trong `TabPane` của `room.fxml`.
+- Gửi qua `ChatSession.sendDirectMessage(...)`, rồi `RoomSession.sendTo(...)` với
+  `namespace = "dm"`; chat nhóm vẫn dùng namespace mặc định.
+- `RoomController` giữ transcript riêng theo `peerId`, tách biệt với transcript nhóm.
 
 ### E.8.3 Trạng thái đang gõ
 

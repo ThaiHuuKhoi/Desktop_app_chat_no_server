@@ -44,6 +44,11 @@ public interface ChatSession {
      */
     void sendGroupMessage(ChatMessage message);
 
+    /** Gui tin nhan rieng toi mot peer dang ket noi. */
+    default void sendDirectMessage(String peerId, ChatMessage message) {
+        throw new UnsupportedOperationException("Che do nay chua ho tro tin nhan rieng");
+    }
+
     /** Roi phong, dong moi ket noi. Goi nhieu lan khong sao. */
     void leave();
 }

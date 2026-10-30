@@ -16,6 +16,10 @@ public interface ChatSessionListener {
 
     void onMessageReceived(ChatMessage message);
 
+    /** Tin nhan rieng, tach khoi transcript nhom. */
+    default void onDirectMessageReceived(String peerId, ChatMessage message) {
+    }
+
     /** Khong ket noi duoc voi 1 peer; {@code reason} da viet cho nguoi dung doc. */
     void onPeerConnectionFailed(String peerId, String reason);
 }
