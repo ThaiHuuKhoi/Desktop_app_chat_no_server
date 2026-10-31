@@ -4,7 +4,19 @@ server:
 spring:
   application:
     name: chat-p2p-signaling-server
+  datasource:
+    url: ${CHAT_P2P_DB_URL:jdbc:mysql://localhost:3306/chat_p2p?createDatabaseIfNotExist=true&serverTimezone=UTC}
+    username: ${CHAT_P2P_DB_USERNAME:chat_p2p}
+    password: ${CHAT_P2P_DB_PASSWORD:}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  sql:
+    init:
+      mode: always
 
 logging:
   level:
     com.datn.chatp2p: INFO
+
+chat-p2p:
+  auth:
+    required: ${CHAT_P2P_AUTH_REQUIRED:false}

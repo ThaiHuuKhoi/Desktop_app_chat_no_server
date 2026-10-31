@@ -28,9 +28,24 @@ public final class Navigator {
     }
 
     public static void showHome(Stage stage) {
+        showHome(stage, true);
+    }
+
+    public static void showEntry(Stage stage) {
+        FXMLLoader loader = new FXMLLoader(Navigator.class.getResource("/view/entry.fxml"));
+        Parent root = load(loader);
+        loader.<EntryController>getController().setStage(stage);
+        stage.setOnCloseRequest(null);
+        stage.setTitle(ChatApplication.APP_TITLE);
+        stage.setScene(styledScene(root, HOME_WIDTH, HOME_HEIGHT));
+    }
+
+    static void showHome(Stage stage, boolean accountMode) {
         FXMLLoader loader = new FXMLLoader(Navigator.class.getResource("/view/home.fxml"));
         Parent root = load(loader);
-        loader.<HomeController>getController().setStage(stage);
+        HomeController controller = loader.getController();
+        controller.setStage(stage);
+        controller.setAccountMode(accountMode);
 
         stage.setOnCloseRequest(null);
         stage.setTitle(ChatApplication.APP_TITLE);

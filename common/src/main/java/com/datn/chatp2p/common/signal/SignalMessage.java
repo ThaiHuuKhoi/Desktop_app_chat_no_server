@@ -21,6 +21,7 @@ public class SignalMessage {
     private String fromPeerId;
     private String toPeerId;
     private String userName;
+    private String authToken;
     private String payload;
     private List<PeerInfo> peers = new ArrayList<>();
 
@@ -74,6 +75,14 @@ public class SignalMessage {
 
     public void setUserName(String userName) {
         this.userName = userName;
+    }
+
+    public String getAuthToken() {
+        return authToken;
+    }
+
+    public void setAuthToken(String authToken) {
+        this.authToken = authToken;
     }
 
     public String getPayload() {

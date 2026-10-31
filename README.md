@@ -60,6 +60,52 @@ java -jar signaling-server/target/signaling-server.jar
 mvn -pl client-javafx javafx:run
 ```
 
+### Cau hinh tai khoan
+
+`signaling-server` dung MySQL cho tai khoan va session token. Dat cac bien moi
+truong truoc khi khoi dong server:
+
+```powershell
+$env:CHAT_P2P_DB_URL="jdbc:mysql://localhost:3306/chat_p2p?createDatabaseIfNotExist=true&serverTimezone=UTC"
+$env:CHAT_P2P_DB_USERNAME="chat_p2p"
+$env:CHAT_P2P_DB_PASSWORD="mat-khau-mysql"
+java -jar signaling-server/target/signaling-server.jar
+```
+
+Khi mo client, nguoi dung co the chon **Khach tu do** hoac **Dang nhap / Dang ky**.
+Client dang ky/dang nhap qua REST `/auth/*`, sau do gui opaque session token
+trong ban tin JOIN WebSocket. Server chi luu hash token va BCrypt hash cua
+mat khau; khong luu plaintext. Guest duoc phep JOIN khi
+`CHAT_P2P_AUTH_REQUIRED=false` (mac dinh cho demo); dat bien nay thanh `true`
+de bat buoc tai khoan. Trong moi truong test, co the dung H2 tu
+`signaling-server/src/test/resources/application.yml`.
+
+#### Chay MySQL bang Docker
+
+Copy `.env.example` thanh `.env`, doi cac mat khau dev, sau do chay tai thu
+muc goc:
+
+```powershell
+Copy-Item .env.example .env
+docker compose up -d mysql
+docker compose ps
+```
+
+Khi signaling server chay tren may host, dung:
+
+```powershell
+$env:CHAT_P2P_DB_URL="jdbc:mysql://localhost:3306/chat_p2p?serverTimezone=UTC"
+$env:CHAT_P2P_DB_USERNAME="chat_p2p"
+$env:CHAT_P2P_DB_PASSWORD="change_this_password"
+```
+
+Schema duoc khoi tao tu dong trong lan dau volume duoc tao. De xoa du lieu
+database va tao lai tu dau:
+
+```powershell
+docker compose down -v
+```
+
 > **Luu y (Windows):** neu duong dan thu muc du an co dau tieng Viet (nhu
 > `...\Máy tính\...`), goal `spring-boot:run` co the bao loi
 > `Could not find or load main class` du build thanh cong (loi encoding

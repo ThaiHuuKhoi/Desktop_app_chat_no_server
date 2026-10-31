@@ -9,8 +9,7 @@ import javafx.stage.Stage;
  * Diem khoi dong ung dung desktop JavaFX (De-cuong-Chat-P2P-Java.md muc 5).
  *
  * <p>Chay bang {@code mvn -pl client-javafx javafx:run} (xem README.md o thu
- * muc goc). Man hinh dau tien la Home (vao phong); {@link Navigator} chuyen
- * qua lai giua Home va Room.
+ * muc goc). Man hinh dau tien cho phep chon che do khach hoac tai khoan.
  */
 public class ChatApplication extends Application {
 
@@ -21,7 +20,7 @@ public class ChatApplication extends Application {
         ThemeManager.applyCurrentTheme();
         primaryStage.setMinWidth(560);
         primaryStage.setMinHeight(560);
-        Navigator.showHome(primaryStage);
+        Navigator.showEntry(primaryStage);
         primaryStage.show();
     }
 
