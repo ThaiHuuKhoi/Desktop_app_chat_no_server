@@ -7,6 +7,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.ArrayList;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -69,6 +70,20 @@ public class RoomRegistry {
     public Optional<PeerSession> find(String roomId, String peerId) {
         Map<String, PeerSession> room = roomsByRoomId.get(roomId);
         return room == null ? Optional.empty() : Optional.ofNullable(room.get(peerId));
+    }
+
+    public List<RoomSnapshot> activeRooms() {
+        List<RoomSnapshot> result = new ArrayList<>();
+        roomsByRoomId.forEach((roomId, peers) -> {
+            if (!peers.isEmpty()) {
+                PeerSession owner = peers.values().iterator().next();
+                result.add(new RoomSnapshot(roomId, peers.size(), owner.getUserName()));
+            }
+        });
+        return result;
+    }
+
+    public record RoomSnapshot(String roomId, int peerCount, String ownerUserName) {
     }
 
     /** Tim va xoa peer gan voi mot WebSocketSession bi dong (duyet tat ca phong). */

@@ -17,7 +17,7 @@ import java.util.Objects;
 /** Chuyen qua lai giua man hinh Home va Room - gom 1 cho thay vi lap lai trong tung controller. */
 public final class Navigator {
 
-    static final double HOME_WIDTH = 600;
+    static final double HOME_WIDTH = 760;
     static final double HOME_HEIGHT = 680;
     static final double ROOM_WIDTH = 1040;
     static final double ROOM_HEIGHT = 680;
@@ -28,9 +28,41 @@ public final class Navigator {
     }
 
     public static void showHome(Stage stage) {
+        showHome(stage, true);
+    }
+
+    public static void showEntry(Stage stage) {
+        FXMLLoader loader = new FXMLLoader(Navigator.class.getResource("/view/entry.fxml"));
+        Parent root = load(loader);
+        loader.<EntryController>getController().setStage(stage);
+        stage.setOnCloseRequest(null);
+        stage.setTitle(ChatApplication.APP_TITLE);
+        stage.setScene(styledScene(root, HOME_WIDTH, HOME_HEIGHT));
+    }
+
+    static void showAuth(Stage stage) {
+        FXMLLoader loader = new FXMLLoader(Navigator.class.getResource("/view/auth.fxml"));
+        Parent root = load(loader);
+        loader.<AuthController>getController().setStage(stage);
+
+        stage.setOnCloseRequest(null);
+        stage.setTitle(ChatApplication.APP_TITLE + " - Tài khoản");
+        stage.setScene(styledScene(root, HOME_WIDTH, HOME_HEIGHT));
+    }
+
+    static void showHome(Stage stage, boolean accountMode) {
+        showHome(stage, accountMode, null, null);
+    }
+
+    static void showHome(Stage stage, boolean accountMode, String username, String authToken) {
         FXMLLoader loader = new FXMLLoader(Navigator.class.getResource("/view/home.fxml"));
         Parent root = load(loader);
-        loader.<HomeController>getController().setStage(stage);
+        HomeController controller = loader.getController();
+        controller.setStage(stage);
+        controller.setAccountMode(accountMode);
+        if (accountMode) {
+            controller.setAuthenticatedUser(username, authToken);
+        }
 
         stage.setOnCloseRequest(null);
         stage.setTitle(ChatApplication.APP_TITLE);

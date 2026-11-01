@@ -19,28 +19,25 @@
             xmlns:fx="http://javafx.com/fxml"
             fx:controller="com.datn.chatp2p.client.view.RoomController"
             styleClass="room-root">
-
-    <!-- ===== Cot trai: phong + nguoi trong phong ===== -->
     <left>
         <VBox styleClass="sidebar" prefWidth="290" minWidth="240">
-            <HBox styleClass="sidebar-header" spacing="10" alignment="CENTER_LEFT">
-                <FontIcon iconLiteral="fth-hash" styleClass="room-icon"/>
-                <VBox spacing="2" HBox.hgrow="ALWAYS" minWidth="0">
-                    <Label fx:id="roomNameLabel" styleClass="room-name"/>
-                    <HBox spacing="4" alignment="CENTER_LEFT">
-                        <FontIcon iconLiteral="fth-lock" styleClass="room-subtitle-icon"/>
-                        <Label fx:id="roomSubtitleLabel" styleClass="room-subtitle"/>
-                    </HBox>
-                </VBox>
-                <Button onAction="#onCopyRoomName" styleClass="button-icon, flat">
-                    <graphic>
-                        <FontIcon iconLiteral="fth-copy"/>
-                    </graphic>
-                    <tooltip>
-                        <Tooltip text="Sao chép tên phòng để mời người khác"/>
-                    </tooltip>
-                </Button>
-            </HBox>
+            <VBox styleClass="sidebar-header" spacing="10">
+                <HBox spacing="10" alignment="CENTER_LEFT">
+                    <FontIcon iconLiteral="fth-hash" styleClass="room-icon"/>
+                    <VBox spacing="2" HBox.hgrow="ALWAYS" minWidth="0">
+                        <Label fx:id="roomNameLabel" styleClass="room-name"/>
+                        <HBox spacing="4" alignment="CENTER_LEFT">
+                            <FontIcon iconLiteral="fth-lock" styleClass="room-subtitle-icon"/>
+                            <Label fx:id="roomSubtitleLabel" styleClass="room-subtitle"/>
+                        </HBox>
+                    </VBox>
+                    <Button onAction="#onCopyRoomName" styleClass="button-icon, flat">
+                        <graphic><FontIcon iconLiteral="fth-copy"/></graphic>
+                        <tooltip><Tooltip text="Sao chép tên phòng để mời người khác"/></tooltip>
+                    </Button>
+                </HBox>
+                <Label text="Phòng riêng tư được mã hoá đầu-cuối" styleClass="room-description" wrapText="true"/>
+            </VBox>
 
             <HBox spacing="6" alignment="CENTER_LEFT" styleClass="section-header">
                 <FontIcon iconLiteral="fth-users" styleClass="section-title-icon"/>
@@ -56,18 +53,13 @@
                 </VBox>
                 <Button fx:id="themeToggleButton" styleClass="button-icon, flat"/>
                 <Button onAction="#onLeaveRoom" styleClass="button-icon, flat, danger">
-                    <graphic>
-                        <FontIcon iconLiteral="fth-log-out"/>
-                    </graphic>
-                    <tooltip>
-                        <Tooltip text="Rời phòng"/>
-                    </tooltip>
+                    <graphic><FontIcon iconLiteral="fth-log-out"/></graphic>
+                    <tooltip><Tooltip text="Rời phòng"/></tooltip>
                 </Button>
             </HBox>
         </VBox>
     </left>
 
-    <!-- ===== Ben phai: khung chat ===== -->
     <center>
         <BorderPane styleClass="chat-panel">
             <top>
@@ -76,7 +68,6 @@
                     <HBox fx:id="statusChips" spacing="6" alignment="CENTER_LEFT"/>
                 </VBox>
             </top>
-
             <center>
                 <TabPane fx:id="chatTabs" tabClosingPolicy="UNAVAILABLE">
                     <Tab text="Nhóm">
@@ -86,14 +77,13 @@
                                 <VBox fx:id="emptyState" styleClass="empty-state" spacing="10" alignment="CENTER"
                                       maxWidth="420" maxHeight="-Infinity" mouseTransparent="false">
                                     <FontIcon iconLiteral="fth-user-plus" styleClass="empty-state-icon"/>
-                                    <Label text="Chưa có ai khác trong phòng" styleClass="empty-state-title"/>
+                                    <Label text="Đang chờ người tham gia" styleClass="empty-state-title"/>
+                                    <Label text="Phòng đã sẵn sàng để bắt đầu trò chuyện" styleClass="empty-state-kicker"/>
                                     <Label text="Gửi tên phòng dưới đây cho bạn bè qua một kênh khác. Khi họ vào phòng, kênh mã hoá đầu-cuối sẽ tự được thiết lập."
                                            styleClass="empty-state-text" wrapText="true" textAlignment="CENTER"/>
                                     <Label fx:id="emptyStateRoomLabel" styleClass="empty-state-room"/>
                                     <Button text="Sao chép tên phòng" onAction="#onCopyRoomName" styleClass="accent">
-                                        <graphic>
-                                            <FontIcon iconLiteral="fth-copy"/>
-                                        </graphic>
+                                        <graphic><FontIcon iconLiteral="fth-copy"/></graphic>
                                     </Button>
                                 </VBox>
                             </StackPane>
@@ -101,19 +91,14 @@
                     </Tab>
                 </TabPane>
             </center>
-
             <bottom>
                 <VBox styleClass="message-input-bar" spacing="4">
                     <HBox spacing="8" alignment="BOTTOM_CENTER">
                         <TextArea fx:id="messageArea" promptText="Nhập tin nhắn…" HBox.hgrow="ALWAYS"
                                   wrapText="true" prefRowCount="2" styleClass="message-area"/>
                         <Button onAction="#onSendMessage" styleClass="accent, button-icon, send-button">
-                            <graphic>
-                                <FontIcon iconLiteral="fth-send"/>
-                            </graphic>
-                            <tooltip>
-                                <Tooltip text="Gửi (Enter)"/>
-                            </tooltip>
+                            <graphic><FontIcon iconLiteral="fth-send"/></graphic>
+                            <tooltip><Tooltip text="Gửi (Enter)"/></tooltip>
                         </Button>
                     </HBox>
                     <HBox spacing="4" alignment="CENTER_LEFT">

@@ -4,11 +4,14 @@ import com.datn.chatp2p.common.signal.SignalMessage;
 import com.datn.chatp2p.common.signal.SignalType;
 import com.datn.chatp2p.signaling.room.PeerSession;
 import com.datn.chatp2p.signaling.room.RoomRegistry;
+import com.datn.chatp2p.signaling.auth.AuthService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
@@ -51,10 +54,24 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
 
     private final RoomRegistry roomRegistry;
     private final ObjectMapper objectMapper;
+    private final AuthService authService;
+    private final boolean authenticationRequired;
 
+    @Autowired
+    public SignalingWebSocketHandler(RoomRegistry roomRegistry, ObjectMapper objectMapper, AuthService authService,
+                                     @Value("${chat-p2p.auth.required:true}") boolean authenticationRequired) {
+        this.roomRegistry = roomRegistry;
+        this.objectMapper = objectMapper;
+        this.authService = authService;
+        this.authenticationRequired = authenticationRequired;
+    }
+
+    /** Compatibility constructor for low-level relay tests that do not boot auth storage. */
     public SignalingWebSocketHandler(RoomRegistry roomRegistry, ObjectMapper objectMapper) {
         this.roomRegistry = roomRegistry;
         this.objectMapper = objectMapper;
+        this.authService = null;
+        this.authenticationRequired = false;
     }
 
     @Override
@@ -89,10 +106,18 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
         // validate TRUOC khi goi constructor, neu khong 1 JOIN hop le ve JSON nhung
         // thieu truong (bug client hoac co y) se nem NullPointerException khong ai
         // bat, vi pham dung nguyen tac H.1 da ap dung cho loi parse JSON o tren.
-        if (signal.getRoomId() == null || signal.getFromPeerId() == null || signal.getUserName() == null) {
+        var authenticatedUser = signal.getAuthToken() != null && !signal.getAuthToken().isBlank()
+                && authService != null
+                ? authService.authenticate(signal.getAuthToken())
+                : java.util.Optional.<com.datn.chatp2p.signaling.auth.AuthUser>empty();
+        if (signal.getRoomId() == null || signal.getFromPeerId() == null || signal.getUserName() == null
+                || (authenticationRequired && authenticatedUser.isEmpty())
+                || (signal.getAuthToken() != null && !signal.getAuthToken().isBlank()
+                && authenticatedUser.isEmpty())) {
             log.warn("Bo qua ban tin JOIN thieu roomId/fromPeerId/userName tu session {}", session.getId());
             return;
         }
+        authenticatedUser.ifPresent(user -> signal.setUserName(user.username()));
 
         // Neu session nay da JOIN truoc do ma chua LEAVE (client gui JOIN lan 2 -
         // bug hoac doi phong giua chung) - don dep entry CU truoc khi them entry

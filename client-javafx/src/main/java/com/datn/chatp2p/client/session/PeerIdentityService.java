@@ -11,7 +11,10 @@ import java.security.PublicKey;
 import java.util.Base64;
 
 /** Owns the long-lived identity key and peer identity verification. */
-final class PeerIdentityService {
+public final class PeerIdentityService {
+
+    public PeerIdentityService() {
+    }
 
     private final KeyPair keyPair = IdentityKeyStore.loadOrCreate(
             Path.of(System.getProperty("user.home"), ".chat-p2p-java", "identity.properties"));
@@ -19,6 +22,10 @@ final class PeerIdentityService {
 
     String localFingerprint() {
         return localFingerprint;
+    }
+
+    public String publicKeyBase64() {
+        return Base64.getEncoder().encodeToString(keyPair.getPublic().getEncoded());
     }
 
     IdentityPayload createPayload(String roomId, String userId) {

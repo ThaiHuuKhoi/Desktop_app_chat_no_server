@@ -69,6 +69,7 @@ public final class WebSocketSignalingClient implements SignalingClient {
     private volatile String roomId;
     private volatile String peerId;
     private volatile String userName;
+    private volatile String authToken;
     private volatile boolean intentionallyDisconnected;
     private volatile Duration nextReconnectDelay = INITIAL_RECONNECT_DELAY;
     private volatile Consumer<ConnectionState> connectionStateHandler;
@@ -86,6 +87,10 @@ public final class WebSocketSignalingClient implements SignalingClient {
         // KHI DA KET NOI DUOC IT NHAT 1 LAN, mat ket noi sau do moi tu dong
         // reconnect (xem handleUnexpectedDisconnect).
         establishConnection();
+    }
+
+    public void setAuthToken(String authToken) {
+        this.authToken = authToken;
     }
 
     /** Dang ky nhan thong bao khi trang thai ket noi doi (vd de hien UI "Mat ket noi, dang thu lai..."). */
@@ -180,7 +185,9 @@ public final class WebSocketSignalingClient implements SignalingClient {
         this.webSocket = socket;
         this.nextReconnectDelay = INITIAL_RECONNECT_DELAY; // reset backoff sau khi ket noi lai thanh cong
         notifyState(ConnectionState.CONNECTED);
-        sendMessage(SignalMessage.join(roomId, peerId, userName));
+        SignalMessage join = SignalMessage.join(roomId, peerId, userName);
+        join.setAuthToken(authToken);
+        sendMessage(join);
     }
 
     /** Goi tu Listener khi WebSocket dong/loi BAT THUONG (khong phai do chinh minh goi disconnect()). */

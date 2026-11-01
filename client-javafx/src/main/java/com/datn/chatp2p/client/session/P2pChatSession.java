@@ -35,6 +35,7 @@ public final class P2pChatSession implements ChatSession {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final RoomConfig config;
+    private final WebSocketSignalingClient signalingClient;
     private final String selfPeerId = UUID.randomUUID().toString();
     private final PeerIdentityService identityService = new PeerIdentityService();
     private final Map<String, SessionPeer> knownPeers = new ConcurrentHashMap<>();
@@ -52,11 +53,13 @@ public final class P2pChatSession implements ChatSession {
 
     public P2pChatSession(RoomConfig config) {
         this.config = config;
+        this.signalingClient = new WebSocketSignalingClient();
+        this.signalingClient.setAuthToken(config.authToken());
         this.roomSession = new RoomSession(
                 config.roomName(),
                 selfPeerId,
                 config.userName(),
-                new WebSocketSignalingClient(),
+                signalingClient,
                 STUN_SERVERS,
                 TURN_SERVERS);
     }
