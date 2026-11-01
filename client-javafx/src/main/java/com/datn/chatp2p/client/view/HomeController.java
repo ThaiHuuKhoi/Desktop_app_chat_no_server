@@ -2,7 +2,6 @@ package com.datn.chatp2p.client.view;
 
 import com.datn.chatp2p.client.session.RoomConfig;
 import com.datn.chatp2p.client.session.AuthClient;
-import com.datn.chatp2p.client.session.PeerIdentityService;
 import com.datn.chatp2p.client.util.RoomNameGenerator;
 import com.datn.chatp2p.client.util.ThemeManager;
 import javafx.animation.PauseTransition;
@@ -50,15 +49,6 @@ public class HomeController {
     private TextField serverField;
 
     @FXML
-    private TextField accountField;
-
-    @FXML
-    private javafx.scene.control.PasswordField passwordField;
-
-    @FXML
-    private VBox accountBox;
-
-    @FXML
     private VBox roomBrowserBox;
 
     @FXML
@@ -70,8 +60,6 @@ public class HomeController {
     @FXML
     private Label errorLabel;
 
-    private final AuthClient authClient = new AuthClient();
-    private final PeerIdentityService identityService = new PeerIdentityService();
     private String authToken;
     private java.util.List<AuthClient.RoomSummary> activeRooms = java.util.List.of();
 
@@ -101,14 +89,18 @@ public class HomeController {
 
     public void setAccountMode(boolean accountMode) {
         this.accountMode = accountMode;
-        if (accountBox != null) {
-            accountBox.setVisible(accountMode);
-            accountBox.setManaged(accountMode);
-        }
         if (roomBrowserBox != null) {
             roomBrowserBox.setVisible(accountMode);
             roomBrowserBox.setManaged(accountMode);
         }
+    }
+
+    public void setAuthenticatedUser(String username, String authToken) {
+        this.authToken = authToken;
+        if (username != null && !username.isBlank()) {
+            userNameField.setText(username);
+        }
+        loadRooms();
     }
 
     @FXML
@@ -157,80 +149,61 @@ public class HomeController {
     }
 
     @FXML
-    private void onLogin() {
-            try {
-                AuthClient.AuthResult result = authClient.login(serverField.getText(),
-                        trimmed(accountField.getText()), passwordField.getText(), identityService.publicKeyBase64());
-                authToken = result.token();
-                userNameField.setText(result.username());
-                errorLabel.setText("Đăng nhập thành công.");
-                loadRooms();
-            } catch (RuntimeException error) {
-                errorLabel.setText(error.getMessage());
-            }
-
-            @FXML
-            private void onRefreshRooms() {
-                loadRooms();
-            }
-
-            @FXML
-            private void onCreateRoom() {
-                String roomName = trimmed(roomNameField.getText());
-                if (roomName.isEmpty()) {
-                    errorLabel.setText("Nhập tên phòng trước khi tạo.");
-                    return;
-                }
-                confirmAndJoin(roomName);
-            }
-
-            @FXML
-            private void onSelectRoom() {
-                AuthClient.RoomSummary selected = roomListView.getSelectionModel().getSelectedItem();
-                if (selected != null) {
-                    confirmAndJoin(selected.roomId());
-                }
-            }
-
-            private void loadRooms() {
-                if (authToken == null || authToken.isBlank()) return;
-                try {
-                    activeRooms = authClient.rooms(serverField.getText(), authToken);
-                    filterRooms(roomSearchField.getText());
-                } catch (RuntimeException error) {
-                    errorLabel.setText(error.getMessage());
-                }
-
-                private void filterRooms(String query) {
-                    if (roomListView == null) return;
-                    String normalized = trimmed(query).toLowerCase(java.util.Locale.ROOT);
-                    roomListView.getItems().setAll(activeRooms.stream()
-                            .filter(room -> room.roomId().toLowerCase(java.util.Locale.ROOT).contains(normalized))
-                            .toList());
-                }
-            }
-
-            private void confirmAndJoin(String roomName) {
-                Alert alert = new Alert(Alert.AlertType.CONFIRMATION,
-                        "Bạn có muốn vào phòng \"" + roomName + "\" không?",
-                        ButtonType.CANCEL, ButtonType.OK);
-                alert.setTitle("Xác nhận vào phòng");
-                alert.setHeaderText("Tham gia phòng");
-                if (alert.showAndWait().orElse(ButtonType.CANCEL) == ButtonType.OK) {
-                    roomNameField.setText(roomName);
-                    onJoinRoom();
-                }
-            }
-        }
+    private void onRefreshRooms() {
+        loadRooms();
+    }
 
     @FXML
-    private void onRegister() {
-            try {
-                authClient.register(serverField.getText(), trimmed(accountField.getText()),
-                        passwordField.getText(), identityService.publicKeyBase64());
-                errorLabel.setText("Đăng ký thành công. Hãy đăng nhập.");
-            } catch (RuntimeException error) {
-                errorLabel.setText(error.getMessage());
+    private void onCreateRoom() {
+        String roomName = trimmed(roomNameField.getText());
+        if (roomName.isEmpty()) {
+            errorLabel.setText("Nhập tên phòng trước khi tạo.");
+            return;
+        }
+        confirmAndJoin(roomName);
+    }
+
+    @FXML
+    private void onSelectRoom() {
+        AuthClient.RoomSummary selected =
+                roomListView.getSelectionModel().getSelectedItem();
+        if (selected != null) {
+            confirmAndJoin(selected.roomId());
+        }
+    }
+
+    private void loadRooms() {
+        if (authToken == null || authToken.isBlank()) {
+            return;
+        }
+        try {
+            AuthClient authClient = new AuthClient();
+            activeRooms = authClient.rooms(serverField.getText(), authToken);
+            filterRooms(roomSearchField.getText());
+        } catch (RuntimeException error) {
+            errorLabel.setText(error.getMessage());
+        }
+    }
+
+    private void filterRooms(String query) {
+        if (roomListView == null) {
+            return;
+        }
+        String normalized = trimmed(query).toLowerCase(java.util.Locale.ROOT);
+        roomListView.getItems().setAll(activeRooms.stream()
+                .filter(room -> room.roomId().toLowerCase(java.util.Locale.ROOT).contains(normalized))
+                .toList());
+    }
+
+    private void confirmAndJoin(String roomName) {
+        Alert alert = new Alert(Alert.AlertType.CONFIRMATION,
+                "Bạn có muốn vào phòng \"" + roomName + "\" không?",
+                ButtonType.CANCEL, ButtonType.OK);
+        alert.setTitle("Xác nhận vào phòng");
+        alert.setHeaderText("Tham gia phòng");
+        if (alert.showAndWait().orElse(ButtonType.CANCEL) == ButtonType.OK) {
+            roomNameField.setText(roomName);
+            onJoinRoom();
         }
     }
 

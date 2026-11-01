@@ -18,7 +18,7 @@
            fx:controller="com.datn.chatp2p.client.view.HomeController"
            styleClass="home-root">
 
-    <VBox styleClass="home-card" spacing="16" maxWidth="460" maxHeight="-Infinity">
+    <VBox styleClass="home-card" spacing="18" maxWidth="700" maxHeight="-Infinity">
         <padding>
             <Insets top="30" right="32" bottom="28" left="32"/>
         </padding>
@@ -32,58 +32,46 @@
             <Label text="Chat trực tiếp, mã hoá đầu-cuối, không lưu trên máy chủ" styleClass="app-subtitle"/>
         </HBox>
 
-        <VBox fx:id="accountBox" spacing="6">
-            <Label text="Tài khoản" styleClass="field-label"/>
-            <TextField fx:id="accountField" promptText="Tên tài khoản"/>
-            <PasswordField fx:id="passwordField" promptText="Mật khẩu (tối thiểu 8 ký tự)"/>
-            <HBox spacing="8">
-                <Button text="Đăng nhập" onAction="#onLogin" styleClass="accent" HBox.hgrow="ALWAYS"/>
-                <Button text="Đăng ký" onAction="#onRegister" HBox.hgrow="ALWAYS"/>
-            </HBox>
-        </VBox>
+        <HBox spacing="18" styleClass="home-columns" alignment="TOP_CENTER">
+            <VBox spacing="14" styleClass="room-create-column" HBox.hgrow="ALWAYS">
+                <Label text="Bắt đầu cuộc trò chuyện" styleClass="column-title"/>
+                <HBox spacing="12" alignment="CENTER_LEFT" styleClass="identity-row">
+                    <StackPane fx:id="avatarHolder"/>
+                    <VBox spacing="4" HBox.hgrow="ALWAYS">
+                        <Label text="Tên hiển thị của bạn" styleClass="field-label"/>
+                        <TextField fx:id="userNameField" promptText="Ví dụ: Khôi"/>
+                    </VBox>
+                </HBox>
 
-        <HBox spacing="12" alignment="CENTER_LEFT" styleClass="identity-row">
-            <StackPane fx:id="avatarHolder"/>
-            <VBox spacing="4" HBox.hgrow="ALWAYS">
-                <Label text="Tên hiển thị của bạn" styleClass="field-label"/>
-                <TextField fx:id="userNameField" promptText="Ví dụ: Khôi"/>
+                <VBox spacing="6">
+                    <Label text="Tên phòng" styleClass="field-label"/>
+                    <HBox spacing="8">
+                        <TextField fx:id="roomNameField" promptText="Nhập tên phòng" HBox.hgrow="ALWAYS"/>
+                        <Button onAction="#onGenerateRoomName" styleClass="button-icon">
+                            <graphic><FontIcon iconLiteral="fth-shuffle"/></graphic>
+                            <tooltip><Tooltip text="Sinh tên phòng ngẫu nhiên"/></tooltip>
+                        </Button>
+                        <Button fx:id="copyRoomButton" onAction="#onCopyRoomName" styleClass="button-icon">
+                            <graphic><FontIcon iconLiteral="fth-copy"/></graphic>
+                            <tooltip><Tooltip text="Sao chép tên phòng"/></tooltip>
+                        </Button>
+                    </HBox>
+                    <Label text="Chia sẻ tên phòng để mời bạn bè tham gia."
+                           styleClass="field-hint" wrapText="true"/>
+                </VBox>
+            </VBox>
+
+            <VBox fx:id="roomBrowserBox" spacing="10" styleClass="room-browser-column" HBox.hgrow="ALWAYS">
+                <Label text="Phòng đang hoạt động" styleClass="column-title"/>
+                <TextField fx:id="roomSearchField" promptText="Tìm kiếm phòng..."/>
+                <ListView fx:id="roomListView" prefHeight="160" VBox.vgrow="ALWAYS"
+                          onMouseClicked="#onSelectRoom"/>
+                <HBox spacing="8">
+                    <Button text="Làm mới" onAction="#onRefreshRooms"/>
+                    <Button text="Tạo phòng" onAction="#onCreateRoom" styleClass="accent"/>
+                </HBox>
             </VBox>
         </HBox>
-
-        <VBox spacing="6">
-            <Label text="Tên phòng" styleClass="field-label"/>
-            <HBox spacing="8">
-                <TextField fx:id="roomNameField" promptText="Nhập tên phòng hoặc bấm ngẫu nhiên" HBox.hgrow="ALWAYS"/>
-                <Button onAction="#onGenerateRoomName" styleClass="button-icon">
-                    <graphic>
-                        <FontIcon iconLiteral="fth-shuffle"/>
-                    </graphic>
-                    <tooltip>
-                        <Tooltip text="Sinh tên phòng ngẫu nhiên"/>
-                    </tooltip>
-                </Button>
-                <Button fx:id="copyRoomButton" onAction="#onCopyRoomName" styleClass="button-icon">
-                    <graphic>
-                        <FontIcon iconLiteral="fth-copy"/>
-                    </graphic>
-                    <tooltip>
-                        <Tooltip text="Sao chép tên phòng"/>
-                    </tooltip>
-                </Button>
-            </HBox>
-            <Label text="Gửi tên phòng cho người bạn muốn chat cùng. Ai có tên phòng đều vào được."
-                   styleClass="field-hint" wrapText="true"/>
-        </VBox>
-
-        <VBox fx:id="roomBrowserBox" spacing="6">
-            <Label text="Phòng đang hoạt động" styleClass="field-label"/>
-            <TextField fx:id="roomSearchField" promptText="Tìm kiếm phòng theo tên..."/>
-            <ListView fx:id="roomListView" prefHeight="130" onMouseClicked="#onSelectRoom"/>
-            <HBox spacing="8">
-                <Button text="Làm mới" onAction="#onRefreshRooms"/>
-                <Button text="Tạo phòng từ tên bên dưới" onAction="#onCreateRoom" styleClass="accent"/>
-            </HBox>
-        </VBox>
 
         <TitledPane text="Tuỳ chọn kết nối" expanded="false" styleClass="advanced-pane">
             <VBox spacing="8">

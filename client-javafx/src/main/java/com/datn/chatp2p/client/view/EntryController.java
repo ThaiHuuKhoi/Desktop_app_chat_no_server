@@ -19,6 +19,6 @@ public final class EntryController {
 
     @FXML
     private void onLogin() {
-        Navigator.showHome(stage, true);
+        Navigator.showAuth(stage);
     }
 }

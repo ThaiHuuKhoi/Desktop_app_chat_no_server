@@ -96,11 +96,15 @@ Khi signaling server chay tren may host, dung:
 ```powershell
 $env:CHAT_P2P_DB_URL="jdbc:mysql://localhost:3306/chat_p2p?serverTimezone=UTC"
 $env:CHAT_P2P_DB_USERNAME="chat_p2p"
-$env:CHAT_P2P_DB_PASSWORD="change_this_password"
+$env:CHAT_P2P_DB_PASSWORD="chat_p2p_dev_password"
 ```
 
-Schema duoc khoi tao tu dong trong lan dau volume duoc tao. De xoa du lieu
-database va tao lai tu dau:
+Neu khong dat `CHAT_P2P_DB_PASSWORD`, server mac dinh dung mat khau
+`chat_p2p_dev_password` tu `docker-compose.yml`.
+
+Schema duoc Docker khoi tao tu dong trong lan dau volume duoc tao; server
+khong chay lai schema tren moi lan khoi dong. De xoa du lieu database va tao
+lai tu dau:
 
 ```powershell
 docker compose down -v
