@@ -31,7 +31,7 @@ import java.security.SecureRandom;
 public class HomeController {
 
     private static final SecureRandom RANDOM = new SecureRandom();
-    private static final String DEFAULT_SERVER_URI = "ws://localhost:8080";
+    private static final String DEFAULT_SERVER_URI = "ws://165.101.47.83:8080";
 
     @FXML
     private StackPane avatarHolder;

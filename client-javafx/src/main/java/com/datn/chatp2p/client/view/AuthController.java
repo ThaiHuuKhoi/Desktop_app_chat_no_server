@@ -12,7 +12,7 @@ import javafx.stage.Stage;
 
 public final class AuthController {
 
-    private static final String DEFAULT_SERVER_URI = "ws://localhost:8080";
+    private static final String DEFAULT_SERVER_URI = "ws://165.101.47.83:8080";
 
     @FXML
     private TextField serverField;
