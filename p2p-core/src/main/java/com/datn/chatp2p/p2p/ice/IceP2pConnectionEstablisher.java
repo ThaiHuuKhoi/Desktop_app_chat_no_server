@@ -11,7 +11,6 @@ import org.ice4j.ice.CandidateType;
 import org.ice4j.ice.Component;
 import org.ice4j.ice.IceMediaStream;
 import org.ice4j.ice.IceProcessingState;
-import org.ice4j.ice.LocalCandidate;
 import org.ice4j.ice.RemoteCandidate;
 import org.ice4j.ice.harvest.StunCandidateHarvester;
 import org.ice4j.ice.harvest.TurnCandidateHarvester;
@@ -133,7 +132,6 @@ public final class IceP2pConnectionEstablisher {
     private static final AtomicInteger nextPreferredPort = new AtomicInteger(MIN_PORT);
 
     private final Agent agent = new Agent();
-    private final List<TransportAddress> stunServers;
     private final IceMediaStream mediaStream;
     private final Component component;
     /** Moc thoi gian tao ra instance nay - dung lam "diem bat dau" khi tinh {@link IceConnectionStats#establishmentMillis()}. */
@@ -164,7 +162,6 @@ public final class IceP2pConnectionEstablisher {
      *                    ket noi that su phai di qua relay nay.
      */
     public IceP2pConnectionEstablisher(List<TransportAddress> stunServers, List<TurnServerConfig> turnServers) {
-        this.stunServers = List.copyOf(stunServers);
         // Tat trickle ICE tuong minh (khong phu thuoc gia tri mac dinh cua ice4j):
         // thiet ke nay gather toan bo candidate ngay trong createComponent() roi
         // moi gui 1 lan qua signaling, xem javadoc lop nay va Tai-lieu-ky-thuat.md
@@ -198,7 +195,6 @@ public final class IceP2pConnectionEstablisher {
             // createComponent() tu goi gather candidate ngay (khong trickle) - xong buoc nay
             // la co du candidate cuc bo (host + server-reflexive qua STUN o tren).
             this.component = agent.createComponent(mediaStream, preferredPort, MIN_PORT, MAX_PORT);
-            removeUnroutableHostCandidates();
             LOG.info(() -> "ICE component created: socket=" + component.getSocket().getLocalSocketAddress()
                     + ", localCandidates=" + describeCandidates(component.getLocalCandidates()));
             LOG.info(() -> "ICE advertisable candidates: " + describeCandidates(encodeLocalCandidates()));
@@ -314,42 +310,6 @@ public final class IceP2pConnectionEstablisher {
         LOG.info(() -> "ICE candidate filter: all=" + describeCandidates(allCandidates)
                 + ", advertisable=" + describeCandidates(advertisableCandidates));
         return advertisableCandidates;
-    }
-
-    /**
-     * ice4j can bind sockets on virtual adapters which are visible to the JVM
-     * but have no route to the Internet. Keeping such candidates makes every
-     * connectivity check try that dead interface first and can produce
-     * "Network is unreachable". Keep private candidates that can actually
-     * route to a configured STUN server; they are still needed for LAN peers.
-     */
-    private void removeUnroutableHostCandidates() {
-        List<LocalCandidate> removed = component.getLocalCandidates().stream()
-                .filter(candidate -> candidate.getType() == CandidateType.HOST_CANDIDATE)
-                .filter(candidate -> !hasRouteToStun(candidate.getTransportAddress().getAddress()))
-                .toList();
-        if (!removed.isEmpty()) {
-            component.getLocalCandidates().removeAll(removed);
-            LOG.warning(() -> "ICE removed host candidates without STUN route: "
-                    + describeCandidates(removed));
-        }
-    }
-
-    private boolean hasRouteToStun(InetAddress localAddress) {
-        if (stunServers.isEmpty()) {
-            return true;
-        }
-        for (TransportAddress stunServer : stunServers) {
-            try (DatagramSocket socket = new DatagramSocket(
-                    new InetSocketAddress(localAddress, 0))) {
-                socket.connect(stunServer.getAddress(), stunServer.getPort());
-                return true;
-            } catch (IOException error) {
-                LOG.fine(() -> "ICE no route from " + localAddress + " to STUN "
-                        + stunServer + ": " + error.getMessage());
-            }
-        }
-        return false;
     }
 
     private static String describeCandidates(List<?> candidates) {
