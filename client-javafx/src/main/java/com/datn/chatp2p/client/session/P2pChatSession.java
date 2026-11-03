@@ -22,6 +22,8 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.List;
+import java.util.Locale;
+import java.util.Properties;
 import java.util.UUID;
 import java.util.logging.Logger;
 
@@ -33,6 +35,7 @@ public final class P2pChatSession implements ChatSession {
 
     private static final List<TransportAddress> STUN_SERVERS = List.of(
             new TransportAddress("stun.l.google.com", 19302, Transport.UDP));
+    private static final Properties APPLICATION_PROPERTIES = loadApplicationProperties();
     private static final List<TurnServerConfig> TURN_SERVERS = loadTurnServers();
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
@@ -277,6 +280,27 @@ public final class P2pChatSession implements ChatSession {
 
     private static String setting(String name) {
         String property = System.getProperty(name);
-        return property == null ? System.getenv().getOrDefault(name, "") : property;
+        if (property != null) {
+            return property.trim();
+        }
+        String environment = System.getenv(name);
+        if (environment != null) {
+            return environment.trim();
+        }
+        String applicationKey = name.toLowerCase(Locale.ROOT).replace('_', '.');
+        return APPLICATION_PROPERTIES.getProperty(applicationKey, "").trim();
+    }
+
+    private static Properties loadApplicationProperties() {
+        Properties properties = new Properties();
+        try (var input = P2pChatSession.class.getClassLoader()
+                .getResourceAsStream("application.properties")) {
+            if (input != null) {
+                properties.load(input);
+            }
+        } catch (IOException error) {
+            throw new IllegalStateException("Khong the doc application.properties", error);
+        }
+        return properties;
     }
 }
