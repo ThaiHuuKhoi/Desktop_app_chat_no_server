@@ -24,6 +24,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * Quan ly TAT CA peer trong 1 phong - "PeerRoom" cua chitchatter phia Java
@@ -49,6 +51,7 @@ import java.util.function.Consumer;
  * gia tri mac dinh {@code UNVERIFIED} cua {@link PeerConnection}.
  */
 public final class RoomSession {
+    private static final Logger LOG = Logger.getLogger(RoomSession.class.getName());
 
     private final String roomId;
     private final String selfPeerId;
@@ -156,6 +159,8 @@ public final class RoomSession {
 
     /** Ket noi toi signaling server va gui JOIN - bat dau toan bo vong doi cua phong. */
     public void join(String signalingServerUri) {
+        LOG.info(() -> "Signaling join: server=" + signalingServerUri
+                + ", room=" + roomId + ", selfPeerId=" + selfPeerId);
         signalingClient.connect(signalingServerUri, roomId, selfPeerId, selfUserName);
     }
 
@@ -364,9 +369,12 @@ public final class RoomSession {
     }
 
     private void connectAsOfferer(String peerId, String userName) {
+        LOG.info(() -> "ICE signaling: creating OFFER for peer=" + peerId);
         IceP2pConnectionEstablisher establisher = createEstablisherFor(peerId, userName);
 
         var offer = establisher.createOffer();
+        LOG.info(() -> "ICE signaling: sending OFFER to peer=" + peerId
+                + ", candidates=" + offer.candidates().size());
         signalingClient.sendOffer(peerId, toJson(offer));
     }
 
@@ -374,13 +382,18 @@ public final class RoomSession {
         String peerId = message.getFromPeerId();
         try {
             var offer = fromJson(message.getPayload(), IceOfferPayload.class);
+            LOG.info(() -> "ICE signaling: OFFER received from peer=" + peerId
+                    + ", candidates=" + offer.candidates().size());
             String userName = pendingUserNames.get(peerId);
 
             IceP2pConnectionEstablisher establisher = createEstablisherFor(peerId, userName);
 
             var answer = establisher.createAnswer(offer);
+            LOG.info(() -> "ICE signaling: sending ANSWER to peer=" + peerId
+                    + ", candidates=" + answer.candidates().size());
             signalingClient.sendAnswer(peerId, toJson(answer));
         } catch (RuntimeException e) {
+            LOG.log(Level.WARNING, "ICE signaling: failed to handle OFFER from peer=" + peerId, e);
             // OFFER hong (JSON/candidate sai dinh dang) hoac ICE khoi tao that bai - chi
             // bo qua dung peer nay, khong duoc lam sap ca luong xu ly ban tin cua RoomSession.
             failConnection(peerId, e);
@@ -391,12 +404,16 @@ public final class RoomSession {
         String peerId = message.getFromPeerId();
         IceP2pConnectionEstablisher establisher = pendingEstablishers.get(peerId);
         if (establisher == null) {
+            LOG.warning("ICE signaling: ANSWER ignored because no pending establisher, peer=" + peerId);
             return; // Khong khop phien ICE nao dang cho (vd peer da roi phong truoc do) - bo qua.
         }
         try {
             var answer = fromJson(message.getPayload(), IceAnswerPayload.class);
+            LOG.info(() -> "ICE signaling: ANSWER received from peer=" + peerId
+                    + ", candidates=" + answer.candidates().size());
             establisher.acceptAnswer(answer);
         } catch (RuntimeException e) {
+            LOG.log(Level.WARNING, "ICE signaling: failed to handle ANSWER from peer=" + peerId, e);
             failConnection(peerId, e);
         }
     }
@@ -527,6 +544,7 @@ public final class RoomSession {
 
     /** Bao loi ket noi voi 1 peer cu the ra ngoai qua {@link #onConnectionFailed} (khong lam gi neu chua ai dang ky nghe). */
     private void notifyConnectionFailed(String peerId, Throwable error) {
+        LOG.log(Level.WARNING, "ICE connection failed for peer=" + peerId, error);
         BiConsumer<String, Throwable> handler = onConnectionFailedHandler;
         if (handler != null) {
             handler.accept(peerId, error);

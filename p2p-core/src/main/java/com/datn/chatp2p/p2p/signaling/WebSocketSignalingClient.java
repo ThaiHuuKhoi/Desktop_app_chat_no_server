@@ -17,6 +17,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
+import java.util.logging.Logger;
 
 /**
  * Cai dat that cua {@link SignalingClient} bang {@code java.net.http.HttpClient}
@@ -41,6 +42,7 @@ import java.util.function.Consumer;
  * co khai niem reconnect.
  */
 public final class WebSocketSignalingClient implements SignalingClient {
+    private static final Logger LOG = Logger.getLogger(WebSocketSignalingClient.class.getName());
 
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
     private static final Duration INITIAL_RECONNECT_DELAY = Duration.ofSeconds(1);
@@ -168,6 +170,7 @@ public final class WebSocketSignalingClient implements SignalingClient {
     /** Mo ket noi that (dung chung boi lan connect() dau va moi lan thu reconnect). */
     private void establishConnection() {
         URI wsUri = URI.create(serverUri + "/ws");
+        LOG.info(() -> "Signaling connecting: " + wsUri + ", peerId=" + peerId);
         CompletableFuture<WebSocket> connecting = HttpClient.newHttpClient()
                 .newWebSocketBuilder()
                 .connectTimeout(CONNECT_TIMEOUT)
@@ -183,6 +186,7 @@ public final class WebSocketSignalingClient implements SignalingClient {
         }
 
         this.webSocket = socket;
+        LOG.info(() -> "Signaling connected: " + wsUri + ", peerId=" + peerId);
         this.nextReconnectDelay = INITIAL_RECONNECT_DELAY; // reset backoff sau khi ket noi lai thanh cong
         notifyState(ConnectionState.CONNECTED);
         SignalMessage join = SignalMessage.join(roomId, peerId, userName);
@@ -246,7 +250,14 @@ public final class WebSocketSignalingClient implements SignalingClient {
             throw new IllegalStateException("Chua ket noi toi signaling server - goi connect() truoc");
         }
         try {
+            if (message.getType() != SignalType.JOIN) {
+                message.setAuthToken(authToken);
+            }
             String json = objectMapper.writeValueAsString(message);
+            LOG.info(() -> "Signaling send: type=" + message.getType()
+                    + ", from=" + message.getFromPeerId()
+                    + ", to=" + message.getToPeerId()
+                    + ", payloadLength=" + (message.getPayload() == null ? 0 : message.getPayload().length()));
             socket.sendText(json, true);
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("Khong serialize duoc SignalMessage: " + message, e);
@@ -269,7 +280,12 @@ public final class WebSocketSignalingClient implements SignalingClient {
                 String json = incomingTextBuffer.toString();
                 incomingTextBuffer.setLength(0);
                 try {
-                    dispatcher.dispatch(objectMapper.readValue(json, SignalMessage.class));
+                    SignalMessage message = objectMapper.readValue(json, SignalMessage.class);
+                    LOG.info(() -> "Signaling receive: type=" + message.getType()
+                            + ", from=" + message.getFromPeerId()
+                            + ", to=" + message.getToPeerId()
+                            + ", payloadLength=" + (message.getPayload() == null ? 0 : message.getPayload().length()));
+                    dispatcher.dispatch(message);
                 } catch (IOException e) {
                     // Ban tin loi dinh dang - bo qua, khong lam sap ca ket noi
                     // (dung nguyen tac xu ly loi o Tai-lieu-ky-thuat.md Phan H.1).

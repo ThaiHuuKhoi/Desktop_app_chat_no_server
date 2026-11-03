@@ -11,6 +11,7 @@ import org.ice4j.ice.CandidateType;
 import org.ice4j.ice.Component;
 import org.ice4j.ice.IceMediaStream;
 import org.ice4j.ice.IceProcessingState;
+import org.ice4j.ice.LocalCandidate;
 import org.ice4j.ice.RemoteCandidate;
 import org.ice4j.ice.harvest.StunCandidateHarvester;
 import org.ice4j.ice.harvest.TurnCandidateHarvester;
@@ -20,9 +21,14 @@ import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
 import java.io.IOException;
 import java.net.DatagramSocket;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.NetworkInterface;
+import java.net.SocketException;
 import java.util.List;
 import java.util.Optional;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
@@ -73,6 +79,7 @@ import java.util.stream.Collectors;
  * su phai di qua relay nay.
  */
 public final class IceP2pConnectionEstablisher {
+    private static final Logger LOG = Logger.getLogger(IceP2pConnectionEstablisher.class.getName());
 
     /**
      * Cong UDP goi y de ice4j thu dung truoc - neu bi chiem, ice4j tu do tim
@@ -126,6 +133,7 @@ public final class IceP2pConnectionEstablisher {
     private static final AtomicInteger nextPreferredPort = new AtomicInteger(MIN_PORT);
 
     private final Agent agent = new Agent();
+    private final List<TransportAddress> stunServers;
     private final IceMediaStream mediaStream;
     private final Component component;
     /** Moc thoi gian tao ra instance nay - dung lam "diem bat dau" khi tinh {@link IceConnectionStats#establishmentMillis()}. */
@@ -156,13 +164,18 @@ public final class IceP2pConnectionEstablisher {
      *                    ket noi that su phai di qua relay nay.
      */
     public IceP2pConnectionEstablisher(List<TransportAddress> stunServers, List<TurnServerConfig> turnServers) {
+        this.stunServers = List.copyOf(stunServers);
         // Tat trickle ICE tuong minh (khong phu thuoc gia tri mac dinh cua ice4j):
         // thiet ke nay gather toan bo candidate ngay trong createComponent() roi
         // moi gui 1 lan qua signaling, xem javadoc lop nay va Tai-lieu-ky-thuat.md
         // Phan E.6.2. Neu trickling=true, STUN harvester se KHONG duoc goi ngay,
         // lam encodeLocalCandidates() thieu candidate server-reflexive.
         agent.setTrickling(false);
+        LOG.info(() -> "ICE create: stunServers=" + stunServers
+                + ", turnServers=" + turnServers.size()
+                + ", interfaces=" + describeInterfaces());
         for (TransportAddress stunServer : stunServers) {
+            LOG.info(() -> "ICE register STUN server: " + stunServer);
             agent.addCandidateHarvester(new StunCandidateHarvester(stunServer));
         }
         // TurnCandidateHarvester ke thua StunCandidateHarvester (ice4j) - vua tim
@@ -185,6 +198,10 @@ public final class IceP2pConnectionEstablisher {
             // createComponent() tu goi gather candidate ngay (khong trickle) - xong buoc nay
             // la co du candidate cuc bo (host + server-reflexive qua STUN o tren).
             this.component = agent.createComponent(mediaStream, preferredPort, MIN_PORT, MAX_PORT);
+            removeUnroutableHostCandidates();
+            LOG.info(() -> "ICE component created: socket=" + component.getSocket().getLocalSocketAddress()
+                    + ", localCandidates=" + describeCandidates(component.getLocalCandidates()));
+            LOG.info(() -> "ICE advertisable candidates: " + describeCandidates(encodeLocalCandidates()));
         } catch (IOException e) {
             // BindException (khong tim duoc cong UDP trong khoang MIN_PORT-MAX_PORT) la
             // truong hop hay gap nhat - bao loi ro rang thay vi de checked exception
@@ -213,7 +230,10 @@ public final class IceP2pConnectionEstablisher {
      */
     public IceOfferPayload createOffer() {
         agent.setControlling(true);
-        return new IceOfferPayload(agent.getLocalUfrag(), agent.getLocalPassword(), encodeLocalCandidates());
+        List<String> candidates = encodeLocalCandidates();
+        LOG.info(() -> "ICE create offer: ufrag=" + agent.getLocalUfrag()
+                + ", candidates=" + describeCandidates(candidates));
+        return new IceOfferPayload(agent.getLocalUfrag(), agent.getLocalPassword(), candidates);
     }
 
     /**
@@ -224,10 +244,15 @@ public final class IceP2pConnectionEstablisher {
      */
     public IceAnswerPayload createAnswer(IceOfferPayload remoteOffer) {
         agent.setControlling(false);
+        LOG.info(() -> "ICE received offer: remoteUfrag=" + remoteOffer.ufrag()
+                + ", remoteCandidates=" + describeCandidates(remoteOffer.candidates()));
         applyRemote(remoteOffer.ufrag(), remoteOffer.password(), remoteOffer.candidates());
 
+        List<String> candidates = encodeLocalCandidates();
+        LOG.info(() -> "ICE create answer: ufrag=" + agent.getLocalUfrag()
+                + ", candidates=" + describeCandidates(candidates));
         IceAnswerPayload answer =
-                new IceAnswerPayload(agent.getLocalUfrag(), agent.getLocalPassword(), encodeLocalCandidates());
+                new IceAnswerPayload(agent.getLocalUfrag(), agent.getLocalPassword(), candidates);
 
         agent.startConnectivityEstablishment();
         return answer;
@@ -239,6 +264,8 @@ public final class IceP2pConnectionEstablisher {
      * ben chu dong phai cho co answer moi du thong tin de bat dau).
      */
     public void acceptAnswer(IceAnswerPayload remoteAnswer) {
+        LOG.info(() -> "ICE received answer: remoteUfrag=" + remoteAnswer.ufrag()
+                + ", remoteCandidates=" + describeCandidates(remoteAnswer.candidates()));
         applyRemote(remoteAnswer.ufrag(), remoteAnswer.password(), remoteAnswer.candidates());
         agent.startConnectivityEstablishment();
     }
@@ -262,16 +289,104 @@ public final class IceP2pConnectionEstablisher {
     private void applyRemote(String remoteUfrag, String remotePassword, List<String> remoteCandidateLines) {
         mediaStream.setRemoteUfrag(remoteUfrag);
         mediaStream.setRemotePassword(remotePassword);
+        LOG.info(() -> "ICE apply remote: candidateCount=" + remoteCandidateLines.size()
+                + ", candidates=" + describeCandidates(remoteCandidateLines));
         for (String line : remoteCandidateLines) {
-            RemoteCandidate remoteCandidate = IceCandidateCodec.decode(line, component);
-            component.addRemoteCandidate(remoteCandidate);
+            try {
+                RemoteCandidate remoteCandidate = IceCandidateCodec.decode(line, component);
+                component.addRemoteCandidate(remoteCandidate);
+                LOG.info(() -> "ICE remote candidate added: " + line);
+            } catch (RuntimeException error) {
+                LOG.log(Level.WARNING, "ICE remote candidate rejected: " + line, error);
+                throw error;
+            }
         }
     }
 
     private List<String> encodeLocalCandidates() {
-        return component.getLocalCandidates().stream()
+        List<String> allCandidates = component.getLocalCandidates().stream()
                 .map(IceCandidateCodec::encode)
                 .collect(Collectors.toList());
+        List<String> advertisableCandidates = component.getLocalCandidates().stream()
+                .filter(candidate -> isAdvertisable(candidate.getTransportAddress().getAddress()))
+                .map(IceCandidateCodec::encode)
+                .collect(Collectors.toList());
+        LOG.info(() -> "ICE candidate filter: all=" + describeCandidates(allCandidates)
+                + ", advertisable=" + describeCandidates(advertisableCandidates));
+        return advertisableCandidates;
+    }
+
+    /**
+     * ice4j can bind sockets on virtual adapters which are visible to the JVM
+     * but have no route to the Internet. Keeping such candidates makes every
+     * connectivity check try that dead interface first and can produce
+     * "Network is unreachable". Keep private candidates that can actually
+     * route to a configured STUN server; they are still needed for LAN peers.
+     */
+    private void removeUnroutableHostCandidates() {
+        List<LocalCandidate> removed = component.getLocalCandidates().stream()
+                .filter(candidate -> candidate.getType() == CandidateType.HOST_CANDIDATE)
+                .filter(candidate -> !hasRouteToStun(candidate.getTransportAddress().getAddress()))
+                .toList();
+        if (!removed.isEmpty()) {
+            component.getLocalCandidates().removeAll(removed);
+            LOG.warning(() -> "ICE removed host candidates without STUN route: "
+                    + describeCandidates(removed));
+        }
+    }
+
+    private boolean hasRouteToStun(InetAddress localAddress) {
+        if (stunServers.isEmpty()) {
+            return true;
+        }
+        for (TransportAddress stunServer : stunServers) {
+            try (DatagramSocket socket = new DatagramSocket(
+                    new InetSocketAddress(localAddress, 0))) {
+                socket.connect(stunServer.getAddress(), stunServer.getPort());
+                return true;
+            } catch (IOException error) {
+                LOG.fine(() -> "ICE no route from " + localAddress + " to STUN "
+                        + stunServer + ": " + error.getMessage());
+            }
+        }
+        return false;
+    }
+
+    private static String describeCandidates(List<?> candidates) {
+        if (candidates == null || candidates.isEmpty()) {
+            return "count=0 []";
+        }
+        return "count=" + candidates.size() + " " + candidates;
+    }
+
+    private static String describeInterfaces() {
+        StringBuilder result = new StringBuilder();
+        try {
+            var interfaces = NetworkInterface.getNetworkInterfaces();
+            while (interfaces.hasMoreElements()) {
+                NetworkInterface networkInterface = interfaces.nextElement();
+                result.append(networkInterface.getName())
+                        .append(" up=").append(networkInterface.isUp())
+                        .append(" addresses=").append(networkInterface.getInterfaceAddresses())
+                        .append("; ");
+            }
+        } catch (SocketException error) {
+            return "unavailable(" + error.getMessage() + ")";
+        }
+        return result.toString();
+    }
+
+    /**
+     * Public candidates must be routable IPv4 addresses. Link-local, loopback,
+     * multicast, and IPv6 candidates are not useful across the Internet and can
+     * cause ICE to spend its checklist budget on unreachable virtual adapters.
+     */
+    private static boolean isAdvertisable(InetAddress address) {
+        return address instanceof java.net.Inet4Address
+                && !address.isAnyLocalAddress()
+                && !address.isLoopbackAddress()
+                && !address.isLinkLocalAddress()
+                && !address.isMulticastAddress();
     }
 
     /** Bat su kien tu Agent, chi quan tam COMPLETED (thanh cong) va FAILED (that bai han). */
@@ -282,10 +397,16 @@ public final class IceP2pConnectionEstablisher {
                 return;
             }
             IceProcessingState newState = (IceProcessingState) evt.getNewValue();
+            LOG.info(() -> "ICE state changed: " + evt.getOldValue() + " -> " + newState
+                    + ", localCandidates=" + describeCandidates(component.getLocalCandidates())
+                    + ", remoteCandidates=" + describeCandidates(component.getRemoteCandidates()));
 
             if (newState == IceProcessingState.COMPLETED) {
                 handleCompleted();
             } else if (newState == IceProcessingState.FAILED) {
+                LOG.warning(() -> "ICE failed: localCandidates="
+                        + describeCandidates(component.getLocalCandidates())
+                        + ", remoteCandidates=" + describeCandidates(component.getRemoteCandidates()));
                 Consumer<Throwable> handler = onFailedHandler;
                 if (handler != null) {
                     handler.accept(new IllegalStateException(
@@ -299,6 +420,9 @@ public final class IceP2pConnectionEstablisher {
                 CandidatePair selectedPair = component.getSelectedPair();
                 DatagramSocket socket = component.getSocket();
                 InetSocketAddress remoteAddress = selectedPair.getRemoteCandidate().getTransportAddress();
+                LOG.info(() -> "ICE selected pair: local=" + selectedPair.getLocalCandidate()
+                        + ", remote=" + selectedPair.getRemoteCandidate()
+                        + ", socket=" + socket.getLocalSocketAddress());
 
                 long establishmentMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - constructedAtNanos);
                 boolean usingRelay = isRelayed(selectedPair);

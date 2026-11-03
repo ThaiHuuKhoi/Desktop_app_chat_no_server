@@ -23,11 +23,13 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.List;
 import java.util.UUID;
+import java.util.logging.Logger;
 
 /**
  * ChatSession backed by the real signaling and ICE/P2P stack.
  */
 public final class P2pChatSession implements ChatSession {
+    private static final Logger LOG = Logger.getLogger(P2pChatSession.class.getName());
 
     private static final List<TransportAddress> STUN_SERVERS = List.of(
             new TransportAddress("stun.l.google.com", 19302, Transport.UDP));
@@ -53,6 +55,10 @@ public final class P2pChatSession implements ChatSession {
 
     public P2pChatSession(RoomConfig config) {
         this.config = config;
+        LOG.info(() -> "P2P session create: peerId=" + selfPeerId
+                + ", signalingServer=" + config.serverUri()
+                + ", room=" + config.roomName()
+                + ", stunServers=" + STUN_SERVERS);
         this.signalingClient = new WebSocketSignalingClient();
         this.signalingClient.setAuthToken(config.authToken());
         this.roomSession = new RoomSession(
@@ -72,6 +78,7 @@ public final class P2pChatSession implements ChatSession {
     @Override
     public void start(ChatSessionListener listener) {
         this.listener = listener;
+        LOG.info(() -> "P2P session start: peerId=" + selfPeerId);
         roomSession.onPeerJoined(this::handlePeerJoined);
         roomSession.onPeerLeft(peerId -> notifyPeerLeft(peerId));
         roomSession.onConnectionFailed((peerId, error) ->
@@ -82,6 +89,7 @@ public final class P2pChatSession implements ChatSession {
         try {
             roomSession.join(config.serverUri());
         } catch (RuntimeException error) {
+            LOG.warning("P2P session signaling join failed: " + error.getMessage());
             notifyConnectionFailed("", error);
         }
     }
