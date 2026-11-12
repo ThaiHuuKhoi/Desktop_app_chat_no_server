@@ -275,7 +275,7 @@ public class RoomController implements ChatSessionListener {
 
         if (confirm.showAndWait().orElse(stay) == leave) {
             session.leave();
-            Navigator.showHome(stage);
+            Navigator.showHomeAfterLeaving(stage, config);
         }
     }
 

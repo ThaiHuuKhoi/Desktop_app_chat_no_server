@@ -97,10 +97,15 @@ public class HomeController {
 
     public void setAuthenticatedUser(String username, String authToken) {
         this.authToken = authToken;
-        if (username != null && !username.isBlank()) {
-            userNameField.setText(username);
-        }
+        setUserName(username);
         loadRooms();
+    }
+
+    /** Dien lai ten hien thi (vd. khach quay ve Home sau khi roi phong); bo qua neu rong. */
+    public void setUserName(String userName) {
+        if (userName != null && !userName.isBlank()) {
+            userNameField.setText(userName);
+        }
     }
 
     @FXML
