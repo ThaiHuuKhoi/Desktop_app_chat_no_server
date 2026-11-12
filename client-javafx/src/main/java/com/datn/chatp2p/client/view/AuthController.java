@@ -43,6 +43,10 @@ public final class AuthController {
     @FXML
     private void initialize() {
         serverField.setText(DEFAULT_SERVER_URI);
+        // Nhan thong bao chi chiem cho khi co noi dung - Label wrapText rong van
+        // day chieu cao toi thieu cua khung len, lam khung tran khoi vien cua so.
+        statusLabel.managedProperty().bind(statusLabel.textProperty().isNotEmpty());
+        statusLabel.visibleProperty().bind(statusLabel.managedProperty());
         showLoginForm();
     }
 
