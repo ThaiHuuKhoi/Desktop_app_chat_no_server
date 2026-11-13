@@ -27,8 +27,14 @@ public final class Navigator {
     private Navigator() {
     }
 
-    public static void showHome(Stage stage) {
-        showHome(stage, true);
+    /**
+     * Quay ve Home sau khi roi phong, GIU NGUYEN che do luc vao phong: khach
+     * (khong co token) thi van la khach, da dang nhap thi giu token va ten -
+     * khong bat nguoi dung chon lai hay dang nhap lai.
+     */
+    static void showHomeAfterLeaving(Stage stage, RoomConfig config) {
+        boolean accountMode = config.authToken() != null && !config.authToken().isBlank();
+        showHome(stage, accountMode, config.userName(), config.authToken());
     }
 
     public static void showEntry(Stage stage) {
@@ -62,6 +68,8 @@ public final class Navigator {
         controller.setAccountMode(accountMode);
         if (accountMode) {
             controller.setAuthenticatedUser(username, authToken);
+        } else {
+            controller.setUserName(username);
         }
 
         stage.setOnCloseRequest(null);

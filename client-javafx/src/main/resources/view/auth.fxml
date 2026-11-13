@@ -5,41 +5,58 @@
 <?import javafx.scene.control.Hyperlink?>
 <?import javafx.scene.control.Label?>
 <?import javafx.scene.control.PasswordField?>
+<?import javafx.scene.control.ScrollPane?>
 <?import javafx.scene.control.TextField?>
+<?import javafx.scene.control.TitledPane?>
 <?import javafx.scene.layout.HBox?>
 <?import javafx.scene.layout.StackPane?>
 <?import javafx.scene.layout.VBox?>
 <?import org.kordamp.ikonli.javafx.FontIcon?>
 
+<!-- Khung dang nhap / dang ky: cao vua noi dung, can giua, cach vien cua so 24px;
+     cua so nho hon noi dung thi cuon duoc thay vi khung dinh sat / tran ra ngoai vien. -->
 <StackPane xmlns="http://javafx.com/javafx"
            xmlns:fx="http://javafx.com/fxml"
            fx:controller="com.datn.chatp2p.client.view.AuthController"
            styleClass="home-root">
-    <VBox styleClass="home-card" spacing="16" maxWidth="460">
-        <padding>
-            <Insets top="36" right="36" bottom="32" left="36"/>
-        </padding>
-        <HBox spacing="12" alignment="CENTER_LEFT">
-            <FontIcon iconLiteral="fth-send" styleClass="app-logo"/>
-            <Label text="Chat P2P Java" styleClass="app-title"/>
-        </HBox>
-        <Label fx:id="formTitle" styleClass="section-title"/>
-        <VBox spacing="6">
-            <Label text="Tên tài khoản" styleClass="field-label"/>
-            <TextField fx:id="accountField" promptText="Nhập tên tài khoản"/>
-            <Label text="Mật khẩu" styleClass="field-label"/>
-            <PasswordField fx:id="passwordField" promptText="Tối thiểu 8 ký tự"/>
-        </VBox>
-        <Button fx:id="submitButton" onAction="#onSubmit"
-                styleClass="accent, join-button" maxWidth="Infinity"/>
-        <Hyperlink fx:id="switchButton" onAction="#onSwitchMode"
-                   styleClass="auth-switch" maxWidth="Infinity"/>
-        <Label fx:id="statusLabel" styleClass="error-label" wrapText="true"/>
-        <VBox spacing="6">
-            <Label text="Địa chỉ signaling server" styleClass="field-label"/>
-            <TextField fx:id="serverField"/>
-        </VBox>
-        <Button text="Tiếp tục với tư cách khách" onAction="#onGuest"
-                styleClass="flat" maxWidth="Infinity"/>
-    </VBox>
+    <ScrollPane fitToWidth="true" fitToHeight="true" styleClass="auth-scroll">
+        <!-- minHeight = USE_PREF_SIZE: khong bi ep co nho hon noi dung -> cua so thap thi cuon -->
+        <StackPane minHeight="-Infinity">
+            <padding>
+                <Insets top="24" right="24" bottom="24" left="24"/>
+            </padding>
+            <VBox styleClass="home-card" spacing="14" maxWidth="440" maxHeight="-Infinity">
+                <padding>
+                    <Insets top="32" right="32" bottom="28" left="32"/>
+                </padding>
+                <HBox spacing="12" alignment="CENTER_LEFT">
+                    <FontIcon iconLiteral="fth-send" styleClass="app-logo"/>
+                    <Label text="Chat P2P Java" styleClass="app-title"/>
+                </HBox>
+                <Label fx:id="formTitle" styleClass="auth-form-title"/>
+                <VBox spacing="6">
+                    <Label text="Tên tài khoản" styleClass="field-label"/>
+                    <TextField fx:id="accountField" promptText="Nhập tên tài khoản"/>
+                </VBox>
+                <VBox spacing="6">
+                    <Label text="Mật khẩu" styleClass="field-label"/>
+                    <PasswordField fx:id="passwordField" promptText="Tối thiểu 8 ký tự"/>
+                </VBox>
+                <Label fx:id="statusLabel" styleClass="error-label" wrapText="true"/>
+                <Button fx:id="submitButton" onAction="#onSubmit" defaultButton="true"
+                        styleClass="accent, join-button" maxWidth="Infinity"/>
+                <Hyperlink fx:id="switchButton" onAction="#onSwitchMode" styleClass="auth-switch"/>
+                <TitledPane text="Tuỳ chọn kết nối" expanded="false" styleClass="advanced-pane">
+                    <VBox spacing="6">
+                        <Label text="Địa chỉ signaling server" styleClass="field-label"/>
+                        <TextField fx:id="serverField"/>
+                    </VBox>
+                </TitledPane>
+                <Button text="Tiếp tục với tư cách khách" onAction="#onGuest"
+                        styleClass="flat" maxWidth="Infinity">
+                    <graphic><FontIcon iconLiteral="fth-user"/></graphic>
+                </Button>
+            </VBox>
+        </StackPane>
+    </ScrollPane>
 </StackPane>

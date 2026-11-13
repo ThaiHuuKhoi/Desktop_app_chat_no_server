@@ -39,6 +39,25 @@
     -fx-padding: 4 0 2 0;
 }
 
+/* ---------- Man hinh Dang nhap / Dang ky ---------- */
+
+/* Vung cuon trong suot: chi dung de cuon khi cua so nho hon khung, khong ve nen/vien rieng */
+.auth-scroll,
+.auth-scroll > .viewport {
+    -fx-background-color: transparent;
+}
+
+.auth-scroll {
+    -fx-background-insets: 0;
+    -fx-padding: 0;
+}
+
+.auth-form-title {
+    -fx-font-size: 18px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -color-fg-default;
+}
+
 .room-create-column,
 .room-browser-column {
     -fx-padding: 16;
