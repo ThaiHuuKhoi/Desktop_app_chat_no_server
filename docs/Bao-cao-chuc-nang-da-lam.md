@@ -78,6 +78,16 @@ Kiến trúc chung: mỗi người chạy một client JavaFX. Signaling server 
 4. Server trả về `PEER_LIST`, là danh sách những người đã ở trong phòng, đồng thời gửi `PEER_JOINED` cho những người đó.
 5. Người mới vào chủ động bắt đầu kết nối P2P với từng người trong `PEER_LIST` (chức năng 3).
 
+**Khi server từ chối (thay cho bước 4):** server gửi `JOIN_REJECTED` kèm lý do. Client rời màn hình phòng, quay về sảnh và hiện lý do bằng tiếng Việt:
+
+| Lý do | Người dùng thấy | Bước tiếp theo |
+|---|---|---|
+| `WRONG_PASSWORD` | "Sai mật khẩu phòng …" | Hộp nhập mật khẩu của đúng phòng đó tự mở lại |
+| `RATE_LIMITED` | "Bạn đã nhập sai mật khẩu quá nhiều lần…" | Thử lại sau 1 phút |
+| `ROOM_FULL` | "Phòng … đã đủ người (tối đa 8 người)" | Chọn phòng khác |
+| `AUTH_EXPIRED`, `AUTH_REQUIRED` | "Phiên đăng nhập đã hết hạn…" | Chế độ tài khoản: chuyển sang màn hình đăng nhập |
+| `DUPLICATE_PEER`, `INVALID_JOIN` | Thông báo lỗi chung | Thử vào lại |
+
 **Danh sách phòng (`/rooms`, chỉ cho người đã đăng nhập):** server trả về tên phòng, số người và cờ `passwordProtected`. Với phòng có mật khẩu, server **cắt bỏ thẻ** (`tên~thẻ` → `tên`), nên người xem danh sách không có gì để dò mật khẩu. Client vẫn hiểu định dạng cũ `tên~thẻ` của server chưa cập nhật.
 
 **Lỗi có thể xảy ra và cách xử lý**
@@ -198,6 +208,7 @@ Kiến trúc chung: mỗi người chạy một client JavaFX. Signaling server 
 2. Tin gửi trong tab này đi kèm đánh dấu tin riêng (namespace `dm`), **chỉ** tới kênh P2P của người nhận.
 3. Người nhận thấy tin trong tab DM tương ứng. Nếu tab chưa có thì tự tạo; nếu người nhận đang gõ dở ở tab khác thì app **không** tự chuyển tab.
 4. Tin riêng có ACK và gửi lại giống chat nhóm, và **không bao giờ** được đưa vào lịch sử gửi cho người mới vào phòng.
+5. **Gửi file trong tab DM** (nút gửi tệp hoặc kéo thả) thì file chỉ gửi cho đúng người đó; thẻ file hiện trong tab DM của cả hai bên (chức năng 14).
 
 **Lỗi có thể xảy ra và cách xử lý**
 
@@ -328,8 +339,8 @@ Kiến trúc chung: mỗi người chạy một client JavaFX. Signaling server 
 
 **Luồng hoạt động chính**
 1. Người dùng bấm **Rời phòng**, xác nhận cảnh báo "tin nhắn sẽ bị xoá khỏi máy", hoặc đóng cửa sổ.
-2. Client gửi tín hiệu ngừng gõ, đóng mọi kết nối P2P, giải phóng cổng UDP, ngắt WebSocket.
-3. Server gửi `PEER_LEFT` cho những người còn lại; giao diện của họ hiện "X đã rời phòng".
+2. Client **huỷ mọi file đang gửi / nhận** (gửi `FILE_CANCEL` cho bên kia, từ chối các lời mời nhận file chưa trả lời, xoá file tạm `.part`), gửi tín hiệu ngừng gõ, rồi đóng mọi kết nối P2P, giải phóng cổng UDP, ngắt WebSocket.
+3. Server gửi `PEER_LEFT` cho những người còn lại; giao diện của họ hiện "X đã rời phòng", và thẻ file đang truyền với người đó chuyển sang trạng thái thất bại, kèm lý do người kia đã rời phòng.
 
 **Lỗi có thể xảy ra và cách xử lý**
 
@@ -343,7 +354,7 @@ Kiến trúc chung: mỗi người chạy một client JavaFX. Signaling server 
 
 ## 14. Truyền file 1-1
 
-**Mô tả:** gửi một file tới một người trong phòng, đi thẳng qua kênh P2P đã mã hoá (server không thấy nội dung). Giao thức do hai thành viên thống nhất (`docs/Thong-nhat-giao-thuc-truyen-file.md`, `docs/Tra-loi-giao-thuc-truyen-file.md`): A làm tầng gửi tin cậy (`ReliableChunkSender`), B làm đọc/ghi file (`FileSender`, `FileReceiver`, `FileNames`), điều phối (`FileTransferManager`) và giao diện. Phạm vi: 1-1, tối đa 100 MB, mỗi người một file đang nhận tại một thời điểm, mất kết nối thì huỷ (không gửi tiếp).
+**Mô tả:** gửi file tới người trong phòng, đi thẳng qua kênh P2P đã mã hoá (server không thấy nội dung). Mỗi lần truyền là **1-1**: gửi trong tab DM thì tới đúng người đó; gửi trong khung nhóm thì app tạo **một lần truyền riêng cho từng người** đang ở trong phòng (mỗi người tự bấm Nhận hoặc Từ chối). Giao thức do hai thành viên thống nhất (`docs/Thong-nhat-giao-thuc-truyen-file.md`, `docs/Tra-loi-giao-thuc-truyen-file.md`): A làm tầng gửi tin cậy (`ReliableChunkSender`), B làm đọc/ghi file (`FileSender`, `FileReceiver`, `FileNames`), điều phối (`FileTransferManager`) và giao diện. Phạm vi: 1-1, tối đa 100 MB, mỗi người một file đang nhận tại một thời điểm, mất kết nối thì huỷ (không gửi tiếp).
 
 **Cách dùng:** bấm nút gửi tệp (hoặc **kéo thả 1 file** vào khung chat) trong khung nhóm hoặc tab chat riêng. Trong khung chat hiện **thẻ file** với tên, dung lượng, trạng thái và thanh tiến độ. Người nhận bấm **Nhận** hoặc **Từ chối**; hai bên đều có nút **Huỷ** khi đang truyền. File nhận được lưu vào `~/Downloads`, có nút mở thư mục chứa file.
 
@@ -385,7 +396,7 @@ Kiến trúc chung: mỗi người chạy một client JavaFX. Signaling server 
 
 | Chế độ | Cách bật | In ra |
 |---|---|---|
-| **Bình thường** | Mặc định | Khởi động/thoát; đăng nhập/đăng ký/đăng xuất; vào phòng (công khai hay có mật khẩu, `roomId` trên server); trao khoá ECDH xong; `ROOM_PROOF` hợp lệ/bị từ chối; người mới vào phòng; xác thực danh tính (fingerprint rút gọn); gửi/nhận tin (id + độ dài); gửi/nhận lịch sử; hết lượt gửi lại; người rời phòng; đổi cài đặt. Server: kết quả đăng nhập/đăng ký, lý do từ chối JOIN |
+| **Bình thường** | Mặc định | Khởi động/thoát; đăng nhập/đăng ký/đăng xuất; vào phòng (công khai hay có mật khẩu, `roomId` trên server); trao khoá ECDH xong; `ROOM_PROOF` hợp lệ/bị từ chối; người mới vào phòng; xác thực danh tính (fingerprint rút gọn); gửi/nhận tin (id + độ dài); gửi/nhận lịch sử; hết lượt gửi lại; người rời phòng; đổi cài đặt; **server từ chối cho vào phòng kèm lý do** (`WRONG_PASSWORD`, `ROOM_FULL`…); **lỗi khi truyền file** (không hoàn tất được file, payload file hỏng, không gửi được bản tin file). Server: kết quả đăng nhập/đăng ký, lý do từ chối JOIN (kể cả sai mật khẩu và bị giới hạn số lần thử) |
 | **Chi tiết** | `JAVA_TOOL_OPTIONS=-Dchat.debug=true` | Thêm: từng lần gửi lại, ACK, tín hiệu đang gõ, gói UDP bị bỏ qua, gói replay bị loại, log của thư viện ICE |
 | **Bí mật** (chỉ để test) | `CHAT_P2P_LOG_SECRETS=true` | Thêm: **nội dung tin nhắn**, mật khẩu tài khoản và mật khẩu phòng, token, khoá phiên AES-256 của từng kết nối, public key ECDH. Dòng đầu log có cảnh báo `!!! CHE DO LOG BI MAT DANG BAT !!!` |
 
@@ -397,6 +408,7 @@ Kiến trúc chung: mỗi người chạy một client JavaFX. Signaling server 
 | Lộ khoá danh tính dài hạn | Private key ECDSA **không bao giờ** được in, kể cả ở chế độ bí mật | ✅ |
 | Kẻ xấu gửi gói UDP rác làm ngập terminal | Log gói bị bỏ qua chỉ hiện ở chế độ chi tiết, tối đa 20 dòng mỗi kết nối | ✅ |
 | Chạy app không có cửa sổ terminal (jar, double-click) | Log chỉ in ra console, không ghi file nên sẽ mất | ❌ — hướng: ghi file `~/.chat-p2p-java/logs/client.log` có xoay vòng |
+| Theo dõi một lần truyền file thành công | Truyền file chỉ ghi log khi **lỗi**; các bước bình thường (gửi offer, nhận, tiến độ, hoàn tất) chỉ hiện trên thẻ file trong giao diện | ⚠️ — hướng: thêm log INFO cho từng bước (fileId rút gọn, tên file, dung lượng, thời gian truyền) |
 
 ---
 
@@ -427,7 +439,7 @@ Một lần chạy toàn bộ test, `PeerConnectionBurstThroughputTest` fail đ�
 4. **Chưa chủ động ngắt kết nối** người sai mật khẩu hoặc có chữ ký danh tính sai.
 5. **Tên phòng phân biệt hoa thường**: nên chuẩn hoá về chữ thường.
 6. **Log chưa ghi ra file**: chạy không có terminal thì mất log.
-7. **Truyền file còn chậm** (chunk 512 byte) và chỉ gửi 1-1; chưa gửi nhóm, chưa gửi tiếp sau khi mất kết nối.
+7. **Truyền file còn chậm** (chunk 512 byte); gửi cho nhóm là gửi riêng từng người nên tốn băng thông bên gửi gấp N lần; chưa gửi tiếp được sau khi mất kết nối; chưa có log từng bước khi truyền thành công.
 8. **`mvn install` lỗi ở một test tích hợp** (xem phần Kiểm thử); `mvn test` vẫn chạy đúng.
 9. **Mật khẩu TURN từng nằm trong lịch sử git** (repo public): đã chuyển ra file cấu hình cục bộ nhưng cần đổi mật khẩu TURN trên server.
 10. **Chưa có** gọi thoại, gọi video, chia sẻ màn hình.
