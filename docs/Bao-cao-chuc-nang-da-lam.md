@@ -29,7 +29,8 @@ Ký hiệu ở cột trạng thái: ✅ đã xử lý · ⚠️ xử lý một p
 | 12 | Phòng có mật khẩu | ✅ Hoàn thành |
 | 13 | Rời phòng / mất kết nối | ✅ Hoàn thành |
 | 14 | Truyền file 1-1 | ✅ Hoàn thành |
-| 15 | Log theo dõi trên terminal (bình thường / chi tiết / bí mật) | ✅ Hoàn thành |
+| 15 | Log theo dõi trên terminal và file (bình thường / chi tiết / bí mật) | ✅ Hoàn thành |
+| 16 | Bản đóng gói cho người dùng (Windows) | ✅ Hoàn thành |
 
 Kiến trúc chung: mỗi người chạy một client JavaFX. Signaling server (Spring Boot + WebSocket) chỉ làm nhiệm vụ "giới thiệu" các client với nhau. Sau khi kết nối xong, mọi nội dung đi thẳng giữa các máy qua UDP và được mã hoá đầu-cuối; server không đọc được và không lưu nội dung chat.
 
@@ -160,7 +161,7 @@ Kiến trúc chung: mỗi người chạy một client JavaFX. Signaling server 
 
 ## 5. Xác thực danh tính người trong phòng
 
-**Mô tả:** mỗi máy có một cặp khoá danh tính **ECDSA** lâu dài, lưu ở `~/.chat-p2p-java/identity.properties`. Sau khi trao khoá, hai bên chứng minh danh tính với nhau; giao diện hiện dấu "đã xác thực" và fingerprint để người dùng đối chiếu.
+**Mô tả:** mỗi máy có một cặp khoá danh tính **ECDSA** lâu dài, lưu ở `~/.chat-p2p-java/identity.properties`; trên Windows private key trong file được mã hoá bằng DPAPI. Sau khi trao khoá, hai bên chứng minh danh tính với nhau; giao diện hiện dấu "đã xác thực" và fingerprint để người dùng đối chiếu.
 
 **Luồng hoạt động chính**
 1. Mỗi bên gửi `PEER_IDENTITY`, gồm public key danh tính và chữ ký trên chuỗi `phòng | peerId | SHA-256(khoá ECDH của mình) | SHA-256(khoá ECDH của bên kia)`.
@@ -178,7 +179,8 @@ Kiến trúc chung: mỗi người chạy một client JavaFX. Signaling server 
 | Lần gặp đầu tiên với kẻ mạo danh có khoá riêng (TOFU) | Không phát hiện tự động được, vì không có cơ quan cấp chứng chỉ; người dùng so vân tay bằng hộp "Xác thực vân tay" | ⚠️ | |
 | Kẻ mạo danh dùng tên của người đã được tin cậy | Vân tay khác nên hiện "Khoá đã đổi" và cảnh báo trong khung chat | ✅ | |
 | So vân tay thấy không khớp | Bỏ đánh dấu tin cậy, cảnh báo có thể có người xen giữa | ✅ | Tự động ngắt kết nối |
-| File khoá danh tính bị hỏng | App dừng và báo rõ đường dẫn file, **không tự ghi đè** để tránh mất danh tính | ✅ | Thêm nút "tạo lại danh tính" có xác nhận |
+| File khoá danh tính bị hỏng, hoặc bị chép sang máy / tài khoản Windows khác | App dừng và báo rõ đường dẫn file, **không tự ghi đè** để tránh mất danh tính | ✅ | Thêm nút "tạo lại danh tính" có xác nhận |
+| Kẻ khác đọc được file khoá danh tính trên máy | Trên Windows, private key được **mã hoá bằng DPAPI** (gắn với tài khoản Windows của người dùng; định dạng version 2). File cũ dạng thường tự được chuyển sang dạng mã hoá, danh tính giữ nguyên | ✅ | |
 
 ---
 
@@ -192,6 +194,10 @@ Kiến trúc chung: mỗi người chạy một client JavaFX. Signaling server 
 3. Người nhận hiển thị tin, trả `MESSAGE_ACK {id}`, và lưu tin vào lịch sử nhóm (phục vụ chức năng 11).
 4. Người gửi nhận ACK thì ngừng gửi lại tin đó.
 5. **Trạng thái giao tin** hiện ngay dưới bong bóng tin của mình: biểu tượng đồng hồ "Đang gửi" → "Đã nhận" (tin riêng) hoặc "Đã nhận 1/3" → "Tất cả đã nhận" (tin nhóm). Hết lượt gửi lại, hoặc người nhận rời phòng trước khi xác nhận, thì hiện "Chưa tới nơi" màu đỏ. Phòng chưa có ai thì chỉ hiện giờ gửi.
+6. **Đã xem:** khi người nhận đang mở đúng tab chứa tin **và** cửa sổ app đang được chọn, máy họ gửi `MESSAGE_READ`; tin của bạn chuyển sang biểu tượng con mắt "Đã xem" (tin riêng) hoặc "Đã xem 1/3" → "Tất cả đã xem" (tin nhóm). Tin đến lúc app bị thu nhỏ hoặc đang ở tab khác thì chỉ tính là đã xem khi người dùng quay lại.
+7. **Trả lời:** chuột phải vào một tin → **Trả lời**; phía trên ô nhập hiện "Đang trả lời X: …" (bấm × để huỷ). Tin gửi đi kèm `replyToId`; bong bóng hiện khung trích dẫn tên và đoạn đầu của tin gốc.
+8. **Thả cảm xúc:** chuột phải → chọn 👍 ❤️ 😂 😮 😢. Dưới bong bóng hiện các "chip" như "👍 2"; bấm vào chip để thả hoặc bỏ cảm xúc của mình. Chỉ nhận cảm xúc trong bộ cố định này, nên người khác không chèn được chữ tuỳ ý vào giao diện.
+9. Chuột phải còn có **Sao chép** nội dung tin.
 
 **Lỗi có thể xảy ra và cách xử lý**
 
@@ -365,7 +371,7 @@ Kiến trúc chung: mỗi người chạy một client JavaFX. Signaling server 
 
 **Mô tả:** gửi file tới người trong phòng, đi thẳng qua kênh P2P đã mã hoá (server không thấy nội dung). Mỗi lần truyền là **1-1**: gửi trong tab DM thì tới đúng người đó; gửi trong khung nhóm thì app tạo **một lần truyền riêng cho từng người** đang ở trong phòng (mỗi người tự bấm Nhận hoặc Từ chối). Giao thức do hai thành viên thống nhất (`docs/Thong-nhat-giao-thuc-truyen-file.md`, `docs/Tra-loi-giao-thuc-truyen-file.md`): A làm tầng gửi tin cậy (`ReliableChunkSender`), B làm đọc/ghi file (`FileSender`, `FileReceiver`, `FileNames`), điều phối (`FileTransferManager`) và giao diện. Phạm vi: 1-1, tối đa 100 MB, mỗi người một file đang nhận tại một thời điểm, mất kết nối thì huỷ (không gửi tiếp).
 
-**Cách dùng:** bấm nút gửi tệp (hoặc **kéo thả 1 file** vào khung chat) trong khung nhóm hoặc tab chat riêng. Trong khung chat hiện **thẻ file** với tên, dung lượng, trạng thái và thanh tiến độ. Người nhận bấm **Nhận** hoặc **Từ chối**; hai bên đều có nút **Huỷ** khi đang truyền. File nhận được lưu vào `~/Downloads`, có nút mở thư mục chứa file.
+**Cách dùng:** bấm nút gửi tệp (hoặc **kéo thả 1 file** vào khung chat) trong khung nhóm hoặc tab chat riêng. Trong khung chat hiện **thẻ file** với tên, dung lượng, trạng thái và thanh tiến độ. Người nhận bấm **Nhận** hoặc **Từ chối**; hai bên đều có nút **Huỷ** khi đang truyền. File nhận được lưu vào `~/Downloads`, có nút mở thư mục chứa file. **File ảnh** (png, jpg, gif, bmp) hiện **ảnh xem trước** ngay trên thẻ file (người gửi thấy từ file gốc, người nhận thấy sau khi file đã được kiểm SHA-256); bấm vào ảnh để mở bằng trình xem ảnh của Windows. App không bao giờ tự mở file nhận được.
 
 **Luồng hoạt động chính**
 1. Bên gửi tính SHA-256 cả file (trên luồng nền), gửi `FILE_OFFER` (tên, kích thước, số chunk, SHA-256), gửi lại mỗi giây cho tới khi có trả lời.
@@ -399,7 +405,7 @@ Kiến trúc chung: mỗi người chạy một client JavaFX. Signaling server 
 
 ---
 
-## 15. Log theo dõi trên terminal
+## 15. Log theo dõi (terminal và file)
 
 **Mô tả:** mỗi bước chính in một dòng lên terminal, dạng `17:02:56.060 INFO   [P2pChatSession] ...`, để kiểm tra khi test. Mỗi người được ghi kèm 8 ký tự đầu của `peerId`, để phân biệt nhiều client chạy trên cùng một máy.
 
@@ -416,8 +422,20 @@ Kiến trúc chung: mỗi người chạy một client JavaFX. Signaling server 
 | Lộ nội dung chat / mật khẩu qua log | Mặc định **che** (mật khẩu, token hiện `***`; tin nhắn chỉ hiện độ dài). Chế độ bí mật phải bật chủ động và có cảnh báo | ✅ |
 | Lộ khoá danh tính dài hạn | Private key ECDSA **không bao giờ** được in, kể cả ở chế độ bí mật | ✅ |
 | Kẻ xấu gửi gói UDP rác làm ngập terminal | Log gói bị bỏ qua chỉ hiện ở chế độ chi tiết, tối đa 20 dòng mỗi kết nối | ✅ |
-| Chạy app không có cửa sổ terminal (jar, double-click) | Log chỉ in ra console, không ghi file nên sẽ mất | ❌ — hướng: ghi file `~/.chat-p2p-java/logs/client.log` có xoay vòng |
+| Chạy app không có cửa sổ terminal (bản đóng gói `ChatP2P.exe`, bấm đúp) | Log ghi thêm ra file `~/.chat-p2p-java/logs/client-0.log` (mới nhất), xoay vòng 5 file × 5 MB, cùng quy tắc che bí mật như terminal | ✅ |
 | Theo dõi một lần truyền file thành công | Truyền file chỉ ghi log khi **lỗi**; các bước bình thường (gửi offer, nhận, tiến độ, hoàn tất) chỉ hiện trên thẻ file trong giao diện | ⚠️ — hướng: thêm log INFO cho từng bước (fileId rút gọn, tên file, dung lượng, thời gian truyền) |
+
+---
+
+## 16. Bản đóng gói cho người dùng (Windows)
+
+**Mô tả:** người dùng không cần cài Java hay Maven. Script `packaging/build-windows.ps1` dùng `jpackage` (có sẵn trong JDK) tạo thư mục `ChatP2P` gồm `ChatP2P.exe` và Java runtime đi kèm, rồi nén thành `ChatP2P-windows.zip` (khoảng 72 MB). Người dùng giải nén và bấm đúp `ChatP2P.exe`; app tự kết nối `wss://chat.zingme.fun` và tự xin tài khoản TURN tạm thời, nên **không phải cấu hình gì**.
+
+| Tình huống | Hệ thống xử lý | TT |
+|---|---|---|
+| JavaFX báo thiếu thư viện khi chạy từ classpath | Lớp khởi động `Launcher` (không kế thừa `Application`) | ✅ |
+| Muốn file cài đặt `.msi` có shortcut, menu Start | Cài WiX Toolset 3 rồi chạy script với `-Type msi` | ⚠️ Máy build hiện chưa có WiX |
+| OneDrive / antivirus khoá tạm file khi nén | Script nén bằng `tar.exe` và thử lại vài lần | ✅ |
 
 ---
 
@@ -427,10 +445,10 @@ Toàn bộ test tự động chạy bằng `mvn test` từ thư mục gốc trê
 
 | Module | Số test | Nội dung chính |
 |---|---|---|
-| crypto | 36 | ECDH, AES-GCM, HKDF (vector chuẩn RFC 5869), khoá riêng mỗi chiều, chữ ký danh tính gắn ECDH (có kịch bản MITM), khoá phòng có mật khẩu |
-| signaling-server | 20 | Chuyển tiếp bản tin, không đọc nội dung, xử lý lỗi, danh sách phòng không lộ thẻ mật khẩu; `JOIN_REJECTED` cho từng lý do (sai mật khẩu, phòng đầy, trùng peer) và giới hạn số lần thử |
+| crypto | 39 | Mã hoá khoá danh tính khi lưu (version 2, tự chuyển file cũ, không ghi đè khi sai khoá), ECDH, AES-GCM, HKDF (vector chuẩn RFC 5869), khoá riêng mỗi chiều, chữ ký danh tính gắn ECDH (có kịch bản MITM), khoá phòng có mật khẩu |
+| signaling-server | 24 | Cấp tài khoản TURN tạm thời (HMAC-SHA1 theo vector chuẩn RFC 2202, giới hạn theo IP), Chuyển tiếp bản tin, không đọc nội dung, xử lý lỗi, danh sách phòng không lộ thẻ mật khẩu; `JOIN_REJECTED` cho từng lý do (sai mật khẩu, phòng đầy, trùng peer) và giới hạn số lần thử |
 | p2p-core | 115 (1 bỏ qua) | Mesh 3 và 8 người, mất gói, chống replay theo số thứ tự (gói cũ sau 2000 gói, gói giả, reflection), rò rỉ cổng, kết nối lại, TURN dự phòng; truyền file: gửi lại tin cậy, đọc/ghi file, làm sạch tên, 1 MB qua kênh mã hoá trên mạng giả lập xấu |
-| client-javafx | 62 | Gửi lại tin nhắn, trạng thái giao tin, ghi nhớ vân tay đã tin cậy, đang gõ, Markdown, cài đặt, lịch sử, quy tắc ở sảnh chờ, thông báo khi bị từ chối vào phòng; điều phối truyền file (16 test); **2 test tích hợp nhiều client thật** (người vào sau nhận lịch sử; chỉ người cùng mật khẩu thấy nhau) |
+| client-javafx | 68 | Gửi lại tin nhắn, trạng thái giao tin và "đã xem", cảm xúc, trả lời, nhận diện ảnh, DPAPI thật trên Windows, ghi nhớ vân tay đã tin cậy, đang gõ, Markdown, cài đặt, lịch sử, quy tắc ở sảnh chờ, thông báo khi bị từ chối vào phòng; điều phối truyền file (16 test); **2 test tích hợp nhiều client thật** (người vào sau nhận lịch sử; chỉ người cùng mật khẩu thấy nhau) |
 
 `mvn install` (khác với `mvn test`) đang lỗi biên dịch ở `P2pChatSessionIntegrationTest` vì test này cần lớp của `signaling-server`, mà jar Spring Boot đã đóng gói lại không còn dùng làm thư viện được. Tạm thời build bằng `mvn -Dmaven.test.skip=true install`; cần sửa cấu hình build (thêm `classifier` cho jar Spring Boot).
 
@@ -449,7 +467,7 @@ Một lần chạy toàn bộ test, `PeerConnectionBurstThroughputTest` fail đ�
 3. **Lịch sử chat không xác minh được người viết từng tin**: hướng giải quyết là ký từng tin.
 4. **Chưa chủ động ngắt kết nối** người sai mật khẩu hoặc có chữ ký danh tính sai.
 5. **Tên phòng phân biệt hoa thường**: nên chuẩn hoá về chữ thường.
-6. **Log chưa ghi ra file**: chạy không có terminal thì mất log.
+6. *(Đã giải quyết)* Log ghi thêm ra file `~/.chat-p2p-java/logs/client-0.log` (xoay vòng 5 file × 5 MB).
 7. **Truyền file còn chậm** (chunk 512 byte); gửi cho nhóm là gửi riêng từng người nên tốn băng thông bên gửi gấp N lần; chưa gửi tiếp được sau khi mất kết nối; chưa có log từng bước khi truyền thành công.
 8. **`mvn install` lỗi ở một test tích hợp** (xem phần Kiểm thử); `mvn test` vẫn chạy đúng.
 9. *(Đã xử lý 20/11/2026)* Mật khẩu TURN cũ từng nằm trong lịch sử git (repo public): coturn đã chuyển sang **tài khoản tạm thời do server cấp** (khoá bí mật dùng chung giữa server và coturn), không còn mật khẩu cố định; mật khẩu cũ vô hiệu.
