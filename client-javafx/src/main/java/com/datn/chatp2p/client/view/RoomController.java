@@ -9,6 +9,7 @@ import com.datn.chatp2p.client.session.RoomConfig;
 import com.datn.chatp2p.client.session.SessionPeer;
 import com.datn.chatp2p.client.session.SessionPeer.ConnectionKind;
 import com.datn.chatp2p.client.util.DesktopNotifier;
+import com.datn.chatp2p.client.util.LocalHistoryStore;
 import com.datn.chatp2p.client.util.SoundPlayer;
 import com.datn.chatp2p.client.util.ThemeManager;
 import com.datn.chatp2p.client.util.TrustedPeers;
@@ -179,6 +180,7 @@ public class RoomController implements ChatSessionListener {
                 new FileCardActions(),
                 new RoomMessageContext());
         transcriptManager.configure(chatTabs, transcriptListView);
+        loadLocalHistory();
         installFileDrop();
 
         typingNotifier = new TypingNotifier(session::sendTypingStatus, System::currentTimeMillis);
@@ -842,7 +844,53 @@ public class RoomController implements ChatSessionListener {
         typingTicker.stop();
         aloneHintTimer.stop();
         DesktopNotifier.setOnClick(null);
+        saveLocalHistory();
         session.leave();
+    }
+
+    // ---------- Lich su luu tren may (tuy chon) ----------
+
+    /** Bat tuy chon "luu lich su" thi hien lai tin nhom tu lan vao phong truoc (ma hoa DPAPI). */
+    private void loadLocalHistory() {
+        String key = session.storageKey();
+        if (key == null || !UserSettings.get().saveHistory()) {
+            return;
+        }
+        List<LocalHistoryStore.SavedMessage> saved = LocalHistoryStore.forCurrentUser().load(key);
+        for (LocalHistoryStore.SavedMessage item : saved) {
+            // Peer id doi moi lan vao phong: tin cua minh gan lai id hien tai, tin nguoi khac dung ten da luu.
+            String authorId = item.mine() ? session.selfPeerId() : "saved:" + item.authorName();
+            if (!item.mine()) {
+                displayNames.putIfAbsent(authorId, item.authorName());
+            }
+            ChatMessage message = new ChatMessage(item.id(), authorId, item.text(), item.timeSent(),
+                    item.timeSent(), item.replyToId());
+            transcriptManager.addGroup(new UserMessage(message, UserMessage.SAVED_ON_DEVICE));
+        }
+        if (!saved.isEmpty()) {
+            notice(NoticeKind.INFO, "Đã hiện lại " + saved.size() + " tin nhắn đã lưu trên máy từ lần trước.");
+        }
+    }
+
+    /** Luu tin nhom (tru tin da xoa) khi roi phong - chi khi bat tuy chon va da thuc su vao phong. */
+    private void saveLocalHistory() {
+        String key = session.storageKey();
+        if (key == null || joinRejected || !UserSettings.get().saveHistory()) {
+            return;
+        }
+        List<LocalHistoryStore.SavedMessage> toSave = new java.util.ArrayList<>();
+        for (TranscriptEntry entry : transcriptManager.groupTranscript()) {
+            if (entry instanceof UserMessage user && !Boolean.TRUE.equals(editedOrDeleted.get(user.message().getId()))) {
+                ChatMessage m = user.message();
+                boolean mine = session.selfPeerId().equals(m.getAuthorId());
+                toSave.add(new LocalHistoryStore.SavedMessage(m.getId(), mine,
+                        mine ? config.userName() : displayNames.getOrDefault(m.getAuthorId(), "Người lạ"),
+                        m.getText(), m.getTimeSent(), m.getReplyToId()));
+            }
+        }
+        if (!toSave.isEmpty()) {
+            LocalHistoryStore.forCurrentUser().save(key, toSave);
+        }
     }
 
     // ---------- Dang go / thong bao ----------

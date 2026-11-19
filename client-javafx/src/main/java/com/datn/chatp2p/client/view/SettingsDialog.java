@@ -63,7 +63,29 @@ final class SettingsDialog {
         Label alertTitle = new Label("Thông báo");
         alertTitle.getStyleClass().add("settings-section");
 
-        VBox content = new VBox(10, themeTitle, themeBox, alertTitle, soundRow, notifications, privacy);
+        Label historyTitle = new Label("Lịch sử");
+        historyTitle.getStyleClass().add("settings-section");
+        com.datn.chatp2p.client.util.LocalHistoryStore store = com.datn.chatp2p.client.util.LocalHistoryStore.forCurrentUser();
+        CheckBox saveHistory = new CheckBox("Lưu tin nhắn nhóm trên máy này (mã hoá), mở lại phòng sẽ thấy tin cũ");
+        saveHistory.setWrapText(true);
+        saveHistory.setSelected(settings.saveHistory() && store.available());
+        saveHistory.setDisable(!store.available());
+        saveHistory.selectedProperty().addListener((obs, old, on) -> settings.setSaveHistory(on));
+        Label historyHint = new Label(store.available()
+                ? "Mặc định tắt: rời phòng là tin nhắn biến mất. Khi bật, tin được mã hoá bằng tài khoản Windows của bạn; tin riêng không được lưu."
+                : "Máy này không hỗ trợ mã hoá lịch sử (chỉ có trên Windows), nên không lưu.");
+        historyHint.setWrapText(true);
+        historyHint.getStyleClass().add("settings-hint");
+        Button clearHistory = new Button("Xoá lịch sử đã lưu", new FontIcon(Feather.TRASH_2));
+        clearHistory.getStyleClass().add("flat");
+        clearHistory.setOnAction(event -> {
+            int deleted = store.deleteAll();
+            clearHistory.setText(deleted == 0 ? "Không có lịch sử nào" : "Đã xoá lịch sử của " + deleted + " phòng");
+            clearHistory.setDisable(true);
+        });
+
+        VBox content = new VBox(10, themeTitle, themeBox, alertTitle, soundRow, notifications, privacy,
+                historyTitle, saveHistory, historyHint, clearHistory);
         content.setPadding(new Insets(4, 4, 4, 4));
         content.setPrefWidth(380);
 

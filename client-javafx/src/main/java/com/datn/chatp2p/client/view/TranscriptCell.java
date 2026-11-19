@@ -308,7 +308,12 @@ class TranscriptCell extends ListCell<TranscriptEntry> {
         }
         HBox timeRow = new HBox(6, timeLabel);
         timeRow.setAlignment(Pos.CENTER_RIGHT);
-        if (sharedBy != null) {
+        if (UserMessage.SAVED_ON_DEVICE.equals(sharedBy)) {
+            Label savedLabel = new Label("đã lưu trên máy", new FontIcon(Feather.HARD_DRIVE));
+            savedLabel.getStyleClass().add("message-history");
+            savedLabel.setTooltip(new Tooltip("Tin nhắn từ lần vào phòng trước, lưu (mã hoá) trên máy bạn"));
+            timeRow.getChildren().add(0, savedLabel);
+        } else if (sharedBy != null) {
             Label historyLabel = new Label("lịch sử · " + sharedBy + " chia sẻ", new FontIcon(Feather.CLOCK));
             historyLabel.getStyleClass().add("message-history");
             historyLabel.setTooltip(new Tooltip("Tin nhắn trước khi bạn vào phòng, do " + sharedBy

@@ -67,6 +67,14 @@ public interface ChatSession {
         throw new UnsupportedOperationException("Che do nay chua ho tro sua tin");
     }
 
+    /**
+     * Khoa nhan dien phong de luu lich su tren may: ten phong, hoac "ten~the" voi phong co mat khau
+     * (the suy ra bang PBKDF2, khong lo mat khau). null neu khong ho tro.
+     */
+    default String storageKey() {
+        return null;
+    }
+
     /** Dung luong file toi da duoc gui / nhan (byte). */
     default long maxFileSize() {
         return 0;

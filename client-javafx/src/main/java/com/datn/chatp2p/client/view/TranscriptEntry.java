@@ -15,6 +15,10 @@ sealed interface TranscriptEntry {
      *                 (khong xac minh duoc nguoi viet - giao dien danh dau rieng).
      */
     record UserMessage(ChatMessage message, String sharedBy) implements TranscriptEntry {
+
+        /** {@code sharedBy} dac biet: tin nap tu lich su luu tren may (khong phai ai chia se). */
+        static final String SAVED_ON_DEVICE = "\u0000saved-on-device";
+
         UserMessage(ChatMessage message) {
             this(message, null);
         }

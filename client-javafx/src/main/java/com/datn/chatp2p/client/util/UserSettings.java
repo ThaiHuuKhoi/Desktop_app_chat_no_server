@@ -27,6 +27,8 @@ public final class UserSettings {
     private String theme = DEFAULT_THEME;
     private boolean soundEnabled = true;
     private boolean desktopNotificationsEnabled = true;
+    /** Luu lich su chat nhom tren may (ma hoa DPAPI) - mac dinh TAT, dung tinh than khong luu lai. */
+    private boolean saveHistory = false;
 
     UserSettings(Path file) {
         this.file = file;
@@ -71,6 +73,16 @@ public final class UserSettings {
         save();
     }
 
+    public boolean saveHistory() {
+        return saveHistory;
+    }
+
+    public void setSaveHistory(boolean enabled) {
+        this.saveHistory = enabled;
+        LOG.info(() -> "Cai dat: luu lich su tren may=" + (enabled ? "bat" : "tat"));
+        save();
+    }
+
     private void load() {
         if (!Files.isRegularFile(file)) {
             return;
@@ -85,6 +97,7 @@ public final class UserSettings {
         theme = properties.getProperty("theme", DEFAULT_THEME);
         soundEnabled = Boolean.parseBoolean(properties.getProperty("sound", "true"));
         desktopNotificationsEnabled = Boolean.parseBoolean(properties.getProperty("notifications", "true"));
+        saveHistory = Boolean.parseBoolean(properties.getProperty("saveHistory", "false"));
     }
 
     private void save() {
@@ -92,6 +105,7 @@ public final class UserSettings {
         properties.setProperty("theme", theme);
         properties.setProperty("sound", Boolean.toString(soundEnabled));
         properties.setProperty("notifications", Boolean.toString(desktopNotificationsEnabled));
+        properties.setProperty("saveHistory", Boolean.toString(saveHistory));
         try {
             Files.createDirectories(file.toAbsolutePath().getParent());
             Path temp = Files.createTempFile(file.toAbsolutePath().getParent(), "settings", ".tmp");

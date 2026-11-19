@@ -101,6 +101,8 @@ public final class P2pChatSession implements ChatSession {
                                 + MESSAGE_MAX_RETRIES + " lần gửi lại)"));
             });
     private final RoomSession roomSession;
+    /** "ten" hoac "ten~the" (the suy ra tu mat khau bang PBKDF2) - khoa luu lich su tren may. */
+    private final String serverRoomId;
     private final FileTransferManager fileTransfers;
 
     private volatile ChatSessionListener listener;
@@ -112,7 +114,7 @@ public final class P2pChatSession implements ChatSession {
                 ? RoomSecret.derive(config.roomName(), config.roomPassword())
                 : null;
         // Phong co mat khau: server chi thay "ten~the", nguoi khac mat khau roi vao phong khac.
-        String serverRoomId = roomSecret == null
+        this.serverRoomId = roomSecret == null
                 ? config.roomName()
                 : config.roomName() + RoomConfig.PRIVATE_ROOM_SEPARATOR + roomSecret.serverRoomTag();
         LOG.info(() -> "Tao phien: toi=" + config.userName() + " (" + shortId(selfPeerId) + ")"
@@ -148,6 +150,11 @@ public final class P2pChatSession implements ChatSession {
     @Override
     public String selfPeerId() {
         return selfPeerId;
+    }
+
+    @Override
+    public String storageKey() {
+        return serverRoomId;
     }
 
     @Override
