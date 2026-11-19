@@ -9,7 +9,7 @@ import javax.crypto.spec.GCMParameterSpec;
 
 /**
  * Ma hoa/giai ma noi dung (tin nhan, chunk file) bang AES-256-GCM, dung khoa
- * phien sinh tu {@link KeyExchangeService#deriveSharedSecret}
+ * phien sinh tu {@link KeyExchangeService#deriveSessionKeys}
  * (De-cuong-Chat-P2P-Java.md muc 5).
  *
  * <p>Dinh dang output cua {@link #encrypt}: {@code IV (12 byte) || ciphertext+tag},

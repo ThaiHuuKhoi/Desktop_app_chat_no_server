@@ -27,10 +27,6 @@ class PeerListCell extends ListCell<PeerItem> {
     private final Consumer<PeerItem> onVerifyRequested;
     private final Function<PeerItem, TrustedPeers.Status> trustStatus;
 
-    PeerListCell(Consumer<PeerItem> onDirectMessageRequested) {
-        this(onDirectMessageRequested, item -> { }, item -> TrustedPeers.Status.UNKNOWN);
-    }
-
     /**
      * @param onVerifyRequested bam vao huy hieu xac thuc -&gt; mo hop so van tay.
      * @param trustStatus       nguoi nay da duoc xac minh van tay truoc do chua ({@link TrustedPeers}).

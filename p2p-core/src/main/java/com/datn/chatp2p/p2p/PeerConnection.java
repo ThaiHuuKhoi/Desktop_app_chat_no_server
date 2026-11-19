@@ -31,7 +31,7 @@ import java.util.function.BiConsumer;
  *       kenh nay o dang KHONG ma hoa (ban than public key khong can giu bi mat).</li>
  *   <li>{@link #handleIncoming} coi goi tin DAU TIEN nhan duoc la public key
  *       ECDH cua doi phuong (chua co {@code codec} nghia la chua xong handshake)
- *       - tu dong tinh {@code deriveSharedSecret}, dung khoa AES do de tao
+ *       - tu dong tao cap khoa phien (HKDF, moi chieu 1 khoa - {@code deriveSessionKeys}) de tao
  *       {@link EnvelopeCodec}, roi goi {@code onHandshakeComplete}.</li>
  *   <li>Tu goi tin thu 2 tro di, moi thu deu di qua {@code EnvelopeCodec}
  *       (da ma hoa AES-GCM) - dung nguyen tac E.1 muc 1: khong co DTLS nhu
