@@ -57,7 +57,7 @@ Kiến trúc chung: mỗi người chạy một client JavaFX. Signaling server 
 | Không kết nối được tới server | Hiện "Không thể kết nối auth server" | ✅ | |
 | Người ngoài truy cập thẳng cơ sở dữ liệu tài khoản | MySQL trên VPS chỉ mở ở `127.0.0.1` (không ra Internet); server không còn mật khẩu DB mặc định, bắt buộc đặt qua biến môi trường | ✅ | |
 | Token hết hạn (sau 12 giờ) hoặc không hợp lệ khi vào phòng | Server từ chối và gửi `JOIN_REJECTED(AUTH_EXPIRED / AUTH_REQUIRED)`; client báo "Phiên đăng nhập đã hết hạn" và chuyển sang màn hình đăng nhập | ✅ | |
-| Token và mật khẩu đi qua mạng dạng rõ (`ws://`, `http://`) | Chưa mã hoá đường truyền tới server | ❌ | Chuyển sang `wss://` / `https://` (kế hoạch ở Tài liệu kỹ thuật, mục J.1) |
+| Token và mật khẩu bị nghe lén trên đường tới server | Mọi kết nối tới server đi qua **TLS**: `wss://chat.zingme.fun` (signaling) và `https://chat.zingme.fun` (đăng nhập, danh sách phòng). Caddy trên VPS giữ chứng chỉ Let's Encrypt (tự gia hạn) và chuyển tiếp vào server ở `127.0.0.1:8080`; cổng 8080 không mở ra Internet | ✅ | |
 
 ---
 
@@ -441,7 +441,7 @@ Một lần chạy toàn bộ test, `PeerConnectionBurstThroughputTest` fail đ�
 
 ## Hạn chế chính và hướng phát triển
 
-1. **Signaling chưa mã hoá đường truyền (`ws://`)**: token đăng nhập có thể bị nghe lén (nội dung chat thì không). Kế hoạch chuyển sang `wss://` ở Tài liệu kỹ thuật, mục J.1.
+1. *(Đã giải quyết)* Kết nối tới server giờ dùng `wss://` / `https://` qua tên miền `chat.zingme.fun` (Tài liệu kỹ thuật, mục J.1).
 2. *(Đã giải quyết)* Nhập sai mật khẩu phòng, phòng đầy, token hết hạn giờ đều được server báo ngay bằng `JOIN_REJECTED` kèm lý do (Tài liệu kỹ thuật, mục J.2).
 3. **Lịch sử chat không xác minh được người viết từng tin**: hướng giải quyết là ký từng tin.
 4. **Chưa chủ động ngắt kết nối** người sai mật khẩu hoặc có chữ ký danh tính sai.
