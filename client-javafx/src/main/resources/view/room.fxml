@@ -94,6 +94,10 @@
             <bottom>
                 <VBox styleClass="message-input-bar" spacing="4">
                     <HBox spacing="8" alignment="BOTTOM_CENTER">
+                        <Button onAction="#onAttachFile" styleClass="button-icon, flat, attach-button">
+                            <graphic><FontIcon iconLiteral="fth-paperclip"/></graphic>
+                            <tooltip><Tooltip text="Gửi tệp (tối đa 100 MB) — hoặc kéo thả tệp vào khung chat"/></tooltip>
+                        </Button>
                         <TextArea fx:id="messageArea" promptText="Nhập tin nhắn…" HBox.hgrow="ALWAYS"
                                   wrapText="true" prefRowCount="2" styleClass="message-area"/>
                         <Button onAction="#onSendMessage" styleClass="accent, button-icon, send-button">
@@ -103,7 +107,7 @@
                     </HBox>
                     <HBox spacing="4" alignment="CENTER_LEFT">
                         <FontIcon iconLiteral="fth-lock" styleClass="input-hint-icon"/>
-                        <Label text="Tin nhắn được mã hoá trước khi rời máy bạn  ·  Enter để gửi, Shift+Enter để xuống dòng"
+                        <Label text="Tin nhắn và tệp được mã hoá trước khi rời máy bạn  ·  Enter để gửi, Shift+Enter để xuống dòng"
                                styleClass="input-hint"/>
                         <Region HBox.hgrow="ALWAYS"/>
                     </HBox>
