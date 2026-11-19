@@ -108,6 +108,9 @@ public class RoomController implements ChatSessionListener {
     private TypingNotifier typingNotifier;
     /** Moi giay: het han "dang go" cua nguoi khac + bao "ngung go" cua minh khi dung tay. */
     private final Timeline typingTicker = new Timeline(new KeyFrame(Duration.seconds(1), event -> onTypingTick()));
+    private static final int ALONE_HINT_SECONDS = 20;
+    private final javafx.animation.PauseTransition aloneHintTimer =
+            new javafx.animation.PauseTransition(Duration.seconds(ALONE_HINT_SECONDS));
     private final Map<String, String> displayNames = new HashMap<>();
     private final Map<String, SessionPeer> pendingPeerUpdates = new HashMap<>();
 
@@ -156,6 +159,14 @@ public class RoomController implements ChatSessionListener {
         });
         typingTicker.setCycleCount(Animation.INDEFINITE);
         typingTicker.play();
+        // Sai mat khau / sai ten phong trong y het "chua ai vao" -> sau 1 luc van mot minh thi goi y kiem tra lai.
+        aloneHintTimer.setOnFinished(event -> {
+            if (peers.isEmpty()) {
+                LOG.info("Van mot minh trong phong sau " + ALONE_HINT_SECONDS + " giay - hien goi y kiem tra ten/mat khau");
+                notice(NoticeKind.WARNING, LobbyRules.aloneHint(config.isPasswordProtected()));
+            }
+        });
+        aloneHintTimer.play();
         DesktopNotifier.setOnClick(() -> Platform.runLater(() -> {
             stage.setIconified(false);
             stage.toFront();
@@ -359,6 +370,7 @@ public class RoomController implements ChatSessionListener {
     private void leaveSession() {
         typingNotifier.stop();
         typingTicker.stop();
+        aloneHintTimer.stop();
         DesktopNotifier.setOnClick(null);
         session.leave();
     }

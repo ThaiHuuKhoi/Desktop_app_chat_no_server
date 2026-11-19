@@ -56,14 +56,14 @@
                             <tooltip><Tooltip text="Sao chép tên phòng"/></tooltip>
                         </Button>
                     </HBox>
-                    <Label text="Chia sẻ tên phòng để mời bạn bè tham gia."
+                    <Label fx:id="roomHintLabel" text="Chia sẻ tên phòng để mời bạn bè tham gia (phân biệt hoa thường)."
                            styleClass="field-hint" wrapText="true"/>
                 </VBox>
 
                 <VBox spacing="6">
                     <Label text="Mật khẩu phòng (tuỳ chọn)" styleClass="field-label"/>
                     <PasswordField fx:id="roomPasswordField" promptText="Để trống nếu là phòng công khai"/>
-                    <Label text="Chỉ người nhập đúng mật khẩu mới thấy nhau. Mật khẩu không được gửi lên server."
+                    <Label text="Tối thiểu 6 ký tự, phân biệt hoa thường. Chỉ người nhập đúng mật khẩu mới thấy nhau; mật khẩu không được gửi lên server."
                            styleClass="field-hint" wrapText="true"/>
                 </VBox>
             </VBox>
@@ -75,7 +75,9 @@
                           onMouseClicked="#onSelectRoom"/>
                 <HBox spacing="8">
                     <Button text="Làm mới" onAction="#onRefreshRooms"/>
-                    <Button text="Tạo phòng" onAction="#onCreateRoom" styleClass="accent"/>
+                    <Button text="Tạo phòng" onAction="#onCreateRoom" styleClass="accent">
+                        <tooltip><Tooltip text="Tạo / vào phòng theo tên và mật khẩu đang nhập bên trái"/></tooltip>
+                    </Button>
                 </HBox>
             </VBox>
         </HBox>
@@ -87,7 +89,7 @@
             </VBox>
         </TitledPane>
 
-        <Button text="Tạo / Vào phòng" onAction="#onJoinRoom" styleClass="accent, join-button"
+        <Button fx:id="joinButton" text="Tạo / Vào phòng" onAction="#onJoinRoom" styleClass="accent, join-button"
                 defaultButton="true" maxWidth="Infinity">
             <graphic>
                 <FontIcon iconLiteral="fth-log-in"/>

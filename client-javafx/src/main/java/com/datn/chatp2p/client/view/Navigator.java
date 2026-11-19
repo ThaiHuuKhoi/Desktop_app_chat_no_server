@@ -82,8 +82,14 @@ public final class Navigator {
      *         (xem {@link ChatSessions#create}) - man hinh hien tai giu nguyen.
      */
     static void showRoom(Stage stage, RoomConfig config) {
-        ChatSession session = ChatSessions.create(config);
+        showRoom(stage, config, ChatSessions.create(config));
+    }
 
+    /**
+     * Nhu {@link #showRoom(Stage, RoomConfig)} nhung voi session DA TAO SAN - de tao session (phong co
+     * mat khau ton ~0,1-0,3 s cho PBKDF2) tren luong nen, khong lam dung giao dien. Goi tren JavaFX thread.
+     */
+    static void showRoom(Stage stage, RoomConfig config, ChatSession session) {
         FXMLLoader loader = new FXMLLoader(Navigator.class.getResource("/view/room.fxml"));
         Parent root = load(loader);
         loader.<RoomController>getController().start(stage, config, session);

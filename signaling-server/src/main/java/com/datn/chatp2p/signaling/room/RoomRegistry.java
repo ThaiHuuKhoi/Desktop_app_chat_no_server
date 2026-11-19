@@ -22,6 +22,8 @@ import java.util.concurrent.ConcurrentHashMap;
 public class RoomRegistry {
 
     public static final int MAX_PEERS_PER_ROOM = 8;
+    /** Ky tu ngan cach ten phong va "the" mat khau trong roomId cua phong co mat khau (khop RoomConfig o client). */
+    static final char PRIVATE_ROOM_SEPARATOR = '~';
     private final Map<String, Map<String, PeerSession>> roomsByRoomId = new ConcurrentHashMap<>();
 
     /**
@@ -86,7 +88,9 @@ public class RoomRegistry {
     public List<RoomSnapshot> activeRooms() {
         List<RoomSnapshot> result = new ArrayList<>();
         roomsByRoomId.forEach((roomId, peers) -> {
-            if (!peers.isEmpty()) {
+            // Phong co mat khau co roomId "ten~the" (the suy ra tu mat khau o client) - KHONG liet ke,
+            // de nguoi khac khong biet ten phong rieng tu hay so nguoi trong do.
+            if (!peers.isEmpty() && roomId.indexOf(PRIVATE_ROOM_SEPARATOR) < 0) {
                 PeerSession owner = peers.values().iterator().next();
                 result.add(new RoomSnapshot(roomId, peers.size(), owner.getUserName()));
             }

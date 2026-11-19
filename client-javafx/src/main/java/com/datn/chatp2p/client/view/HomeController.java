@@ -2,6 +2,10 @@ package com.datn.chatp2p.client.view;
 
 import com.datn.chatp2p.client.session.RoomConfig;
 import com.datn.chatp2p.client.session.AuthClient;
+import com.datn.chatp2p.client.session.ChatSession;
+import com.datn.chatp2p.client.session.ChatSessions;
+import javafx.application.Platform;
+import javafx.scene.control.ButtonBar;
 import com.datn.chatp2p.client.util.RoomNameGenerator;
 import com.datn.chatp2p.client.util.ThemeManager;
 import javafx.animation.PauseTransition;
@@ -49,6 +53,12 @@ public class HomeController {
 
     @FXML
     private Button copyRoomButton;
+
+    @FXML
+    private Label roomHintLabel;
+
+    @FXML
+    private Button joinButton;
 
     @FXML
     private TextField serverField;
@@ -129,43 +139,21 @@ public class HomeController {
         PauseTransition revert = new PauseTransition(Duration.seconds(1.5));
         revert.setOnFinished(e -> copyRoomButton.setGraphic(new FontIcon(Feather.COPY)));
         revert.play();
+
+        if (!LobbyRules.normalizePassword(roomPasswordField.getText()).isEmpty()) {
+            // Phong co mat khau: nhac gui kem mat khau, roi tra lai dong goi y cu sau vai giay.
+            String original = roomHintLabel.getText();
+            roomHintLabel.setText("Đã sao chép tên phòng — nhớ gửi kèm mật khẩu cho bạn bè qua một kênh khác.");
+            PauseTransition restore = new PauseTransition(Duration.seconds(5));
+            restore.setOnFinished(e -> roomHintLabel.setText(original));
+            restore.play();
+        }
     }
 
+    /** Nut chinh "Tao / Vao phong": dung ten + mat khau dang nhap. */
     @FXML
     private void onJoinRoom() {
-        String userName = trimmed(userNameField.getText());
-        String roomName = trimmed(roomNameField.getText());
-        String serverUri = trimmed(serverField.getText());
-
-        if (userName.isEmpty() || roomName.isEmpty()) {
-            errorLabel.setText("Vui lòng nhập tên hiển thị và tên phòng.");
-            return;
-        }
-        if (roomName.indexOf(RoomConfig.PRIVATE_ROOM_SEPARATOR) >= 0) {
-            errorLabel.setText("Tên phòng không được chứa ký tự \"" + RoomConfig.PRIVATE_ROOM_SEPARATOR + "\".");
-            return;
-        }
-        if (serverUri.isEmpty()) {
-            errorLabel.setText("Vui lòng nhập địa chỉ signaling server.");
-            return;
-        }
-        if (accountMode && (authToken == null || authToken.isBlank())) {
-            errorLabel.setText("Vui lòng đăng nhập trước khi vào phòng.");
-            return;
-        }
-
-        try {
-            String roomPassword = roomPasswordField.getText() == null ? "" : roomPasswordField.getText();
-            LOG.info(() -> "Bam Vao phong: ten=" + userName + ", phong=" + roomName
-                    + (roomPassword.isEmpty() ? " (cong khai)"
-                            : " (co mat khau: " + com.datn.chatp2p.common.log.SecretLogging.reveal(roomPassword) + ")")
-                    + ", che do=" + (accountMode ? "tai khoan" : "khach"));
-            Navigator.showRoom(stage, new RoomConfig(userName, roomName, serverUri,
-                    accountMode ? authToken : "", roomPassword));
-        } catch (RuntimeException e) {
-            LOG.log(java.util.logging.Level.WARNING, "Khong vao duoc phong " + roomName, e);
-            errorLabel.setText(e.getMessage() == null ? "Không thể vào phòng." : e.getMessage());
-        }
+        startJoin(trimmed(roomNameField.getText()), LobbyRules.normalizePassword(roomPasswordField.getText()));
     }
 
     @FXML
@@ -173,23 +161,117 @@ public class HomeController {
         loadRooms();
     }
 
+    /**
+     * Nut "Tao phong" o cot danh sach: cung luong voi nut chinh (server tu tao phong khi co nguoi
+     * dau tien vao) - dung ten + mat khau dang nhap ben trai.
+     */
     @FXML
     private void onCreateRoom() {
-        String roomName = trimmed(roomNameField.getText());
-        if (roomName.isEmpty()) {
-            errorLabel.setText("Nhập tên phòng trước khi tạo.");
-            return;
-        }
-        confirmAndJoin(roomName);
+        onJoinRoom();
     }
 
+    /**
+     * Chon 1 phong trong danh sach: phong trong danh sach LUON la phong cong khai (phong co mat khau
+     * khong duoc liet ke), nen bo mat khau dang nhap - neu giu, nguoi dung se roi vao 1 phong co mat
+     * khau KHAC va thay phong trong.
+     */
     @FXML
     private void onSelectRoom() {
         AuthClient.RoomSummary selected =
                 roomListView.getSelectionModel().getSelectedItem();
-        if (selected != null) {
-            confirmAndJoin(selected.roomId());
+        if (selected == null) {
+            return;
         }
+        if (!LobbyRules.normalizePassword(roomPasswordField.getText()).isEmpty()) {
+            LOG.info("Chon phong cong khai tu danh sach - bo mat khau dang nhap");
+            roomPasswordField.clear();
+        }
+        roomNameField.setText(selected.roomId());
+        startJoin(selected.roomId(), "");
+    }
+
+    /** Luong vao phong DUY NHAT cho moi nut: kiem tra -> xac nhan -> tao session tren luong nen -> mo phong. */
+    private void startJoin(String roomName, String roomPassword) {
+        errorLabel.setText("");
+        String userName = trimmed(userNameField.getText());
+        String serverUri = trimmed(serverField.getText());
+
+        String error = LobbyRules.validate(userName, roomName, roomPassword);
+        if (error == null && serverUri.isEmpty()) {
+            error = "Vui lòng nhập địa chỉ signaling server.";
+        }
+        if (error == null && accountMode && (authToken == null || authToken.isBlank())) {
+            error = "Vui lòng đăng nhập trước khi vào phòng.";
+        }
+        if (error != null) {
+            errorLabel.setText(error);
+            return;
+        }
+        if (!confirmJoin(roomName, roomPassword, roomPassword.isEmpty() ? publicRoomPeerCount(roomName) : null)) {
+            return;
+        }
+
+        LOG.info(() -> "Vao phong: ten=" + userName + ", phong=" + roomName
+                + (roomPassword.isEmpty() ? " (cong khai)"
+                        : " (co mat khau: " + com.datn.chatp2p.common.log.SecretLogging.reveal(roomPassword) + ")")
+                + ", che do=" + (accountMode ? "tai khoan" : "khach"));
+        RoomConfig config = new RoomConfig(userName, roomName, serverUri, accountMode ? authToken : "", roomPassword);
+        setJoining(true);
+        // Tao session tren luong nen: phong co mat khau can PBKDF2 (~0,1-0,3 s) - khong lam dung giao dien.
+        Thread worker = new Thread(() -> {
+            try {
+                ChatSession session = ChatSessions.create(config);
+                Platform.runLater(() -> {
+                    try {
+                        Navigator.showRoom(stage, config, session);
+                    } catch (RuntimeException e) {
+                        session.leave();
+                        joinFailed(roomName, e);
+                    }
+                });
+            } catch (RuntimeException | LinkageError e) {
+                // LinkageError: vd cau hinh TURN sai lam P2pChatSession loi khi khoi tao lop.
+                Platform.runLater(() -> joinFailed(roomName, e));
+            }
+        }, "join-room");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    private void joinFailed(String roomName, Throwable e) {
+        LOG.log(java.util.logging.Level.WARNING, "Khong vao duoc phong " + roomName, e);
+        setJoining(false);
+        Throwable cause = e instanceof LinkageError && e.getCause() != null ? e.getCause() : e;
+        errorLabel.setText(cause.getMessage() == null ? "Không thể vào phòng." : cause.getMessage());
+    }
+
+    private void setJoining(boolean joining) {
+        joinButton.setDisable(joining);
+        joinButton.setText(joining ? "Đang vào phòng…" : "Tạo / Vào phòng");
+    }
+
+    /** So nguoi trong phong CONG KHAI cung ten theo danh sach da tai (null neu khong biet - vd che do khach). */
+    private Integer publicRoomPeerCount(String roomName) {
+        if (!accountMode) {
+            return null;
+        }
+        return activeRooms.stream()
+                .filter(room -> room.roomId().equals(roomName))
+                .map(AuthClient.RoomSummary::peerCount)
+                .findFirst()
+                .orElse(0);
+    }
+
+    private boolean confirmJoin(String roomName, String roomPassword, Integer peersInPublicRoom) {
+        ButtonType join = new ButtonType("Vào phòng", ButtonBar.ButtonData.OK_DONE);
+        ButtonType cancel = new ButtonType("Huỷ", ButtonBar.ButtonData.CANCEL_CLOSE);
+        Alert alert = new Alert(Alert.AlertType.CONFIRMATION,
+                LobbyRules.confirmText(roomName, roomPassword, peersInPublicRoom), join, cancel);
+        alert.initOwner(stage);
+        alert.setTitle("Xác nhận vào phòng");
+        alert.setHeaderText(roomPassword.isEmpty() ? "Phòng công khai" : "Phòng có mật khẩu");
+        Navigator.style(alert.getDialogPane());
+        return alert.showAndWait().orElse(cancel) == join;
     }
 
     private void loadRooms() {
@@ -215,18 +297,6 @@ public class HomeController {
                 .filter(room -> room.roomId().indexOf(RoomConfig.PRIVATE_ROOM_SEPARATOR) < 0)
                 .filter(room -> room.roomId().toLowerCase(java.util.Locale.ROOT).contains(normalized))
                 .toList());
-    }
-
-    private void confirmAndJoin(String roomName) {
-        Alert alert = new Alert(Alert.AlertType.CONFIRMATION,
-                "Bạn có muốn vào phòng \"" + roomName + "\" không?",
-                ButtonType.CANCEL, ButtonType.OK);
-        alert.setTitle("Xác nhận vào phòng");
-        alert.setHeaderText("Tham gia phòng");
-        if (alert.showAndWait().orElse(ButtonType.CANCEL) == ButtonType.OK) {
-            roomNameField.setText(roomName);
-            onJoinRoom();
-        }
     }
 
     private void refreshAvatar(String name) {
