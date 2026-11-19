@@ -56,7 +56,13 @@ final class FileTransferTexts {
             if ("INVALID_OFFER".equals(reason)) {
                 return who + " không nhận: lời mời không hợp lệ";
             }
+            if ("BUSY".equals(reason)) {
+                return who + " đang nhận một tệp khác, hãy gửi lại sau";
+            }
             return who + " đã từ chối";
+        }
+        if ("BUSY".equals(reason)) {
+            return "Đã tự động từ chối: bạn đang nhận một tệp khác từ " + who;
         }
         if ("FILE_TOO_LARGE".equals(reason)) {
             return "Đã tự động từ chối: tệp vượt giới hạn dung lượng";

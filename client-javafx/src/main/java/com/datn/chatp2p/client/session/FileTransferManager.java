@@ -10,12 +10,16 @@ import com.datn.chatp2p.common.protocol.FileAnswerPayload;
 import com.datn.chatp2p.common.protocol.FileCancelPayload;
 import com.datn.chatp2p.common.protocol.FileChunkPayload;
 import com.datn.chatp2p.common.protocol.FileOfferPayload;
-import com.datn.chatp2p.p2p.filetransfer.ChunkSource;
+import com.datn.chatp2p.common.protocol.FileTransferReason;
+import com.datn.chatp2p.p2p.filetransfer.FileNames;
 import com.datn.chatp2p.p2p.filetransfer.FileReceiver;
 import com.datn.chatp2p.p2p.filetransfer.FileReceiver.ChunkResult;
 import com.datn.chatp2p.p2p.filetransfer.FileSender;
 import com.datn.chatp2p.p2p.filetransfer.FileTransferException;
 import com.datn.chatp2p.p2p.filetransfer.FileTransferLimits;
+import com.datn.chatp2p.p2p.filetransfer.ReliableChunkSender;
+import com.datn.chatp2p.p2p.filetransfer.ReliableTransferConfig;
+import com.datn.chatp2p.p2p.filetransfer.ReliableTransferListener;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
@@ -23,6 +27,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -33,19 +38,26 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Dieu phoi giao thuc truyen file 1-1 (docs/Thong-nhat-giao-thuc-truyen-file.md):
- * FILE_OFFER -> FILE_ANSWER -> FILE_CHUNK / FILE_ACK -> ACK cuoi verified, va
- * FILE_CANCEL theo ca 2 chieu. Dung {@link FileSender} / {@link FileReceiver}
- * (p2p-core) cho phan doc / ghi file va {@link OutgoingChunkSender} cho phan
- * gui tin cay.
+ * Dieu phoi giao thuc truyen file 1-1 (docs/Thong-nhat-giao-thuc-truyen-file.md +
+ * docs/Tra-loi-giao-thuc-truyen-file.md cua A).
  *
- * <p>Khong phu thuoc JavaFX hay {@code RoomSession}: gui qua {@link Transport},
- * bao trang thai qua {@code Consumer<FileTransferStatus>} -> test duoc bang 2
- * manager noi voi nhau trong bo nho.</p>
+ * <ul>
+ *   <li><b>Ben gui</b>: {@link FileSender} (B) doc file, {@link ReliableChunkSender} (A) gui
+ *       FILE_OFFER (tu gui lai toi khi co tra loi), gui chunk theo cua so truot, gui lai chunk
+ *       mat, cho ACK cuoi {@code verified}. Lop nay chuyen FILE_ANSWER / FILE_ACK / FILE_CANCEL
+ *       vao sender va gui FILE_CANCEL khi loi phia minh hoac nguoi dung bam Huy.</li>
+ *   <li><b>Ben nhan</b>: {@link FileReceiver} (B) ghi chunk, gui FILE_ACK (moi 8 chunk moi,
+ *       khi co lo hong, hoac sau 50 ms khong co chunk moi), kiem SHA-256 roi gui ACK
+ *       {@code verified}. Theo checklist cua A: offer trung -> gui lai cau tra loi cu; chunk cua
+ *       file da xong -> gui lai ACK {@code verified}; chunk cua file la / da huy -> FILE_CANCEL;
+ *       dang nhan file khac tu cung peer -> {@code BUSY}.</li>
+ * </ul>
  *
- * <p>Nguyen tac khoa: moi lan truyen co khoa rieng (doi tuong {@code Outgoing} /
- * {@code Incoming}); KHONG BAO GIO goi {@link OutgoingChunkSender} khi dang giu
- * khoa do (bo gui goi nguoc lai listener -> se deadlock).</p>
+ * <p>Khong phu thuoc JavaFX hay {@code RoomSession}: gui qua {@link Transport}, bao trang thai
+ * qua {@code Consumer<FileTransferStatus>} -> test duoc bang 2 manager noi voi nhau trong bo nho.
+ *
+ * <p>Nguyen tac khoa: moi lan truyen co khoa rieng ({@code Outgoing} / {@code Incoming});
+ * KHONG goi {@link ReliableChunkSender} khi dang giu khoa do (sender goi nguoc listener).
  */
 final class FileTransferManager implements AutoCloseable {
 
@@ -56,63 +68,68 @@ final class FileTransferManager implements AutoCloseable {
         void send(String peerId, EnvelopeType type, String namespace, Object payload);
     }
 
-    /** Tao bo gui chunk tin cay - doi sang {@code ReliableChunkSender} cua A khi co. */
-    interface ChunkSenderFactory {
-        OutgoingChunkSender create(ChunkSource source, Consumer<FileChunkPayload> sendChunk,
-                                   OutgoingChunkSender.Listener listener, ScheduledExecutorService scheduler);
-    }
-
-    static final long ANSWER_TIMEOUT_MS = 60_000;
-    static final long RECEIVE_IDLE_TIMEOUT_MS = 30_000;
-    /** Gui ACK sau moi bao nhieu chunk moi nhan theo thu tu. */
-    static final int ACK_EVERY_CHUNKS = 8;
-    /** D4: toi da 64 phan tu trong receivedAbove. */
-    static final int ACK_SELECTIVE_LIMIT = 64;
-    private static final long PROGRESS_INTERVAL_MS = 100;
-
-    private final Transport transport;
-    private final Consumer<FileTransferStatus> listener;
-    private final FileTransferLimits limits;
-    private final ChunkSenderFactory senderFactory;
-    private final long answerTimeoutMs;
-    private final long receiveIdleTimeoutMs;
-    private final ScheduledExecutorService executor;
-    private final ObjectMapper mapper = new ObjectMapper();
-
-    private final Map<String, Outgoing> outgoing = new ConcurrentHashMap<>();
-    private final Map<String, Incoming> incoming = new ConcurrentHashMap<>();
-    /** File da nhan xong -> ACK cuoi, gui lai neu ben gui chua nhan duoc (chunk den muon). */
-    private final Map<String, CompletedTransfer> completed = new ConcurrentHashMap<>();
-    private volatile boolean closed;
-
     /**
      * Kich thuoc chunk khi gui qua mang that: 512 byte.
      *
-     * <p>LY DO (da do that): {@code MergingDatagramSocket} cua ice4j nhan moi goi
-     * UDP vao bo dem CO DINH 1500 byte - goi lon hon bi cat cut va
-     * {@code P2pDataChannel} am tham bo di. Chunk 4 KB (D5) sau EnvelopeCodec
-     * thanh ~7,3 KB nen KHONG BAO GIO toi noi. Chunk 512 byte -> goi ~1,1 KB,
-     * vua 1 goi &lt;= 1200 byte (an toan ca voi MTU duong Internet / TURN).
-     * Ben nhan van chap nhan moi chunkSize 1..32 KB trong offer.</p>
+     * <p>LY DO (da do that): {@code MergingDatagramSocket} cua ice4j nhan moi goi UDP vao bo dem
+     * CO DINH 1500 byte - goi lon hon bi cat cut va {@code P2pDataChannel} am tham bo di. Chunk
+     * 4 KB (D5) sau EnvelopeCodec thanh ~7,3 KB nen KHONG BAO GIO toi noi. Chunk 512 byte ->
+     * goi ~1,1 KB, vua 1 goi &lt;= 1200 byte (an toan ca voi MTU duong Internet / TURN). Doi lai
+     * {@link FileTransferLimits#DEFAULT_CHUNK_SIZE} khi {@code P2pDataChannel} chia nho goi.</p>
      */
     static final int NETWORK_CHUNK_SIZE = 512;
 
     static final FileTransferLimits NETWORK_LIMITS =
             new FileTransferLimits(FileTransferLimits.DEFAULT_MAX_FILE_SIZE, NETWORK_CHUNK_SIZE);
 
+    /**
+     * Tham so D5 cua A, rieng cua so 64 chunk (64 x 512 byte = 32 KB dang bay) de bu chunk nho.
+     * Khong tang qua ~90: hang doi nhan cua ice4j chi giu 100 goi.
+     */
+    static final ReliableTransferConfig NETWORK_CONFIG = new ReliableTransferConfig(64,
+            ReliableTransferConfig.DEFAULT.initialRetryMillis(), ReliableTransferConfig.DEFAULT.maxRetryMillis(),
+            ReliableTransferConfig.DEFAULT.maxRetries(), ReliableTransferConfig.DEFAULT.offerRetryMillis(),
+            ReliableTransferConfig.DEFAULT.answerTimeoutMillis());
+
+    static final long RECEIVE_IDLE_TIMEOUT_MS = 30_000;
+    /** Gui ACK sau moi bao nhieu chunk moi nhan theo thu tu. */
+    static final int ACK_EVERY_CHUNKS = 8;
+    /** Gui ACK neu sau chung nay ms khong co chunk moi (A, muc 2.4). */
+    static final long ACK_DELAY_MS = 50;
+    /** D4: toi da 64 phan tu trong receivedAbove. */
+    static final int ACK_SELECTIVE_LIMIT = 64;
+    /** Giu trang thai file da ket thuc de tra loi offer / chunk den muon (A, lo hong 1-2). */
+    static final long CLOSED_RETENTION_MS = 30_000;
+    private static final long PROGRESS_INTERVAL_MS = 100;
+    /** Ly do tu choi tu FILE_ANSWER (khac voi loi giua chung). */
+    private static final Set<String> ANSWER_REJECT_REASONS = Set.of(FileTransferReason.REJECTED,
+            FileTransferReason.FILE_TOO_LARGE, FileTransferReason.INVALID_OFFER, FileTransferReason.BUSY);
+
+    private final Transport transport;
+    private final Consumer<FileTransferStatus> listener;
+    private final FileTransferLimits limits;
+    private final ReliableTransferConfig senderConfig;
+    private final long receiveIdleTimeoutMs;
+    private final ScheduledExecutorService executor;
+    private final ObjectMapper mapper = new ObjectMapper();
+
+    private final Map<String, Outgoing> outgoing = new ConcurrentHashMap<>();
+    private final Map<String, Incoming> incoming = new ConcurrentHashMap<>();
+    /** File nhan da ket thuc (xong / tu choi / huy) -> cach tra loi offer / chunk den muon. */
+    private final Map<String, ClosedIncoming> closed = new ConcurrentHashMap<>();
+    private volatile boolean shutDown;
+
     FileTransferManager(Transport transport, Consumer<FileTransferStatus> listener) {
-        this(transport, listener, NETWORK_LIMITS, TemporaryChunkSender::new,
-                ANSWER_TIMEOUT_MS, RECEIVE_IDLE_TIMEOUT_MS);
+        this(transport, listener, NETWORK_LIMITS, NETWORK_CONFIG, RECEIVE_IDLE_TIMEOUT_MS);
     }
 
     FileTransferManager(Transport transport, Consumer<FileTransferStatus> listener,
-                        FileTransferLimits limits, ChunkSenderFactory senderFactory,
-                        long answerTimeoutMs, long receiveIdleTimeoutMs) {
+                        FileTransferLimits limits, ReliableTransferConfig senderConfig,
+                        long receiveIdleTimeoutMs) {
         this.transport = Objects.requireNonNull(transport, "transport");
         this.listener = Objects.requireNonNull(listener, "listener");
         this.limits = Objects.requireNonNull(limits, "limits");
-        this.senderFactory = Objects.requireNonNull(senderFactory, "senderFactory");
-        this.answerTimeoutMs = answerTimeoutMs;
+        this.senderConfig = Objects.requireNonNull(senderConfig, "senderConfig");
         this.receiveIdleTimeoutMs = receiveIdleTimeoutMs;
         this.executor = Executors.newScheduledThreadPool(2, runnable -> {
             Thread thread = new Thread(runnable, "file-transfer");
@@ -120,7 +137,7 @@ final class FileTransferManager implements AutoCloseable {
             return thread;
         });
         long watchdogPeriod = Math.max(100, Math.min(5_000, receiveIdleTimeoutMs / 3));
-        executor.scheduleWithFixedDelay(this::checkIdleIncoming, watchdogPeriod, watchdogPeriod, TimeUnit.MILLISECONDS);
+        executor.scheduleWithFixedDelay(this::watchdog, watchdogPeriod, watchdogPeriod, TimeUnit.MILLISECONDS);
     }
 
     FileTransferLimits limits() {
@@ -130,7 +147,7 @@ final class FileTransferManager implements AutoCloseable {
     // ================================================================ ben gui
 
     /**
-     * Doc + bam SHA-256 file roi gui FILE_OFFER. Ham nay CHAN (doc ca file) -
+     * Doc + bam SHA-256 file roi bat dau gui (FILE_OFFER). Ham nay CHAN (doc ca file) -
      * khong goi tu luong giao dien.
      *
      * @throws FileTransferException    {@code FILE_TOO_LARGE} / {@code IO_ERROR}
@@ -138,35 +155,30 @@ final class FileTransferManager implements AutoCloseable {
      */
     FileTransferStatus sendFile(String peerId, Path file, boolean direct) {
         Objects.requireNonNull(peerId, "peerId");
-        ensureOpen();
+        if (shutDown) {
+            throw new IllegalStateException("Da roi phong");
+        }
         FileSender source = FileSender.open(file, limits);
         FileOfferPayload offer = source.offer();
-        Outgoing out = new Outgoing(peerId, direct, source, new FileTransferStatus(
+        Outgoing out = new Outgoing(peerId, source, new FileTransferStatus(
                 offer.fileId(), peerId, Direction.OUTGOING, direct, offer.fileName(), offer.fileSize(),
                 State.WAITING_ANSWER, 0, null, null));
+        try {
+            out.sender = new ReliableChunkSender(source,
+                    // namespace chi gan vao OFFER de ben nhan biet hien the o tab Nhom hay DM
+                    sentOffer -> transport.send(peerId, EnvelopeType.FILE_OFFER, namespace(direct), sentOffer),
+                    chunk -> transport.send(peerId, EnvelopeType.FILE_CHUNK, null, chunk),
+                    new SenderListener(out), executor, senderConfig);
+        } catch (RuntimeException e) {
+            source.close();
+            throw e;
+        }
         outgoing.put(offer.fileId(), out);
         emit(out.status);
-
-        if (!trySend(peerId, EnvelopeType.FILE_OFFER, namespace(direct), offer)) {
-            finishOutgoing(out, State.FAILED, FileTransferStatus.SEND_FAILED, false);
+        out.sender.start();
+        synchronized (out) {
             return out.status;
         }
-        synchronized (out) {
-            if (out.status.state() == State.WAITING_ANSWER) {
-                out.answerTimeout = executor.schedule(() -> onAnswerTimeout(out),
-                        answerTimeoutMs, TimeUnit.MILLISECONDS);
-            }
-        }
-        return out.status;
-    }
-
-    private void onAnswerTimeout(Outgoing out) {
-        synchronized (out) {
-            if (out.status.state() != State.WAITING_ANSWER) {
-                return;
-            }
-        }
-        finishOutgoing(out, State.FAILED, "TIMEOUT", true);
     }
 
     private void onAnswer(String peerId, FileAnswerPayload answer) {
@@ -174,44 +186,32 @@ final class FileTransferManager implements AutoCloseable {
         if (out == null || !out.peerId.equals(peerId)) {
             return;
         }
-        OutgoingChunkSender sender;
+        FileTransferStatus accepted = null;
         synchronized (out) {
-            if (out.status.state() != State.WAITING_ANSWER) {
-                return;
-            }
-            cancelTimer(out.answerTimeout);
-            if (!answer.accepted()) {
-                sender = null;
-            } else {
-                out.status = out.status.with(State.IN_PROGRESS, 0, null, null);
-                sender = senderFactory.create(out.source,
-                        chunk -> transport.send(out.peerId, EnvelopeType.FILE_CHUNK, null, chunk),
-                        new SenderListener(out), executor);
-                out.sender = sender;
+            if (out.status.state() == State.WAITING_ANSWER) {
+                if (answer.accepted()) {
+                    out.status = out.status.with(State.IN_PROGRESS, 0, null, null);
+                    accepted = out.status;
+                } else {
+                    out.rejected = true;
+                }
             }
         }
-        if (sender == null) {
-            String reason = answer.reason() == null || answer.reason().isBlank() ? "REJECTED" : answer.reason();
-            finishOutgoing(out, State.REJECTED, reason, false);
-            return;
+        if (accepted != null) {
+            emit(accepted);
         }
-        emit(out.status);
-        sender.start();
+        out.sender.onAnswer(answer); // NGOAI khoa; tu choi -> listener.onFailed(reason)
     }
 
     private void onAck(String peerId, FileAckPayload ack) {
         Outgoing out = outgoing.get(ack.fileId());
-        if (out == null || !out.peerId.equals(peerId)) {
-            return;
-        }
-        OutgoingChunkSender sender = out.sender;
-        if (sender != null) {
-            sender.onAck(ack); // NGOAI khoa cua out
+        if (out != null && out.peerId.equals(peerId)) {
+            out.sender.onAck(ack);
         }
     }
 
-    /** Nhan su kien tu bo gui chunk cua 1 file. */
-    private final class SenderListener implements OutgoingChunkSender.Listener {
+    /** Nhan su kien tu {@link ReliableChunkSender} cua 1 file (goi ngoai khoa cua sender). */
+    private final class SenderListener implements ReliableTransferListener {
         private final Outgoing out;
 
         SenderListener(Outgoing out) {
@@ -228,7 +228,7 @@ final class FileTransferManager implements AutoCloseable {
                 long bytes = Math.min((long) ackedChunks * out.source.offer().chunkSize(), out.status.fileSize());
                 out.status = out.status.with(State.IN_PROGRESS, bytes, null, null);
                 long now = System.currentTimeMillis();
-                if (now - out.lastEmitAt < PROGRESS_INTERVAL_MS) {
+                if (now - out.lastEmitAt < PROGRESS_INTERVAL_MS && ackedChunks < totalChunks) {
                     return;
                 }
                 out.lastEmitAt = now;
@@ -244,32 +244,45 @@ final class FileTransferManager implements AutoCloseable {
 
         @Override
         public void onFailed(String reason) {
-            finishOutgoing(out, State.FAILED, reason, true);
+            boolean rejected;
+            boolean byPeer;
+            synchronized (out) {
+                rejected = out.rejected;
+                byPeer = out.cancelledByPeer;
+            }
+            if (rejected) {
+                // FILE_ANSWER accepted=false: tu choi (REJECTED/BUSY/...) hoac ben kia khong tao duoc file
+                finishOutgoing(out, ANSWER_REJECT_REASONS.contains(reason) ? State.REJECTED : State.FAILED,
+                        reason, false);
+            } else if (byPeer) {
+                // Ben kia gui FILE_CANCEL - khong gui lai
+                boolean userCancel = FileTransferReason.CANCELLED_BY_USER.equals(reason);
+                finishOutgoing(out, userCancel ? State.CANCELLED : State.FAILED,
+                        userCancel ? FileTransferStatus.CANCELLED_BY_PEER : reason, false);
+            } else {
+                // Loi phia minh (TIMEOUT, IO_ERROR): sender KHONG tu gui FILE_CANCEL -> minh gui
+                finishOutgoing(out, State.FAILED, reason, true);
+            }
         }
     }
 
     /**
-     * Ket thuc 1 lan gui: dung bo gui, dong file, bao giao dien.
+     * Ket thuc 1 lan gui: dung sender, dong file, bao giao dien.
      *
      * @param notifyPeer gui FILE_CANCEL(reason) cho ben kia
      */
     private void finishOutgoing(Outgoing out, State state, String reason, boolean notifyPeer) {
-        OutgoingChunkSender sender;
         FileTransferStatus status;
         synchronized (out) {
             if (out.status.state().isFinal()) {
                 return;
             }
-            cancelTimer(out.answerTimeout);
             long bytes = state == State.COMPLETED ? out.status.fileSize() : out.status.bytesTransferred();
             out.status = out.status.with(state, bytes, null, reason);
             status = out.status;
-            sender = out.sender;
         }
         outgoing.remove(status.fileId(), out);
-        if (sender != null) {
-            sender.cancel();
-        }
+        out.sender.cancel(); // khong goi listener; khong lam gi neu sender da ket thuc
         out.source.close();
         if (notifyPeer) {
             trySend(out.peerId, EnvelopeType.FILE_CANCEL, null, new FileCancelPayload(status.fileId(), reason));
@@ -280,26 +293,70 @@ final class FileTransferManager implements AutoCloseable {
     // ================================================================ ben nhan
 
     private void onOffer(String peerId, String namespace, FileOfferPayload offer) {
-        if (offer.fileId() == null || incoming.containsKey(offer.fileId()) || completed.containsKey(offer.fileId())) {
-            return; // offer trung (gui lai) hoac khong co id
+        if (offer.fileId() == null) {
+            return;
         }
+        // Offer trung (ben gui gui lai vi chua thay tra loi): gui lai dung cau tra loi cu
+        Incoming existing = incoming.get(offer.fileId());
+        if (existing != null) {
+            FileAnswerPayload previous;
+            synchronized (existing) {
+                previous = existing.answer; // null = nguoi dung chua bam gi -> im lang
+            }
+            if (previous != null && existing.peerId.equals(peerId)) {
+                trySend(peerId, EnvelopeType.FILE_ANSWER, null, previous);
+            }
+            return;
+        }
+        ClosedIncoming done = closed.get(offer.fileId());
+        if (done != null) {
+            if (done.peerId.equals(peerId) && done.answer != null) {
+                trySend(peerId, EnvelopeType.FILE_ANSWER, null, done.answer);
+            }
+            return;
+        }
+
         boolean direct = EnvelopeNamespace.DIRECT_MESSAGE.equals(namespace);
         FileTransferStatus offered = new FileTransferStatus(
-                offer.fileId(), peerId, Direction.INCOMING, direct, safeDisplayName(offer.fileName()),
+                offer.fileId(), peerId, Direction.INCOMING, direct, FileNames.sanitize(offer.fileName()),
                 Math.max(0, offer.fileSize()), State.OFFERED, 0, null, null);
+
+        String autoReject = null;
         try {
             FileReceiver.validateOffer(offer, limits);
         } catch (FileTransferException e) {
-            // Tu choi ngay, khong hoi nguoi dung (file qua lon / offer sai)
-            trySend(peerId, EnvelopeType.FILE_ANSWER, null,
-                    new FileAnswerPayload(offer.fileId(), false, e.reason().name()));
-            emit(offered.with(State.REJECTED, 0, null, e.reason().name()));
+            autoReject = e.reason().name();
+        }
+        if (autoReject == null && isBusyWith(peerId)) {
+            autoReject = FileTransferReason.BUSY;
+        }
+        if (autoReject != null) {
+            // Tu choi ngay, khong hoi nguoi dung (offer sai / qua lon / dang nhan file khac)
+            FileAnswerPayload answer = new FileAnswerPayload(offer.fileId(), false, autoReject);
+            remember(offer.fileId(), new ClosedIncoming(peerId, answer, null, null));
+            trySend(peerId, EnvelopeType.FILE_ANSWER, null, answer);
+            emit(offered.with(State.REJECTED, 0, null, autoReject));
             return;
         }
         Incoming in = new Incoming(peerId, offer, offered);
         if (incoming.putIfAbsent(offer.fileId(), in) == null) {
             emit(offered);
         }
+    }
+
+    /** Dang nhan (da bam Nhan) 1 file khac tu cung peer -> offer moi bi {@code BUSY}. */
+    private boolean isBusyWith(String peerId) {
+        for (Incoming in : incoming.values()) {
+            if (in.peerId.equals(peerId)) {
+                synchronized (in) {
+                    State state = in.status.state();
+                    if (state == State.IN_PROGRESS || state == State.VERIFYING) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     /** Nguoi dung bam "Nhan": tao file tam trong {@code directory} va tra loi FILE_ANSWER. */
@@ -309,6 +366,7 @@ final class FileTransferManager implements AutoCloseable {
             return;
         }
         FileTransferStatus status;
+        FileAnswerPayload answer;
         boolean completeNow = false;
         synchronized (in) {
             if (in.status.state() != State.OFFERED) {
@@ -319,17 +377,20 @@ final class FileTransferManager implements AutoCloseable {
                 in.lastChunkAt = System.currentTimeMillis();
                 completeNow = in.receiver.isComplete(); // file rong: khong co chunk nao
                 in.status = in.status.with(completeNow ? State.VERIFYING : State.IN_PROGRESS, 0, null, null);
-                // Gui SAU khi da san sang nhan chunk
-                trySend(in.peerId, EnvelopeType.FILE_ANSWER, null, new FileAnswerPayload(fileId, true, null));
+                answer = new FileAnswerPayload(fileId, true, null);
+                in.answer = answer;
             } catch (FileTransferException e) {
                 // Khong tao duoc file tam (vd thu muc khong ghi duoc) -> bao ben gui
                 String reason = e.reason().name();
-                trySend(in.peerId, EnvelopeType.FILE_ANSWER, null, new FileAnswerPayload(fileId, false, reason));
+                answer = new FileAnswerPayload(fileId, false, reason);
                 in.status = in.status.with(State.FAILED, 0, null, reason);
                 incoming.remove(fileId, in);
+                remember(fileId, new ClosedIncoming(in.peerId, answer, null, null));
             }
             status = in.status;
         }
+        // Gui SAU khi da san sang nhan chunk
+        trySend(in.peerId, EnvelopeType.FILE_ANSWER, null, answer);
         emit(status);
         if (completeNow) {
             executor.execute(() -> completeIncoming(in));
@@ -343,29 +404,25 @@ final class FileTransferManager implements AutoCloseable {
             return;
         }
         FileTransferStatus status;
+        FileAnswerPayload answer = new FileAnswerPayload(fileId, false, FileTransferReason.REJECTED);
         synchronized (in) {
             if (in.status.state() != State.OFFERED) {
                 return;
             }
-            in.status = in.status.with(State.REJECTED, 0, null, "REJECTED");
+            in.status = in.status.with(State.REJECTED, 0, null, FileTransferReason.REJECTED);
+            in.answer = answer;
             status = in.status;
         }
         incoming.remove(fileId, in);
-        trySend(in.peerId, EnvelopeType.FILE_ANSWER, null, new FileAnswerPayload(fileId, false, "REJECTED"));
+        remember(fileId, new ClosedIncoming(in.peerId, answer, null, null));
+        trySend(in.peerId, EnvelopeType.FILE_ANSWER, null, answer);
         emit(status);
     }
 
     private void onChunk(String peerId, FileChunkPayload chunk) {
         Incoming in = incoming.get(chunk.fileId());
-        if (in == null) {
-            CompletedTransfer done = completed.get(chunk.fileId());
-            if (done != null && done.peerId.equals(peerId)) {
-                // Ben gui chua nhan duoc ACK cuoi -> gui lai
-                trySend(peerId, EnvelopeType.FILE_ACK, null, done.finalAck);
-            }
-            return;
-        }
-        if (!in.peerId.equals(peerId)) {
+        if (in == null || !in.peerId.equals(peerId)) {
+            answerStrayChunk(peerId, chunk);
             return;
         }
         FileAckPayload ack = null;
@@ -373,17 +430,19 @@ final class FileTransferManager implements AutoCloseable {
         boolean completeNow = false;
         synchronized (in) {
             if (in.receiver == null || in.status.state() != State.IN_PROGRESS) {
-                return;
+                return; // chua bam Nhan, hoac dang kiem SHA-256
             }
             ChunkResult result;
             try {
                 result = in.receiver.onChunk(chunk);
             } catch (FileTransferException e) {
                 // Ghi dia that bai - receiver da tu huy va xoa file tam
-                in.status = in.status.with(State.FAILED, in.status.bytesTransferred(), null, e.reason().name());
+                String reason = e.reason().name();
+                in.status = in.status.with(State.FAILED, in.status.bytesTransferred(), null, reason);
                 FileTransferStatus failed = in.status;
                 incoming.remove(chunk.fileId(), in);
-                trySend(peerId, EnvelopeType.FILE_CANCEL, null, new FileCancelPayload(chunk.fileId(), e.reason().name()));
+                remember(chunk.fileId(), new ClosedIncoming(peerId, in.answer, null, reason));
+                trySend(peerId, EnvelopeType.FILE_CANCEL, null, new FileCancelPayload(chunk.fileId(), reason));
                 emit(failed);
                 return;
             }
@@ -397,14 +456,17 @@ final class FileTransferManager implements AutoCloseable {
                 in.status = in.status.with(State.IN_PROGRESS, bytes, null, null);
             }
             if (in.receiver.isComplete()) {
+                cancelTimer(in.delayedAck);
                 in.status = in.status.with(State.VERIFYING, in.offer.fileSize(), null, null);
                 progress = in.status;
                 completeNow = true;
             } else {
                 List<Integer> above = in.receiver.receivedAbove(ACK_SELECTIVE_LIMIT);
                 if (result == ChunkResult.DUPLICATE || !above.isEmpty() || in.chunksSinceAck >= ACK_EVERY_CHUNKS) {
-                    ack = new FileAckPayload(chunk.fileId(), in.receiver.contiguousChunks(), above, false);
-                    in.chunksSinceAck = 0;
+                    ack = ackNow(in, above);
+                } else if (in.delayedAck == null || in.delayedAck.isDone()) {
+                    // Chua du 8 chunk: van ACK neu 50 ms khong co chunk moi (vd cuoi cua so)
+                    in.delayedAck = executor.schedule(() -> sendDelayedAck(in), ACK_DELAY_MS, TimeUnit.MILLISECONDS);
                 }
                 long now = System.currentTimeMillis();
                 if (now - in.lastEmitAt >= PROGRESS_INTERVAL_MS) {
@@ -424,54 +486,80 @@ final class FileTransferManager implements AutoCloseable {
         }
     }
 
+    /** Tao FILE_ACK hien tai va reset bo dem. Goi trong khoa cua {@code in}. */
+    private FileAckPayload ackNow(Incoming in, List<Integer> above) {
+        cancelTimer(in.delayedAck);
+        in.chunksSinceAck = 0;
+        return new FileAckPayload(in.offer.fileId(), in.receiver.contiguousChunks(), above, false);
+    }
+
+    private void sendDelayedAck(Incoming in) {
+        FileAckPayload ack;
+        synchronized (in) {
+            if (in.status.state() != State.IN_PROGRESS || in.chunksSinceAck == 0) {
+                return;
+            }
+            ack = ackNow(in, in.receiver.receivedAbove(ACK_SELECTIVE_LIMIT));
+        }
+        trySend(in.peerId, EnvelopeType.FILE_ACK, null, ack);
+    }
+
+    /**
+     * Chunk cua file khong con dang nhan: da xong -> gui lai ACK {@code verified} (mat ACK cuoi);
+     * da huy / la -> FILE_CANCEL de ben gui dung (ke ca khi ban CANCEL truoc bi mat).
+     */
+    private void answerStrayChunk(String peerId, FileChunkPayload chunk) {
+        ClosedIncoming done = closed.get(chunk.fileId());
+        if (done != null) {
+            if (!done.peerId.equals(peerId)) {
+                return;
+            }
+            if (done.finalAck != null) {
+                trySend(peerId, EnvelopeType.FILE_ACK, null, done.finalAck);
+            } else if (done.cancelReason != null) {
+                trySend(peerId, EnvelopeType.FILE_CANCEL, null, new FileCancelPayload(chunk.fileId(), done.cancelReason));
+            }
+            return;
+        }
+        if (!incoming.containsKey(chunk.fileId())) {
+            // Hoan toan khong biet file nay (vd vua mo lai app) -> bao ben gui dung
+            trySend(peerId, EnvelopeType.FILE_CANCEL, null,
+                    new FileCancelPayload(chunk.fileId(), FileTransferReason.INVALID_OFFER));
+        }
+    }
+
     /** Kiem SHA-256 + doi ten (chay tren executor, khong chan luong nhan mang). */
     private void completeIncoming(Incoming in) {
         FileTransferStatus status;
         String fileId = in.offer.fileId();
+        FileAckPayload finalAck = null;
         synchronized (in) {
             if (in.status.state() != State.VERIFYING) {
                 return;
             }
             try {
                 Path saved = in.receiver.complete();
-                FileAckPayload finalAck = new FileAckPayload(fileId, in.offer.totalChunks(), List.of(), true);
-                completed.put(fileId, new CompletedTransfer(in.peerId, finalAck));
+                finalAck = new FileAckPayload(fileId, in.offer.totalChunks(), List.of(), true);
                 in.status = in.status.with(State.COMPLETED, in.offer.fileSize(), saved, null);
             } catch (FileTransferException e) {
                 in.status = in.status.with(State.FAILED, in.status.bytesTransferred(), null, e.reason().name());
             } catch (RuntimeException e) {
                 LOG.log(Level.WARNING, "Khong hoan tat duoc file " + fileId, e);
                 in.receiver.cancel();
-                in.status = in.status.with(State.FAILED, in.status.bytesTransferred(), null, "IO_ERROR");
+                in.status = in.status.with(State.FAILED, in.status.bytesTransferred(), null, FileTransferReason.IO_ERROR);
             }
             status = in.status;
         }
-        incoming.remove(fileId, in);
         if (status.state() == State.COMPLETED) {
-            FileAckPayload finalAck = completed.get(fileId).finalAck;
+            remember(fileId, new ClosedIncoming(in.peerId, in.answer, finalAck, null));
+            incoming.remove(fileId, in);
             trySend(in.peerId, EnvelopeType.FILE_ACK, null, finalAck);
-            if (in.offer.totalChunks() == 0) {
-                // File rong: khong co chunk nao de ben gui "nhac" -> gui them 1 lan phong mat goi
-                executor.schedule(() -> trySend(in.peerId, EnvelopeType.FILE_ACK, null, finalAck),
-                        TemporaryChunkSender.INITIAL_RTO_MS, TimeUnit.MILLISECONDS);
-            }
         } else {
+            remember(fileId, new ClosedIncoming(in.peerId, in.answer, null, status.reason()));
+            incoming.remove(fileId, in);
             trySend(in.peerId, EnvelopeType.FILE_CANCEL, null, new FileCancelPayload(fileId, status.reason()));
         }
         emit(status);
-    }
-
-    private void checkIdleIncoming() {
-        long now = System.currentTimeMillis();
-        for (Incoming in : incoming.values()) {
-            boolean idle;
-            synchronized (in) {
-                idle = in.status.state() == State.IN_PROGRESS && now - in.lastChunkAt > receiveIdleTimeoutMs;
-            }
-            if (idle) {
-                finishIncoming(in, State.FAILED, "TIMEOUT", true);
-            }
-        }
     }
 
     private void finishIncoming(Incoming in, State state, String reason, boolean notifyPeer) {
@@ -480,6 +568,7 @@ final class FileTransferManager implements AutoCloseable {
             if (in.status.state().isFinal()) {
                 return;
             }
+            cancelTimer(in.delayedAck);
             if (in.receiver != null) {
                 in.receiver.cancel();
             }
@@ -487,6 +576,9 @@ final class FileTransferManager implements AutoCloseable {
             status = in.status;
         }
         incoming.remove(status.fileId(), in);
+        String cancelReason = FileTransferStatus.CANCELLED_BY_PEER.equals(reason)
+                ? FileTransferReason.CANCELLED_BY_USER : reason;
+        remember(status.fileId(), new ClosedIncoming(in.peerId, in.answer, null, cancelReason));
         if (notifyPeer) {
             trySend(in.peerId, EnvelopeType.FILE_CANCEL, null, new FileCancelPayload(status.fileId(), reason));
         }
@@ -499,7 +591,7 @@ final class FileTransferManager implements AutoCloseable {
     void cancelFile(String fileId) {
         Outgoing out = outgoing.get(fileId);
         if (out != null) {
-            finishOutgoing(out, State.CANCELLED, "CANCELLED_BY_USER", true);
+            finishOutgoing(out, State.CANCELLED, FileTransferReason.CANCELLED_BY_USER, true);
             return;
         }
         Incoming in = incoming.get(fileId);
@@ -513,13 +605,13 @@ final class FileTransferManager implements AutoCloseable {
         if (offered) {
             rejectFile(fileId);
         } else {
-            finishIncoming(in, State.CANCELLED, "CANCELLED_BY_USER", true);
+            finishIncoming(in, State.CANCELLED, FileTransferReason.CANCELLED_BY_USER, true);
         }
     }
 
     /** Xu ly 1 Envelope FILE_* tu {@code peerId}. Payload hong thi bo qua. */
     void handleEnvelope(String peerId, Envelope envelope) {
-        if (closed || envelope == null || envelope.type() == null) {
+        if (shutDown || envelope == null || envelope.type() == null) {
             return;
         }
         try {
@@ -542,21 +634,23 @@ final class FileTransferManager implements AutoCloseable {
         if (cancel.fileId() == null) {
             return;
         }
-        boolean byUser = "CANCELLED_BY_USER".equals(cancel.reason());
-        State state = byUser ? State.CANCELLED : State.FAILED;
-        String reason = byUser ? FileTransferStatus.CANCELLED_BY_PEER : cancel.reason();
         Outgoing out = outgoing.get(cancel.fileId());
         if (out != null && out.peerId.equals(peerId)) {
-            finishOutgoing(out, state, reason, false);
+            synchronized (out) {
+                out.cancelledByPeer = true;
+            }
+            out.sender.onCancel(cancel); // -> listener.onFailed(reason)
             return;
         }
         Incoming in = incoming.get(cancel.fileId());
         if (in != null && in.peerId.equals(peerId)) {
-            finishIncoming(in, state, reason, false);
+            boolean byUser = FileTransferReason.CANCELLED_BY_USER.equals(cancel.reason());
+            finishIncoming(in, byUser ? State.CANCELLED : State.FAILED,
+                    byUser ? FileTransferStatus.CANCELLED_BY_PEER : cancel.reason(), false);
         }
     }
 
-    /** Peer roi phong: dung moi lan truyen voi peer do (khong gui gi them). */
+    /** Peer roi phong / ket noi bi thay the: dung moi lan truyen voi peer do (khong gui gi them). */
     void onPeerLeft(String peerId) {
         for (Outgoing out : outgoing.values()) {
             if (out.peerId.equals(peerId)) {
@@ -573,11 +667,11 @@ final class FileTransferManager implements AutoCloseable {
     /** Roi phong: huy moi lan truyen dang chay, bao ben kia, dung luong nen. */
     @Override
     public void close() {
-        if (closed) {
+        if (shutDown) {
             return;
         }
         for (Outgoing out : outgoing.values()) {
-            finishOutgoing(out, State.CANCELLED, "CANCELLED_BY_USER", true);
+            finishOutgoing(out, State.CANCELLED, FileTransferReason.CANCELLED_BY_USER, true);
         }
         for (Incoming in : incoming.values()) {
             boolean offered;
@@ -587,11 +681,30 @@ final class FileTransferManager implements AutoCloseable {
             if (offered) {
                 rejectFile(in.offer.fileId());
             } else {
-                finishIncoming(in, State.CANCELLED, "CANCELLED_BY_USER", true);
+                finishIncoming(in, State.CANCELLED, FileTransferReason.CANCELLED_BY_USER, true);
             }
         }
-        closed = true;
+        shutDown = true;
         executor.shutdownNow();
+    }
+
+    /** Dinh ky: huy file nhan khong con chunk toi, don cac file da ket thuc qua 30 s. */
+    private void watchdog() {
+        long now = System.currentTimeMillis();
+        for (Incoming in : incoming.values()) {
+            boolean idle;
+            synchronized (in) {
+                idle = in.status.state() == State.IN_PROGRESS && now - in.lastChunkAt > receiveIdleTimeoutMs;
+            }
+            if (idle) {
+                finishIncoming(in, State.FAILED, FileTransferReason.TIMEOUT, true);
+            }
+        }
+        closed.values().removeIf(done -> done.closedAt + CLOSED_RETENTION_MS < now);
+    }
+
+    private void remember(String fileId, ClosedIncoming done) {
+        closed.put(fileId, done);
     }
 
     private <T> T parse(Envelope envelope, Class<T> type) throws IOException {
@@ -607,7 +720,7 @@ final class FileTransferManager implements AutoCloseable {
             transport.send(peerId, type, namespace, payload);
             return true;
         } catch (RuntimeException e) {
-            LOG.log(Level.FINE, "Khong gui duoc " + type + " toi " + peerId, e);
+            LOG.log(Level.INFO, "Khong gui duoc " + type + " toi " + peerId + ": " + e.getMessage());
             return false;
         }
     }
@@ -620,19 +733,8 @@ final class FileTransferManager implements AutoCloseable {
         }
     }
 
-    private void ensureOpen() {
-        if (closed) {
-            throw new IllegalStateException("Da roi phong");
-        }
-    }
-
     private static String namespace(boolean direct) {
         return direct ? EnvelopeNamespace.DIRECT_MESSAGE : EnvelopeNamespace.GROUP;
-    }
-
-    /** Ten hien thi tren giao dien - dung cung quy tac voi ten se luu. */
-    private static String safeDisplayName(String rawName) {
-        return com.datn.chatp2p.p2p.filetransfer.FileNames.sanitize(rawName);
     }
 
     private static void cancelTimer(ScheduledFuture<?> timer) {
@@ -643,16 +745,16 @@ final class FileTransferManager implements AutoCloseable {
 
     private static final class Outgoing {
         final String peerId;
-        final boolean direct;
         final FileSender source;
+        /** Gan 1 lan truoc khi dua vao map - doc khong can khoa. */
+        volatile ReliableChunkSender sender;
         FileTransferStatus status;
-        volatile OutgoingChunkSender sender;
-        ScheduledFuture<?> answerTimeout;
+        boolean rejected;
+        boolean cancelledByPeer;
         long lastEmitAt;
 
-        Outgoing(String peerId, boolean direct, FileSender source, FileTransferStatus status) {
+        Outgoing(String peerId, FileSender source, FileTransferStatus status) {
             this.peerId = peerId;
-            this.direct = direct;
             this.source = source;
             this.status = status;
         }
@@ -663,6 +765,9 @@ final class FileTransferManager implements AutoCloseable {
         final FileOfferPayload offer;
         FileTransferStatus status;
         FileReceiver receiver;
+        /** Cau tra loi da gui - gui lai khi thay offer trung. */
+        FileAnswerPayload answer;
+        ScheduledFuture<?> delayedAck;
         long lastChunkAt;
         long lastEmitAt;
         int chunksSinceAck;
@@ -674,6 +779,17 @@ final class FileTransferManager implements AutoCloseable {
         }
     }
 
-    private record CompletedTransfer(String peerId, FileAckPayload finalAck) {
+    /**
+     * File nhan da ket thuc.
+     *
+     * @param answer       tra loi da gui (gui lai neu offer trung)
+     * @param finalAck     ACK {@code verified} neu da nhan xong (gui lai neu chunk den muon)
+     * @param cancelReason ly do neu da huy / loi (gui FILE_CANCEL neu chunk den muon)
+     */
+    private record ClosedIncoming(String peerId, FileAnswerPayload answer, FileAckPayload finalAck,
+                                  String cancelReason, long closedAt) {
+        ClosedIncoming(String peerId, FileAnswerPayload answer, FileAckPayload finalAck, String cancelReason) {
+            this(peerId, answer, finalAck, cancelReason, System.currentTimeMillis());
+        }
     }
 }

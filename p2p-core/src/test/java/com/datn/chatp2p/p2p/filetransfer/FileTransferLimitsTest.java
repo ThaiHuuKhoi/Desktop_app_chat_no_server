@@ -23,9 +23,9 @@ class FileTransferLimitsTest {
     }
 
     @Test
-    void rejectsChunkSizeOutsideOneTo32Kb() {
+    void rejectsChunkSizeOutsideOneTo16Kb() {
         assertThrows(IllegalArgumentException.class, () -> new FileTransferLimits(1000, 0));
-        assertThrows(IllegalArgumentException.class, () -> new FileTransferLimits(1000, 32 * 1024 + 1));
+        assertThrows(IllegalArgumentException.class, () -> new FileTransferLimits(1000, 16 * 1024 + 1));
     }
 
     @Test

@@ -3,21 +3,25 @@ package com.datn.chatp2p.p2p.filetransfer;
 import com.datn.chatp2p.common.protocol.FileChunkPayload;
 import com.datn.chatp2p.common.protocol.FileOfferPayload;
 
+import java.io.IOException;
+
 /**
- * Nguon chunk cho ben gui - diem noi giua phan cua B ({@link FileSender}) va
- * {@code ReliableChunkSender} cua A (docs/Thong-nhat-giao-thuc-truyen-file.md D6).
+ * Nguon du lieu phia gui (B cai dat - {@code FileSender}). Diem noi giua A va B (D6).
+ *
+ * <p>{@link ReliableChunkSender} goi {@link #readChunk} tu NHIEU thread (thread nhan ACK
+ * va thread hen gio gui lai) nhung KHONG BAO GIO dong thoi - moi loi goi deu nam trong
+ * khoa cua sender. Cai dat van nen chiu duoc doc lai cung 1 chunk nhieu lan (gui lai).
  */
 public interface ChunkSource {
 
-    /** Loi moi FILE_OFFER mo ta file se gui. */
+    /** Thong tin file - phai on dinh (cung 1 doi tuong/gia tri) trong suot lan truyen. */
     FileOfferPayload offer();
 
     /**
-     * Doc chunk thu {@code index} (0 .. totalChunks - 1). Goi lai bao nhieu lan
-     * cung duoc - dung khi can gui lai chunk bi mat.
+     * Doc chunk thu {@code index} (0 &le; index &lt; totalChunks). Moi chunk dai dung
+     * {@code chunkSize} tru chunk cuoi (D3).
      *
-     * @throws IndexOutOfBoundsException neu {@code index} ngoai khoang
-     * @throws FileTransferException     ({@code IO_ERROR}) neu khong doc duoc file
+     * @throws IOException loi doc dia - sender se dung va bao {@code IO_ERROR}.
      */
-    FileChunkPayload readChunk(int index);
+    FileChunkPayload readChunk(int index) throws IOException;
 }

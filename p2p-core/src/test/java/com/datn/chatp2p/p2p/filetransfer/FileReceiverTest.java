@@ -187,7 +187,7 @@ class FileReceiverTest {
             assertInvalidOffer(new FileOfferPayload(" ", "a", 10, null, 4096, 1, good.sha256()));
             assertInvalidOffer(new FileOfferPayload("id", "a", -1, null, 4096, 0, good.sha256()));
             assertInvalidOffer(new FileOfferPayload("id", "a", 10, null, 0, 1, good.sha256()));
-            assertInvalidOffer(new FileOfferPayload("id", "a", 10, null, 32 * 1024 + 1, 1, good.sha256()));
+            assertInvalidOffer(new FileOfferPayload("id", "a", 10, null, 16 * 1024 + 1, 1, good.sha256()));
             assertInvalidOffer(withTotalChunks(good, 4));
             assertInvalidOffer(withTotalChunks(good, 2));
             assertInvalidOffer(withSha256(good, "xyz"));

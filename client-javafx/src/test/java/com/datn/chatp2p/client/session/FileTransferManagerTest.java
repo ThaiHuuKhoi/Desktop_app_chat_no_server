@@ -5,6 +5,7 @@ import com.datn.chatp2p.client.session.FileTransferStatus.State;
 import com.datn.chatp2p.common.protocol.Envelope;
 import com.datn.chatp2p.common.protocol.EnvelopeType;
 import com.datn.chatp2p.p2p.filetransfer.FileTransferLimits;
+import com.datn.chatp2p.p2p.filetransfer.ReliableTransferConfig;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -19,6 +20,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
 
@@ -48,6 +50,10 @@ class FileTransferManagerTest {
     private volatile double lossRate;
     /** Bo het FILE_CHUNK - de giu lan truyen "dang chay" khi test huy / timeout. */
     private volatile boolean dropAllChunks;
+    /** So FILE_ANSWER dau tien bi mat. */
+    private final AtomicInteger answersToDrop = new AtomicInteger();
+    /** Moi ban tin da gui: "nguoiGui:TYPE". */
+    private final List<String> sent = new CopyOnWriteArrayList<>();
 
     private final Recorder aliceEvents = new Recorder();
     private final Recorder bobEvents = new Recorder();
@@ -55,10 +61,12 @@ class FileTransferManagerTest {
     private FileTransferManager bob;
 
     private void connect(FileTransferLimits bobLimits, long answerTimeoutMs, long idleTimeoutMs) {
+        // Tham so cua A nhung nhanh hon de test khong cho lau: gui lai offer moi 100 ms
+        ReliableTransferConfig config = new ReliableTransferConfig(32, 100, 800, 10, 100, answerTimeoutMs);
         alice = new FileTransferManager(network(() -> bob, aliceInbox, "alice", bobInbox), aliceEvents,
-                FileTransferLimits.DEFAULT, TemporaryChunkSender::new, answerTimeoutMs, idleTimeoutMs);
+                FileTransferLimits.DEFAULT, config, idleTimeoutMs);
         bob = new FileTransferManager(network(() -> alice, bobInbox, "bob", aliceInbox), bobEvents,
-                bobLimits, TemporaryChunkSender::new, answerTimeoutMs, idleTimeoutMs);
+                bobLimits, config, idleTimeoutMs);
     }
 
     private void connect() {
@@ -69,7 +77,11 @@ class FileTransferManagerTest {
                                                   ExecutorService ownInbox, String fromPeerId,
                                                   ExecutorService otherInbox) {
         return (peerId, type, namespace, payload) -> {
+            sent.add(fromPeerId + ":" + type);
             if (type == EnvelopeType.FILE_CHUNK && dropAllChunks) {
+                return;
+            }
+            if (type == EnvelopeType.FILE_ANSWER && answersToDrop.getAndDecrement() > 0) {
                 return;
             }
             if ((type == EnvelopeType.FILE_CHUNK || type == EnvelopeType.FILE_ACK) && lossRate > 0) {
@@ -300,6 +312,69 @@ class FileTransferManagerTest {
         bobInbox.submit(() -> { }).get();
 
         assertTrue(bobEvents.all.stream().noneMatch(s -> s.bytesTransferred() > 0));
+    }
+
+    // ------------------------------------------------------------------ ghep voi phan cua A
+
+    @Test
+    void lostAnswerIsRecoveredByOfferRetransmission() throws Exception {
+        connect();
+        bobAcceptsEverything();
+        answersToDrop.set(1); // FILE_ANSWER dau tien cua bob bi mat
+
+        Path file = source("a.bin", 20_000);
+        alice.sendFile("bob", file, false);
+
+        FileTransferStatus received = bobEvents.await(s -> s.state() == State.COMPLETED);
+        aliceEvents.await(s -> s.state() == State.COMPLETED);
+        assertArrayEquals(Files.readAllBytes(file), Files.readAllBytes(received.savedFile()));
+        // alice gui lai offer, bob tra loi lai (khong hoi lai nguoi dung)
+        assertTrue(sent.stream().filter("alice:FILE_OFFER"::equals).count() >= 2);
+        assertEquals(1, bobEvents.all.stream().filter(s -> s.state() == State.OFFERED).count());
+    }
+
+    @Test
+    void secondOfferFromSamePeerIsBusyWhileReceiving() throws Exception {
+        connect();
+        bobAcceptsEverything();
+        dropAllChunks = true;
+
+        alice.sendFile("bob", source("a.bin", 50_000), false);
+        bobEvents.await(s -> s.state() == State.IN_PROGRESS);
+
+        FileTransferStatus second = alice.sendFile("bob", source("b.bin", 1000), false);
+
+        FileTransferStatus busy = aliceEvents.await(s -> s.fileId().equals(second.fileId())
+                && s.state() == State.REJECTED);
+        assertEquals("BUSY", busy.reason());
+    }
+
+    @Test
+    void chunkOfUnknownFileIsAnsweredWithCancel() throws Exception {
+        connect();
+
+        byte[] json = mapper.writeValueAsBytes(new com.datn.chatp2p.common.protocol.FileChunkPayload(
+                "khong-ton-tai", 0, new byte[10]));
+        bob.handleEnvelope("alice", new Envelope(EnvelopeType.FILE_CHUNK, null, 0, json));
+
+        assertTrue(sent.contains("bob:FILE_CANCEL"));
+    }
+
+    @Test
+    void lateChunkAfterCompletionGetsVerifiedAckAgain() throws Exception {
+        connect();
+        bobAcceptsEverything();
+
+        FileTransferStatus sentStatus = alice.sendFile("bob", source("a.bin", 5000), false);
+        bobEvents.await(s -> s.state() == State.COMPLETED);
+        aliceEvents.await(s -> s.state() == State.COMPLETED);
+        long acksBefore = sent.stream().filter("bob:FILE_ACK"::equals).count();
+
+        byte[] json = mapper.writeValueAsBytes(new com.datn.chatp2p.common.protocol.FileChunkPayload(
+                sentStatus.fileId(), 1, new byte[5000 - 4096]));
+        bob.handleEnvelope("alice", new Envelope(EnvelopeType.FILE_CHUNK, null, 0, json));
+
+        assertEquals(acksBefore + 1, sent.stream().filter("bob:FILE_ACK"::equals).count());
     }
 
     // ------------------------------------------------------------------ tien ich
