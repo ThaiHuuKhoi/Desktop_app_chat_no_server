@@ -1,6 +1,6 @@
 # BÁO CÁO CÁC CHỨC NĂNG ĐÃ HOÀN THÀNH — CHAT P2P JAVA
 
-**Ngày:** 19/11/2026 (cập nhật lần 2: sảnh chờ mới, log theo dõi, hành vi khi nhập sai mật khẩu) · **Phiên bản code:** nhánh `feature/room-password-history` (gồm cả `fix/security-hardening` và `feature/chat-ux`); phần truyền file nằm ở nhánh `feature/file-transfer-reliable-sender`.
+**Ngày:** 20/11/2026 (cập nhật lần 3: truyền file hoàn thành, báo sai mật khẩu phòng ngay, cập nhật số test) · **Phiên bản code:** nhánh `main` (commit `ee4e764`), đã gộp đủ các nhánh `fix/security-hardening`, `feature/chat-ux`, `feature/room-password-history` và phần truyền file của hai thành viên. Signaling server trên VPS đang chạy bản này.
 
 **Cách đọc:** mỗi chức năng gồm 3 phần:
 1. **Luồng hoạt động chính:** các bước khi mọi thứ diễn ra bình thường.
@@ -28,7 +28,7 @@ Ký hiệu ở cột trạng thái: ✅ đã xử lý · ⚠️ xử lý một p
 | 11 | Lịch sử chat cho người mới vào phòng | ✅ Hoàn thành |
 | 12 | Phòng có mật khẩu | ✅ Hoàn thành |
 | 13 | Rời phòng / mất kết nối | ✅ Hoàn thành |
-| 14 | Truyền file | ⚠️ Đang làm: phía gửi xong, phía nhận và giao diện chưa có |
+| 14 | Truyền file 1-1 | ✅ Hoàn thành |
 | 15 | Log theo dõi trên terminal (bình thường / chi tiết / bí mật) | ✅ Hoàn thành |
 
 Kiến trúc chung: mỗi người chạy một client JavaFX. Signaling server (Spring Boot + WebSocket) chỉ làm nhiệm vụ "giới thiệu" các client với nhau. Sau khi kết nối xong, mọi nội dung đi thẳng giữa các máy qua UDP và được mã hoá đầu-cuối; server không đọc được và không lưu nội dung chat.
@@ -55,6 +55,7 @@ Kiến trúc chung: mỗi người chạy một client JavaFX. Signaling server 
 | Tên hoặc mật khẩu không hợp lệ | Hiện yêu cầu: tên 3–64 ký tự (chữ, số, `_`), mật khẩu 8–200 ký tự | ✅ | |
 | Đăng nhập từ máy có khoá danh tính khác với khoá đã gắn với tài khoản | Từ chối: "Khóa identity không khớp tài khoản này" | ✅ | Thêm chức năng chuyển khoá sang máy mới |
 | Không kết nối được tới server | Hiện "Không thể kết nối auth server" | ✅ | |
+| Người ngoài truy cập thẳng cơ sở dữ liệu tài khoản | MySQL trên VPS chỉ mở ở `127.0.0.1` (không ra Internet); server không còn mật khẩu DB mặc định, bắt buộc đặt qua biến môi trường | ✅ | |
 | Token hết hạn (sau 12 giờ) hoặc không hợp lệ khi vào phòng | Server từ chối và gửi `JOIN_REJECTED(AUTH_EXPIRED / AUTH_REQUIRED)`; client báo "Phiên đăng nhập đã hết hạn" và chuyển sang màn hình đăng nhập | ✅ | |
 | Token và mật khẩu đi qua mạng dạng rõ (`ws://`, `http://`) | Chưa mã hoá đường truyền tới server | ❌ | Chuyển sang `wss://` / `https://` (kế hoạch ở Tài liệu kỹ thuật, mục J.1) |
 
@@ -114,7 +115,7 @@ Kiến trúc chung: mỗi người chạy một client JavaFX. Signaling server 
 | Tình huống | Hệ thống xử lý | TT | Hướng cải thiện |
 |---|---|---|---|
 | Hai mạng có NAT chặt (symmetric NAT), không đi thẳng được | Tự chuyển sang relay qua TURN nếu đã cấu hình TURN | ✅ | |
-| Chưa cấu hình TURN mà đi thẳng cũng thất bại | Báo trên giao diện: "Không kết nối được với X: …" | ⚠️ | Hướng dẫn người dùng cấu hình TURN ngay trong thông báo lỗi |
+| Chưa cấu hình TURN mà đi thẳng cũng thất bại | Báo trên giao diện: "Không kết nối được với X: …". Thông tin TURN **không còn đóng gói trong jar**; mỗi máy đặt trong `~/.chat-p2p-java/client.properties` (hoặc biến môi trường `CHAT_P2P_TURN_*`) | ⚠️ | Hướng dẫn người dùng cấu hình TURN ngay trong thông báo lỗi |
 | Tường lửa Windows chặn UDP | Lần đầu chạy, app xin quyền tạo luật tường lửa cho dải cổng UDP 10000–11000 | ✅ | |
 | OFFER/ANSWER hỏng hoặc candidate sai định dạng | Chỉ huỷ kết nối với đúng người đó, những người khác không ảnh hưởng | ✅ | |
 | Một người gửi OFFER liên tục (cố ý làm cạn cổng UDP) | Mỗi OFFER mới huỷ phiên ICE cũ của cùng người đó, không rò rỉ cổng | ✅ | Giới hạn tốc độ OFFER ở server |
@@ -340,18 +341,20 @@ Kiến trúc chung: mỗi người chạy một client JavaFX. Signaling server 
 
 ---
 
-## 14. Truyền file (đang làm)
+## 14. Truyền file 1-1
 
-**Trạng thái:** đã thống nhất giao thức giữa hai thành viên (`docs/Tra-loi-giao-thuc-truyen-file.md`). **Phía gửi tin cậy (A) đã xong và có test; phía nhận, ghi file và giao diện (B) chưa có**, nên người dùng chưa thể gửi file từ giao diện.
+**Mô tả:** gửi một file tới một người trong phòng, đi thẳng qua kênh P2P đã mã hoá (server không thấy nội dung). Giao thức do hai thành viên thống nhất (`docs/Thong-nhat-giao-thuc-truyen-file.md`, `docs/Tra-loi-giao-thuc-truyen-file.md`): A làm tầng gửi tin cậy (`ReliableChunkSender`), B làm đọc/ghi file (`FileSender`, `FileReceiver`, `FileNames`), điều phối (`FileTransferManager`) và giao diện. Phạm vi: 1-1, tối đa 100 MB, mỗi người một file đang nhận tại một thời điểm, mất kết nối thì huỷ (không gửi tiếp).
 
-**Luồng hoạt động chính (theo thiết kế)**
-1. Bên gửi gửi `FILE_OFFER` (tên, kích thước, số chunk, SHA-256), gửi lại mỗi giây cho tới khi có trả lời.
-2. Bên nhận bấm Nhận hoặc Từ chối, trả `FILE_ANSWER`.
-3. Bên gửi chia file thành các chunk 4 KB và gửi theo cửa sổ trượt (tối đa 32 chunk chờ xác nhận).
-4. Bên nhận trả `FILE_ACK` cho biết đã nhận tới chunk nào; chunk thiếu được gửi lại.
-5. Đủ chunk thì bên nhận kiểm tra SHA-256 cả file. Khớp thì trả `verified = true`, lúc đó bên gửi mới báo thành công.
+**Cách dùng:** bấm nút gửi tệp (hoặc **kéo thả 1 file** vào khung chat) trong khung nhóm hoặc tab chat riêng. Trong khung chat hiện **thẻ file** với tên, dung lượng, trạng thái và thanh tiến độ. Người nhận bấm **Nhận** hoặc **Từ chối**; hai bên đều có nút **Huỷ** khi đang truyền. File nhận được lưu vào `~/Downloads`, có nút mở thư mục chứa file.
 
-**Lỗi có thể xảy ra và cách xử lý (phần đã làm)**
+**Luồng hoạt động chính**
+1. Bên gửi tính SHA-256 cả file (trên luồng nền), gửi `FILE_OFFER` (tên, kích thước, số chunk, SHA-256), gửi lại mỗi giây cho tới khi có trả lời.
+2. Bên nhận kiểm tra offer (kích thước, số chunk, định dạng SHA-256), hiện thẻ file; người dùng bấm Nhận hoặc Từ chối → `FILE_ANSWER`.
+3. Bên gửi chia file thành chunk **512 byte** và gửi theo cửa sổ trượt (tối đa 32 chunk chờ xác nhận). Chunk nhỏ vì thư viện ICE nhận mỗi gói UDP vào bộ đệm cố định 1500 byte: chunk 4 KB như thiết kế ban đầu thành gói ~7,3 KB sau mã hoá và bị cắt mất.
+4. Bên nhận ghi vào file tạm `.part`, trả `FILE_ACK` (sau mỗi 8 chunk mới, khi thấy lỗ hổng, hoặc sau 50 ms không có chunk mới) cho biết đã nhận tới đâu; chunk thiếu được gửi lại.
+5. Đủ chunk thì bên nhận kiểm tra SHA-256. Khớp thì đổi `.part` thành tên thật và trả `verified = true`; chỉ khi đó bên gửi mới báo "Đã gửi xong".
+
+**Lỗi có thể xảy ra và cách xử lý**
 
 | Tình huống | Hệ thống xử lý | TT |
 |---|---|---|
@@ -361,9 +364,18 @@ Kiến trúc chung: mỗi người chạy một client JavaFX. Signaling server 
 | File nhận được bị sai (SHA-256 không khớp) | Bên nhận huỷ với lý do `CHECKSUM_MISMATCH`, bên gửi báo lỗi | ✅ |
 | Người nhận từ chối, hoặc một bên bấm Huỷ | Dừng ngay, báo lý do (`REJECTED`, `CANCELLED_BY_USER`) | ✅ |
 | File quá 100 MB hoặc offer sai quy ước | Từ chối (`FILE_TOO_LARGE`, `INVALID_OFFER`) | ✅ |
-| Tên file độc hại (`../`, `CON`…) hoặc ghi ra ngoài thư mục | Phía nhận phải làm sạch tên file trước khi ghi | ❌ (phần của B) |
+| Tên file độc hại (`../`, ký tự cấm, `CON`…) hoặc ghi ra ngoài thư mục | Bên nhận làm sạch tên (`FileNames`), chỉ ghi trong `~/Downloads`; trùng tên thì thêm ` (1)`, ` (2)`… Không tự mở file | ✅ |
+| Đang nhận một file khác từ cùng người đó | Tự trả lời `BUSY`, bên gửi báo bận | ✅ |
+| Một bên rời phòng hoặc mất kết nối giữa chừng | Huỷ cả hai phía, xoá file tạm `.part` | ✅ |
+| Lỗi đọc / ghi đĩa (đầy ổ, không có quyền) | Huỷ với lý do `IO_ERROR`, báo bên kia | ✅ |
+| Người chưa nhập đúng mật khẩu phòng gửi file vào | Bản tin `FILE_*` của người chưa qua bước xác nhận mật khẩu bị bỏ qua; cũng không gửi file được cho người đó | ✅ |
+| Tốc độ thấp vì chunk chỉ 512 byte | Chấp nhận ở phạm vi đồ án; hướng cải thiện: `P2pDataChannel` tự chia gói lớn để tăng lại kích thước chunk | ⚠️ |
 
-Test: 1 MB đi qua kênh mã hoá thật, trên đường truyền giả lập mất 15% và nhân đôi 5% gói, hoàn tất khoảng 1,7 s, dữ liệu đúng từng byte.
+**Kiểm thử:**
+- `ReliableChunkSenderTest` (10 kịch bản): mạng hoàn hảo; mất 20% + nhân đôi 10% + đảo thứ tự; mất ACK cuối; bị từ chối; không trả lời; file rỗng; sai checksum; huỷ giữa chừng.
+- `FileTransferOverUnreliablePeerConnectionTest`: 1 MB qua kênh mã hoá thật, mất 15% và nhân đôi 5% gói, khoảng 1,7 s, đúng từng byte.
+- `FileSenderTest`, `FileReceiverTest`, `FileNamesTest`, `FileTransferLimitsTest`: đọc/ghi file thật, làm sạch tên, kiểm tra offer.
+- `FileTransferManagerTest` (16 test): hai bên nối với nhau trong bộ nhớ; nhận, từ chối, huỷ, `BUSY`, người rời phòng.
 
 ---
 
@@ -390,14 +402,16 @@ Test: 1 MB đi qua kênh mã hoá thật, trên đường truyền giả lập m
 
 ## Kiểm thử
 
-Toàn bộ test tự động chạy bằng `mvn test` từ thư mục gốc đều pass. Số test của các nhánh đã có (nhánh truyền file có thêm 11 test riêng):
+Toàn bộ test tự động chạy bằng `mvn test` từ thư mục gốc trên nhánh `main` (commit `ee4e764`) đều pass:
 
 | Module | Số test | Nội dung chính |
 |---|---|---|
 | crypto | 31 | ECDH, AES-GCM, chữ ký danh tính gắn ECDH (có kịch bản MITM), khoá phòng có mật khẩu |
-| signaling-server | 11 | Chuyển tiếp bản tin, không đọc nội dung, xử lý lỗi, danh sách phòng không lộ thẻ mật khẩu |
-| p2p-core | 40 | Mesh 3 và 8 người, mất gói, chống replay, rò rỉ cổng, kết nối lại, TURN dự phòng |
-| client-javafx | 38 | Gửi lại tin nhắn, đang gõ, Markdown, cài đặt, lịch sử, quy tắc ở sảnh chờ (kiểm tra hộp thoại, cảnh báo trùng tên, đọc danh sách phòng của server cũ); **2 test tích hợp nhiều client thật** (người vào sau nhận lịch sử; chỉ người cùng mật khẩu thấy nhau) |
+| signaling-server | 20 | Chuyển tiếp bản tin, không đọc nội dung, xử lý lỗi, danh sách phòng không lộ thẻ mật khẩu; `JOIN_REJECTED` cho từng lý do (sai mật khẩu, phòng đầy, trùng peer) và giới hạn số lần thử |
+| p2p-core | 108 (1 bỏ qua) | Mesh 3 và 8 người, mất gói, chống replay, rò rỉ cổng, kết nối lại, TURN dự phòng; truyền file: gửi lại tin cậy, đọc/ghi file, làm sạch tên, 1 MB qua kênh mã hoá trên mạng giả lập xấu |
+| client-javafx | 55 | Gửi lại tin nhắn, đang gõ, Markdown, cài đặt, lịch sử, quy tắc ở sảnh chờ, thông báo khi bị từ chối vào phòng; điều phối truyền file (16 test); **2 test tích hợp nhiều client thật** (người vào sau nhận lịch sử; chỉ người cùng mật khẩu thấy nhau) |
+
+`mvn install` (khác với `mvn test`) đang lỗi biên dịch ở `P2pChatSessionIntegrationTest` vì test này cần lớp của `signaling-server`, mà jar Spring Boot đã đóng gói lại không còn dùng làm thư viện được. Tạm thời build bằng `mvn -Dmaven.test.skip=true install`; cần sửa cấu hình build (thêm `classifier` cho jar Spring Boot).
 
 Ngoài test tự động, các thay đổi giao diện (bong bóng chat Markdown, 3 theme, sảnh chờ, 4 hộp thoại kể cả trạng thái sau khi tích mật khẩu và khi hiện lỗi) được kiểm tra bằng cách dựng màn hình với dữ liệu giả và chụp ảnh.
 
@@ -413,7 +427,9 @@ Một lần chạy toàn bộ test, `PeerConnectionBurstThroughputTest` fail đ�
 4. **Chưa chủ động ngắt kết nối** người sai mật khẩu hoặc có chữ ký danh tính sai.
 5. **Tên phòng phân biệt hoa thường**: nên chuẩn hoá về chữ thường.
 6. **Log chưa ghi ra file**: chạy không có terminal thì mất log.
-7. **Truyền file** chưa có phía nhận và giao diện.
-8. **Chưa có** gọi thoại, gọi video, chia sẻ màn hình.
+7. **Truyền file còn chậm** (chunk 512 byte) và chỉ gửi 1-1; chưa gửi nhóm, chưa gửi tiếp sau khi mất kết nối.
+8. **`mvn install` lỗi ở một test tích hợp** (xem phần Kiểm thử); `mvn test` vẫn chạy đúng.
+9. **Mật khẩu TURN từng nằm trong lịch sử git** (repo public): đã chuyển ra file cấu hình cục bộ nhưng cần đổi mật khẩu TURN trên server.
+10. **Chưa có** gọi thoại, gọi video, chia sẻ màn hình.
 
 Chi tiết rủi ro kỹ thuật: xem `docs/Tai-lieu-ky-thuat.md`, Phần J.
