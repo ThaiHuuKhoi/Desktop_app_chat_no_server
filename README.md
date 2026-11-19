@@ -80,6 +80,18 @@ java -jar signaling-server/target/signaling-server.jar
 mvn -pl client-javafx javafx:run
 ```
 
+### Dong goi client cho nguoi dung (Windows)
+
+```powershell
+powershell -ExecutionPolicy Bypass -File packaging\build-windows.ps1
+```
+
+Ra `dist\ChatP2P\ChatP2P.exe` (kem Java runtime, khong can cai Java/Maven) va
+`dist\ChatP2P-windows.zip` (~72 MB) de gui cho nguoi dung: giai nen roi bam dup
+`ChatP2P.exe`. Da cai WiX Toolset 3 thi them `-Type msi` de ra file cai dat `.msi`.
+
+Log cua client: `~/.chat-p2p-java/logs/client-0.log` (xoay vong 5 file x 5 MB).
+
 ### Cau hinh TURN
 
 **Nguoi dung khong can cau hinh gi.** Khi vao phong, client goi
