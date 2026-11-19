@@ -140,8 +140,9 @@ Kiến trúc chung: mỗi người chạy một client JavaFX. Signaling server 
 
 **Luồng hoạt động chính**
 1. Ngay khi kênh UDP mở, mỗi bên gửi public key ECDH của mình. Đây là gói duy nhất không mã hoá, vì public key không cần giữ bí mật.
-2. Mỗi bên tự tính khoá bí mật chung từ private key của mình và public key của bên kia, rồi băm SHA-256 ra khoá AES-256.
-3. Từ gói thứ hai, mọi dữ liệu đóng thành `Envelope` (JSON) và mã hoá AES-GCM với IV ngẫu nhiên 12 byte. GCM vừa giữ bí mật vừa phát hiện dữ liệu bị sửa.
+2. Mỗi bên tự tính bí mật chung ECDH, rồi dùng **HKDF-SHA256** (RFC 5869) tách ra **hai khoá AES-256 riêng cho hai chiều gửi**. Salt của HKDF gắn với đúng hai public key của phiên; khoá chiều A→B khác khoá chiều B→A.
+3. Từ gói thứ hai, mọi dữ liệu đóng thành `Envelope` (JSON) và mã hoá AES-256-GCM. Nonce 12 byte gồm **số thứ tự gói 8 byte** (tăng dần từ 0) và 4 byte ngẫu nhiên, nên cặp (khoá, nonce) không bao giờ lặp lại, và số thứ tự được GCM xác thực luôn (sửa số thứ tự là giải mã thất bại). Kích thước gói không đổi so với trước.
+4. Bên nhận giữ một **cửa sổ trượt 1024 số thứ tự** (cùng cách làm với DTLS / IPsec): gói trùng hoặc cũ hơn cửa sổ bị bỏ; gói đến sai thứ tự nhưng còn trong cửa sổ vẫn được nhận.
 
 **Lỗi có thể xảy ra và cách xử lý**
 
@@ -149,7 +150,9 @@ Kiến trúc chung: mỗi người chạy một client JavaFX. Signaling server 
 |---|---|---|---|
 | Gói public key ECDH bị mất (UDP không đảm bảo) | Tự gửi lại tối đa 5 lần, mỗi lần cách 300 ms | ✅ | |
 | Dữ liệu bị sửa trên đường truyền, hoặc giải mã sai khoá | GCM phát hiện, gói bị bỏ qua, kết nối không bị sập | ✅ | |
-| Kẻ tấn công bắt gói rồi gửi lại (replay) | Mỗi kết nối nhớ dấu vân tay SHA-256 của 256 gói gần nhất; gói trùng bị bỏ qua | ✅ | Thêm số thứ tự gói để chống replay gói cũ hơn 256 gói |
+| Kẻ tấn công bắt gói rồi gửi lại (replay), dù gói cũ đến đâu | Số thứ tự gói + cửa sổ trượt: gói đã nhận hoặc quá cũ bị bỏ | ✅ | |
+| Kẻ tấn công gửi gói giả mang số thứ tự rất lớn để "đẩy" cửa sổ | Cửa sổ chỉ cập nhật **sau khi** gói giải mã và xác thực thành công, nên gói giả không làm hỏng cửa sổ | ✅ | |
+| Bắt gói A gửi rồi gửi ngược lại cho chính A (reflection) | Hai chiều dùng hai khoá khác nhau nên giải mã thất bại | ✅ | |
 | Kẻ đứng giữa tráo khoá ECDH khi trao khoá | Phát hiện ở bước xác thực danh tính (chức năng 5), vì chữ ký gắn với khoá ECDH của phiên | ✅ | |
 
 ---
@@ -161,7 +164,9 @@ Kiến trúc chung: mỗi người chạy một client JavaFX. Signaling server 
 **Luồng hoạt động chính**
 1. Mỗi bên gửi `PEER_IDENTITY`, gồm public key danh tính và chữ ký trên chuỗi `phòng | peerId | SHA-256(khoá ECDH của mình) | SHA-256(khoá ECDH của bên kia)`.
 2. Bên nhận kiểm tra chữ ký bằng chính các khoá ECDH mà nó thấy trong phiên.
-3. Hợp lệ thì đánh dấu người đó là **Đã xác thực** và hiện fingerprint (người dùng có thể so qua kênh khác như gọi điện hoặc gặp trực tiếp).
+3. Hợp lệ thì đánh dấu người đó là **Đã xác thực** và hiện fingerprint.
+4. **So vân tay và đánh dấu tin cậy:** bấm vào biểu tượng cạnh tên một người để mở hộp so vân tay (hai dãy 4×4 nhóm, đọc cho nhau qua điện thoại hoặc gặp trực tiếp). Bấm **Khớp** thì app ghi nhớ "tên → vân tay" trong `~/.chat-p2p-java/trusted-peers.properties`.
+5. Lần sau gặp lại người cùng tên: vân tay khớp thì hiện biểu tượng **khiên** (đã tin cậy); vân tay **khác** thì hiện huy hiệu đỏ **"Khoá đã đổi"** và khung chat cảnh báo đừng gửi thông tin nhạy cảm cho tới khi so lại. App **không tự ghi nhớ** người gặp lần đầu, vì tên ở chế độ khách là tự đặt và hay trùng; tự ghi nhớ sẽ sinh cảnh báo giả.
 
 **Lỗi có thể xảy ra và cách xử lý**
 
@@ -169,7 +174,9 @@ Kiến trúc chung: mỗi người chạy một client JavaFX. Signaling server 
 |---|---|---|---|
 | Gói `PEER_IDENTITY` bị mất | Gửi lại sau 0,4 s, 1,2 s và 2,5 s | ✅ | |
 | Chữ ký sai (giả mạo, hoặc bị tráo khoá ECDH) | Không đánh dấu xác thực; giao diện cảnh báo "Identity peer không hợp lệ"; người đó vẫn hiện "chưa xác thực" | ✅ | Tự động ngắt kết nối với người có chữ ký sai |
-| Lần gặp đầu tiên với kẻ mạo danh có khoá riêng (TOFU) | Không phát hiện tự động được, vì không có cơ quan cấp chứng chỉ | ⚠️ | Người dùng đối chiếu fingerprint; có thể lưu fingerprint đã tin cậy để cảnh báo khi khoá đổi |
+| Lần gặp đầu tiên với kẻ mạo danh có khoá riêng (TOFU) | Không phát hiện tự động được, vì không có cơ quan cấp chứng chỉ; người dùng so vân tay bằng hộp "Xác thực vân tay" | ⚠️ | |
+| Kẻ mạo danh dùng tên của người đã được tin cậy | Vân tay khác nên hiện "Khoá đã đổi" và cảnh báo trong khung chat | ✅ | |
+| So vân tay thấy không khớp | Bỏ đánh dấu tin cậy, cảnh báo có thể có người xen giữa | ✅ | Tự động ngắt kết nối |
 | File khoá danh tính bị hỏng | App dừng và báo rõ đường dẫn file, **không tự ghi đè** để tránh mất danh tính | ✅ | Thêm nút "tạo lại danh tính" có xác nhận |
 
 ---
@@ -182,7 +189,8 @@ Kiến trúc chung: mỗi người chạy một client JavaFX. Signaling server 
 1. Người dùng gõ tin (Enter để gửi, Shift+Enter để xuống dòng); tin hiện ngay ở khung chat của mình.
 2. Client gửi `MESSAGE {id, text, timeSent}` tới từng người trong phòng.
 3. Người nhận hiển thị tin, trả `MESSAGE_ACK {id}`, và lưu tin vào lịch sử nhóm (phục vụ chức năng 11).
-4. Người gửi nhận ACK thì ngừng theo dõi tin đó.
+4. Người gửi nhận ACK thì ngừng gửi lại tin đó.
+5. **Trạng thái giao tin** hiện ngay dưới bong bóng tin của mình: biểu tượng đồng hồ "Đang gửi" → "Đã nhận" (tin riêng) hoặc "Đã nhận 1/3" → "Tất cả đã nhận" (tin nhóm). Hết lượt gửi lại, hoặc người nhận rời phòng trước khi xác nhận, thì hiện "Chưa tới nơi" màu đỏ. Phòng chưa có ai thì chỉ hiện giờ gửi.
 
 **Lỗi có thể xảy ra và cách xử lý**
 
@@ -190,7 +198,7 @@ Kiến trúc chung: mỗi người chạy một client JavaFX. Signaling server 
 |---|---|---|---|
 | Tin bị mất trên đường truyền | Không nhận ACK thì gửi lại, tối đa 6 lần, mỗi lần cách 0,5 s | ✅ | |
 | ACK bị mất nên người nhận nhận cùng một tin 2 lần | Người nhận loại bản trùng theo `id` của tin, vẫn trả ACK lại | ✅ | |
-| Gửi lại 6 lần vẫn không có ACK | Giao diện cảnh báo "tin nhắn chưa tới nơi" cho đúng người đó | ✅ | Hiện trạng thái "đã gửi / chưa tới" ngay trên từng tin |
+| Gửi lại 6 lần vẫn không có ACK | Giao diện cảnh báo "tin nhắn chưa tới nơi" cho đúng người đó, và tin đó hiện "Chưa tới nơi" | ✅ | |
 | Gửi lỗi với một người trong phòng | Vẫn gửi bình thường cho những người còn lại | ✅ | |
 | Người nhận rời phòng giữa lúc đang gửi | Huỷ việc gửi lại tới người đó, không báo lỗi thừa | ✅ | |
 | Tin đến sai thứ tự (UDP có thể đảo gói) | Hiển thị theo thứ tự nhận | ⚠️ | Sắp xếp theo thời điểm gửi khi chênh lệch nhỏ |
@@ -414,14 +422,14 @@ Kiến trúc chung: mỗi người chạy một client JavaFX. Signaling server 
 
 ## Kiểm thử
 
-Toàn bộ test tự động chạy bằng `mvn test` từ thư mục gốc trên nhánh `main` (commit `ee4e764`) đều pass:
+Toàn bộ test tự động chạy bằng `mvn test` từ thư mục gốc trên nhánh `main` đều pass:
 
 | Module | Số test | Nội dung chính |
 |---|---|---|
-| crypto | 31 | ECDH, AES-GCM, chữ ký danh tính gắn ECDH (có kịch bản MITM), khoá phòng có mật khẩu |
+| crypto | 36 | ECDH, AES-GCM, HKDF (vector chuẩn RFC 5869), khoá riêng mỗi chiều, chữ ký danh tính gắn ECDH (có kịch bản MITM), khoá phòng có mật khẩu |
 | signaling-server | 20 | Chuyển tiếp bản tin, không đọc nội dung, xử lý lỗi, danh sách phòng không lộ thẻ mật khẩu; `JOIN_REJECTED` cho từng lý do (sai mật khẩu, phòng đầy, trùng peer) và giới hạn số lần thử |
-| p2p-core | 108 (1 bỏ qua) | Mesh 3 và 8 người, mất gói, chống replay, rò rỉ cổng, kết nối lại, TURN dự phòng; truyền file: gửi lại tin cậy, đọc/ghi file, làm sạch tên, 1 MB qua kênh mã hoá trên mạng giả lập xấu |
-| client-javafx | 55 | Gửi lại tin nhắn, đang gõ, Markdown, cài đặt, lịch sử, quy tắc ở sảnh chờ, thông báo khi bị từ chối vào phòng; điều phối truyền file (16 test); **2 test tích hợp nhiều client thật** (người vào sau nhận lịch sử; chỉ người cùng mật khẩu thấy nhau) |
+| p2p-core | 115 (1 bỏ qua) | Mesh 3 và 8 người, mất gói, chống replay theo số thứ tự (gói cũ sau 2000 gói, gói giả, reflection), rò rỉ cổng, kết nối lại, TURN dự phòng; truyền file: gửi lại tin cậy, đọc/ghi file, làm sạch tên, 1 MB qua kênh mã hoá trên mạng giả lập xấu |
+| client-javafx | 62 | Gửi lại tin nhắn, trạng thái giao tin, ghi nhớ vân tay đã tin cậy, đang gõ, Markdown, cài đặt, lịch sử, quy tắc ở sảnh chờ, thông báo khi bị từ chối vào phòng; điều phối truyền file (16 test); **2 test tích hợp nhiều client thật** (người vào sau nhận lịch sử; chỉ người cùng mật khẩu thấy nhau) |
 
 `mvn install` (khác với `mvn test`) đang lỗi biên dịch ở `P2pChatSessionIntegrationTest` vì test này cần lớp của `signaling-server`, mà jar Spring Boot đã đóng gói lại không còn dùng làm thư viện được. Tạm thời build bằng `mvn -Dmaven.test.skip=true install`; cần sửa cấu hình build (thêm `classifier` cho jar Spring Boot).
 
@@ -443,5 +451,7 @@ Một lần chạy toàn bộ test, `PeerConnectionBurstThroughputTest` fail đ�
 8. **`mvn install` lỗi ở một test tích hợp** (xem phần Kiểm thử); `mvn test` vẫn chạy đúng.
 9. **Mật khẩu TURN từng nằm trong lịch sử git** (repo public): đã chuyển ra file cấu hình cục bộ nhưng cần đổi mật khẩu TURN trên server.
 10. **Chưa có** gọi thoại, gọi video, chia sẻ màn hình.
+11. **Chưa có forward secrecy theo từng tin** (như Double Ratchet của Signal): mỗi kết nối dùng một cặp khoá cho cả phiên; khoá ECDH sinh mới mỗi lần kết nối nên lộ khoá của phiên này không ảnh hưởng phiên khác.
+12. **Không có tin nhắn offline**: người nhận phải đang trong phòng. Đây là đánh đổi của thiết kế P2P không lưu nội dung trên server.
 
 Chi tiết rủi ro kỹ thuật: xem `docs/Tai-lieu-ky-thuat.md`, Phần J.
