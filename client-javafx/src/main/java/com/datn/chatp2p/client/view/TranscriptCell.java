@@ -10,6 +10,7 @@ import javafx.scene.Node;
 import javafx.scene.control.ContentDisplay;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
+import javafx.scene.control.Tooltip;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
@@ -57,7 +58,7 @@ class TranscriptCell extends ListCell<TranscriptEntry> {
         if (entry instanceof SystemNotice notice) {
             setGraphic(noticeRow(notice));
         } else if (entry instanceof UserMessage message) {
-            setGraphic(messageRow(message.message(), isContinuation(message.message())));
+            setGraphic(messageRow(message.message(), isContinuation(message.message()), message.sharedBy()));
         }
     }
 
@@ -71,13 +72,11 @@ class TranscriptCell extends ListCell<TranscriptEntry> {
         return row;
     }
 
-    private Node messageRow(ChatMessage message, boolean continuation) {
+    private Node messageRow(ChatMessage message, boolean continuation, String sharedBy) {
         boolean mine = selfPeerId.equals(message.getAuthorId());
 
-        Label textLabel = new Label(message.getText());
-        textLabel.setWrapText(true);
-        // Khong cho Label co lai thanh "..." - luon cao du de hien het cac dong
-        textLabel.setMinHeight(Region.USE_PREF_SIZE);
+        // Markdown (dam/nghieng/code/link...) - MarkdownView tu dat min height = pref de khong bi cat.
+        Node textLabel = MarkdownView.render(message.getText());
         textLabel.getStyleClass().add("message-text");
 
         Label timeLabel = new Label(TIME_FORMATTER.format(Instant.ofEpochMilli(message.getTimeSent())));
@@ -86,8 +85,15 @@ class TranscriptCell extends ListCell<TranscriptEntry> {
             timeLabel.setGraphic(new FontIcon(Feather.CHECK));
             timeLabel.setContentDisplay(ContentDisplay.RIGHT);
         }
-        HBox timeRow = new HBox(timeLabel);
+        HBox timeRow = new HBox(6, timeLabel);
         timeRow.setAlignment(Pos.CENTER_RIGHT);
+        if (sharedBy != null) {
+            Label historyLabel = new Label("lịch sử · " + sharedBy + " chia sẻ", new FontIcon(Feather.CLOCK));
+            historyLabel.getStyleClass().add("message-history");
+            historyLabel.setTooltip(new Tooltip("Tin nhắn trước khi bạn vào phòng, do " + sharedBy
+                    + " gửi lại. Không xác minh được người viết từng tin."));
+            timeRow.getChildren().add(0, historyLabel);
+        }
 
         VBox bubble = new VBox(2, textLabel, timeRow);
         bubble.setMaxWidth(MAX_BUBBLE_WIDTH);

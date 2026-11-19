@@ -28,21 +28,35 @@ public final class PeerIdentityService {
         return Base64.getEncoder().encodeToString(keyPair.getPublic().getEncoded());
     }
 
-    IdentityPayload createPayload(String roomId, String userId) {
+    /**
+     * Ky danh tinh GAN VOI phien ECDH hien tai (chong MITM tren buoc trao khoa).
+     *
+     * @param localEcdhPublicKey  khoa ECDH cua minh trong phien voi peer nay.
+     * @param remoteEcdhPublicKey khoa ECDH cua peer ma minh nhin thay.
+     */
+    IdentityPayload createPayload(String roomId, String selfPeerId,
+                                  byte[] localEcdhPublicKey, byte[] remoteEcdhPublicKey) {
         return new IdentityPayload(
                 Base64.getEncoder().encodeToString(keyPair.getPublic().getEncoded()),
                 Base64.getEncoder().encodeToString(IdentitySignatureService.sign(
                         keyPair.getPrivate(),
-                        IdentitySignatureService.challengeFor(roomId, userId))));
+                        IdentitySignatureService.handshakeChallengeFor(
+                                roomId, selfPeerId, localEcdhPublicKey, remoteEcdhPublicKey))));
     }
 
-    Verification verify(IdentityPayload payload, String roomId, String peerId) {
+    /**
+     * Xac thuc danh tinh cua {@code peerId}. Ben ky la peer, nen thu tu khoa la
+     * (khoa ECDH cua peer, khoa ECDH cua minh) - nguoc voi luc ky.
+     */
+    Verification verify(IdentityPayload payload, String roomId, String peerId,
+                        byte[] remoteEcdhPublicKey, byte[] localEcdhPublicKey) {
         PublicKey publicKey = IdentitySignatureService.decodePublicKey(
                 Base64.getDecoder().decode(payload.publicKey()));
         boolean valid = IdentitySignatureService.verify(
                 publicKey,
                 Base64.getDecoder().decode(payload.signature()),
-                IdentitySignatureService.challengeFor(roomId, peerId));
+                IdentitySignatureService.handshakeChallengeFor(
+                        roomId, peerId, remoteEcdhPublicKey, localEcdhPublicKey));
         return new Verification(valid, Fingerprint.of(publicKey));
     }
 

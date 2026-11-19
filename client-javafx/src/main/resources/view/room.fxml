@@ -36,7 +36,7 @@
                         <tooltip><Tooltip text="Sao chép tên phòng để mời người khác"/></tooltip>
                     </Button>
                 </HBox>
-                <Label text="Phòng riêng tư được mã hoá đầu-cuối" styleClass="room-description" wrapText="true"/>
+                <Label fx:id="roomDescriptionLabel" styleClass="room-description" wrapText="true"/>
             </VBox>
 
             <HBox spacing="6" alignment="CENTER_LEFT" styleClass="section-header">
@@ -51,6 +51,10 @@
                     <Label fx:id="selfNameLabel" styleClass="self-name"/>
                     <Label text="Bạn" styleClass="self-subtitle"/>
                 </VBox>
+                <Button onAction="#onOpenSettings" styleClass="button-icon, flat">
+                    <graphic><FontIcon iconLiteral="fth-settings"/></graphic>
+                    <tooltip><Tooltip text="Cài đặt: giao diện, âm báo, thông báo"/></tooltip>
+                </Button>
                 <Button fx:id="themeToggleButton" styleClass="button-icon, flat"/>
                 <Button onAction="#onLeaveRoom" styleClass="button-icon, flat, danger">
                     <graphic><FontIcon iconLiteral="fth-log-out"/></graphic>
@@ -93,6 +97,7 @@
             </center>
             <bottom>
                 <VBox styleClass="message-input-bar" spacing="4">
+                    <Label fx:id="typingLabel" styleClass="typing-indicator" visible="false" managed="false"/>
                     <HBox spacing="8" alignment="BOTTOM_CENTER">
                         <TextArea fx:id="messageArea" promptText="Nhập tin nhắn…" HBox.hgrow="ALWAYS"
                                   wrapText="true" prefRowCount="2" styleClass="message-area"/>
@@ -103,7 +108,7 @@
                     </HBox>
                     <HBox spacing="4" alignment="CENTER_LEFT">
                         <FontIcon iconLiteral="fth-lock" styleClass="input-hint-icon"/>
-                        <Label text="Tin nhắn được mã hoá trước khi rời máy bạn  ·  Enter để gửi, Shift+Enter để xuống dòng"
+                        <Label text="Mã hoá trước khi rời máy bạn  ·  Enter gửi, Shift+Enter xuống dòng  ·  **đậm** *nghiêng* `code`"
                                styleClass="input-hint"/>
                         <Region HBox.hgrow="ALWAYS"/>
                     </HBox>

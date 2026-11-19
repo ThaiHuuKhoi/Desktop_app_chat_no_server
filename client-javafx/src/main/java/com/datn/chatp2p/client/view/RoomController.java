@@ -1,16 +1,23 @@
 package com.datn.chatp2p.client.view;
 
 import atlantafx.base.theme.Styles;
+import com.datn.chatp2p.client.ChatApplication;
 import com.datn.chatp2p.client.session.ChatSession;
 import com.datn.chatp2p.client.session.ChatSessionListener;
 import com.datn.chatp2p.client.session.RoomConfig;
 import com.datn.chatp2p.client.session.SessionPeer;
 import com.datn.chatp2p.client.session.SessionPeer.ConnectionKind;
+import com.datn.chatp2p.client.util.DesktopNotifier;
+import com.datn.chatp2p.client.util.SoundPlayer;
 import com.datn.chatp2p.client.util.ThemeManager;
+import com.datn.chatp2p.client.util.UserSettings;
 import com.datn.chatp2p.client.view.TranscriptEntry.NoticeKind;
 import com.datn.chatp2p.client.view.TranscriptEntry.SystemNotice;
 import com.datn.chatp2p.client.view.TranscriptEntry.UserMessage;
 import com.datn.chatp2p.common.model.ChatMessage;
+import javafx.animation.Animation;
+import javafx.animation.KeyFrame;
+import javafx.animation.Timeline;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -31,6 +38,7 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
+import javafx.util.Duration;
 import org.kordamp.ikonli.feather.Feather;
 import org.kordamp.ikonli.javafx.FontIcon;
 
@@ -48,11 +56,16 @@ import java.util.Map;
  */
 public class RoomController implements ChatSessionListener {
 
+    private static final java.util.logging.Logger LOG = java.util.logging.Logger.getLogger(RoomController.class.getName());
+
     @FXML
     private Label roomNameLabel;
 
     @FXML
     private Label roomSubtitleLabel;
+
+    @FXML
+    private Label roomDescriptionLabel;
 
     @FXML
     private Label peerSectionLabel;
@@ -87,7 +100,17 @@ public class RoomController implements ChatSessionListener {
     @FXML
     private TextArea messageArea;
 
+    @FXML
+    private Label typingLabel;
+
     private final ObservableList<PeerItem> peers = FXCollections.observableArrayList();
+    private final TypingTracker typingTracker = new TypingTracker(System::currentTimeMillis);
+    private TypingNotifier typingNotifier;
+    /** Moi giay: het han "dang go" cua nguoi khac + bao "ngung go" cua minh khi dung tay. */
+    private final Timeline typingTicker = new Timeline(new KeyFrame(Duration.seconds(1), event -> onTypingTick()));
+    private static final int ALONE_HINT_SECONDS = 20;
+    private final javafx.animation.PauseTransition aloneHintTimer =
+            new javafx.animation.PauseTransition(Duration.seconds(ALONE_HINT_SECONDS));
     private final Map<String, String> displayNames = new HashMap<>();
     private final Map<String, SessionPeer> pendingPeerUpdates = new HashMap<>();
 
@@ -111,6 +134,9 @@ public class RoomController implements ChatSessionListener {
 
         displayNames.put(session.selfPeerId(), config.userName());
         roomNameLabel.setText(config.roomName());
+        roomDescriptionLabel.setText(config.isPasswordProtected()
+                ? "Phòng có mật khẩu · chỉ người nhập đúng mật khẩu mới thấy nhau"
+                : "Phòng công khai · ai biết tên phòng đều vào được");
         emptyStateRoomLabel.setText(config.roomName());
         selfNameLabel.setText(config.userName());
         selfAvatarHolder.getChildren().setAll(Avatars.create(config.userName(), 16));
@@ -124,8 +150,31 @@ public class RoomController implements ChatSessionListener {
                 peerId -> displayNames.getOrDefault(peerId, "Người lạ"));
         transcriptManager.configure(chatTabs, transcriptListView);
 
+        typingNotifier = new TypingNotifier(session::sendTypingStatus, System::currentTimeMillis);
+        messageArea.textProperty().addListener((obs, old, text) -> typingNotifier.onTextChanged(
+                transcriptManager.selectedDirectPeerId(), text == null || text.isBlank()));
+        chatTabs.getSelectionModel().selectedItemProperty().addListener((obs, old, tab) -> {
+            typingNotifier.stop(); // dang go o tab cu -> bao ngung truoc khi sang tab moi
+            refreshTypingLabel();
+        });
+        typingTicker.setCycleCount(Animation.INDEFINITE);
+        typingTicker.play();
+        // Sai mat khau / sai ten phong trong y het "chua ai vao" -> sau 1 luc van mot minh thi goi y kiem tra lai.
+        aloneHintTimer.setOnFinished(event -> {
+            if (peers.isEmpty()) {
+                LOG.info("Van mot minh trong phong sau " + ALONE_HINT_SECONDS + " giay - hien goi y kiem tra ten/mat khau");
+                notice(NoticeKind.WARNING, LobbyRules.aloneHint(config.isPasswordProtected()));
+            }
+        });
+        aloneHintTimer.play();
+        DesktopNotifier.setOnClick(() -> Platform.runLater(() -> {
+            stage.setIconified(false);
+            stage.toFront();
+            stage.requestFocus();
+        }));
+
         // Dong cua so khi dang trong phong cung phai roi phong dang hoang (dong ket noi P2P/signaling)
-        stage.setOnCloseRequest(event -> session.leave());
+        stage.setOnCloseRequest(event -> leaveSession());
 
         notice(NoticeKind.INFO, "Bạn đã vào phòng " + config.roomName()
                 + ".");
@@ -174,6 +223,8 @@ public class RoomController implements ChatSessionListener {
         Platform.runLater(() -> {
             peers.removeIf(item -> item.peer.peerId().equals(peerId));
             pendingPeerUpdates.remove(peerId);
+            typingTracker.removePeer(peerId);
+            refreshTypingLabel();
             notice(NoticeKind.LEFT, displayNames.getOrDefault(peerId, "Một người") + " đã rời phòng");
             refreshRoomState();
         });
@@ -183,17 +234,47 @@ public class RoomController implements ChatSessionListener {
     public void onMessageReceived(ChatMessage message) {
         Platform.runLater(() -> {
             transcriptManager.addGroup(new UserMessage(message));
+            typingTracker.clear(message.getAuthorId(), false);
+            refreshTypingLabel();
             refreshRoomState();
+            alertIncoming(message.getAuthorId(), false);
         });
     }
 
     @Override
     public void onDirectMessageReceived(String peerId, ChatMessage message) {
         Platform.runLater(() -> {
+            // Dang go do 1 tin khac thi khong keo nguoi dung sang tab DM - chi them tin va bao.
             transcriptManager.addDirect(
                     peerId,
                     displayNames.getOrDefault(peerId, "Người lạ"),
-                    message);
+                    message,
+                    messageArea.getText().isBlank());
+            typingTracker.clear(peerId, true);
+            refreshTypingLabel();
+            alertIncoming(peerId, true);
+        });
+    }
+
+    @Override
+    public void onHistoryReceived(String fromPeerId, List<ChatMessage> messages, Map<String, String> authorNames) {
+        Platform.runLater(() -> {
+            authorNames.forEach(displayNames::putIfAbsent);
+            String sharedBy = displayNames.getOrDefault(fromPeerId, "Một người");
+            int added = transcriptManager.mergeGroupHistory(messages, sharedBy);
+            if (added > 0) {
+                notice(NoticeKind.INFO, "Đã nhận " + added + " tin nhắn trước đó do " + sharedBy
+                        + " chia sẻ (không xác minh được người viết từng tin)");
+                refreshRoomState();
+            }
+        });
+    }
+
+    @Override
+    public void onPeerTyping(String peerId, boolean direct, boolean typing) {
+        Platform.runLater(() -> {
+            typingTracker.update(peerId, direct, typing);
+            refreshTypingLabel();
         });
     }
 
@@ -258,7 +339,9 @@ public class RoomController implements ChatSessionListener {
         ClipboardContent content = new ClipboardContent();
         content.putString(config.roomName());
         Clipboard.getSystemClipboard().setContent(content);
-        notice(NoticeKind.INFO, "Đã sao chép tên phòng — gửi cho người bạn muốn chat cùng");
+        notice(NoticeKind.INFO, config.isPasswordProtected()
+                ? "Đã sao chép tên phòng — gửi kèm mật khẩu qua một kênh khác cho người bạn muốn chat cùng"
+                : "Đã sao chép tên phòng — gửi cho người bạn muốn chat cùng");
     }
 
     @FXML
@@ -274,8 +357,74 @@ public class RoomController implements ChatSessionListener {
         Navigator.style(confirm.getDialogPane());
 
         if (confirm.showAndWait().orElse(stay) == leave) {
-            session.leave();
+            leaveSession();
             Navigator.showHomeAfterLeaving(stage, config);
+        }
+    }
+
+    @FXML
+    private void onOpenSettings() {
+        SettingsDialog.show(stage, () -> ThemeManager.installToggle(themeToggleButton));
+    }
+
+    private void leaveSession() {
+        typingNotifier.stop();
+        typingTicker.stop();
+        aloneHintTimer.stop();
+        DesktopNotifier.setOnClick(null);
+        session.leave();
+    }
+
+    // ---------- Dang go / thong bao ----------
+
+    private void onTypingTick() {
+        if (typingNotifier != null) {
+            typingNotifier.tick();
+        }
+        refreshTypingLabel();
+    }
+
+    private void refreshTypingLabel() {
+        if (transcriptManager == null) {
+            return;
+        }
+        String directPeerId = transcriptManager.selectedDirectPeerId();
+        String text;
+        if (directPeerId == null) {
+            text = TypingTracker.describe(typingTracker.groupTypers().stream()
+                    .map(id -> displayNames.getOrDefault(id, "Người lạ"))
+                    .toList());
+        } else {
+            text = typingTracker.isTypingDirect(directPeerId)
+                    ? TypingTracker.describe(List.of(displayNames.getOrDefault(directPeerId, "Người lạ")))
+                    : "";
+        }
+        typingLabel.setText(text);
+        typingLabel.setVisible(!text.isEmpty());
+        typingLabel.setManaged(!text.isEmpty());
+    }
+
+    /**
+     * Tin moi toi: am bao neu nguoi dung khong dang nhin dung khung chat do; thong bao man hinh neu
+     * cua so khong duoc chon. Thong bao chi co ten nguoi gui (xem {@link DesktopNotifier}).
+     */
+    private void alertIncoming(String peerId, boolean direct) {
+        UserSettings settings = UserSettings.get();
+        boolean focused = stage.isFocused();
+        String selectedDirect = transcriptManager.selectedDirectPeerId();
+        boolean looking = focused && (direct ? peerId.equals(selectedDirect) : selectedDirect == null);
+        LOG.fine(() -> "Tin moi tu " + displayNames.getOrDefault(peerId, peerId) + ": cua so "
+                + (focused ? "dang chon" : "KHONG duoc chon") + ", dang xem dung khung chat=" + looking
+                + " -> am bao=" + (!looking && settings.soundEnabled())
+                + ", thong bao=" + (!focused && settings.desktopNotificationsEnabled()));
+        if (!looking && settings.soundEnabled()) {
+            SoundPlayer.playIncoming();
+        }
+        if (!focused && settings.desktopNotificationsEnabled()) {
+            String name = displayNames.getOrDefault(peerId, "Một người");
+            DesktopNotifier.notify(ChatApplication.APP_TITLE, direct
+                    ? name + " đã nhắn riêng cho bạn"
+                    : name + " đã gửi tin nhắn trong phòng " + config.roomName());
         }
     }
 

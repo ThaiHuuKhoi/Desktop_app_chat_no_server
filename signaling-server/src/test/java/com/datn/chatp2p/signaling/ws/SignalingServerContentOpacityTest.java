@@ -48,6 +48,9 @@ class SignalingServerContentOpacityTest {
         FakeWebSocketSession targetSession = new FakeWebSocketSession("target-session");
         roomRegistry.join(new PeerSession(targetSession, "room-1", "target-peer", "Target"));
         FakeWebSocketSession senderSession = new FakeWebSocketSession("sender-session");
+        // Server chi relay tu session DA JOIN dung phong/peerId (isAuthorized) - mo phong da JOIN.
+        senderSession.getAttributes().put("roomId", "room-1");
+        senderSession.getAttributes().put("peerId", "sender-peer");
 
         // Co y KHONG phai JSON hop le, lai con chua ky tu "nguy hiem" (the HTML,
         // dau ngoac chua dong) - server phai relay y nguyen ma khong duoc thu
@@ -83,6 +86,9 @@ class SignalingServerContentOpacityTest {
         FakeWebSocketSession targetSession = new FakeWebSocketSession("target-session");
         roomRegistry.join(new PeerSession(targetSession, "room-1", "target-peer", "Target"));
         FakeWebSocketSession senderSession = new FakeWebSocketSession("sender-session");
+        // Server chi relay tu session DA JOIN dung phong/peerId (isAuthorized) - mo phong da JOIN.
+        senderSession.getAttributes().put("roomId", "room-1");
+        senderSession.getAttributes().put("peerId", "sender-peer");
 
         String secretMarker = "NOI-DUNG-TUYET-MAT-KHONG-DUOC-XUAT-HIEN-TRONG-LOG-a1b2c3";
 
@@ -119,6 +125,9 @@ class SignalingServerContentOpacityTest {
         FakeWebSocketSession targetSession = new FakeWebSocketSession("target-session");
         roomRegistry.join(new PeerSession(targetSession, "room-1", "target-peer", "Target"));
         FakeWebSocketSession senderSession = new FakeWebSocketSession("sender-session");
+        // Server chi relay tu session DA JOIN dung phong/peerId (isAuthorized) - mo phong da JOIN.
+        senderSession.getAttributes().put("roomId", "room-1");
+        senderSession.getAttributes().put("peerId", "sender-peer");
 
         // Mo phong 1 IceOfferPayload thuc su lon (nhieu candidate) - xac nhan
         // server khong co gioi han/cat bot ngam nao doi voi payload lon.

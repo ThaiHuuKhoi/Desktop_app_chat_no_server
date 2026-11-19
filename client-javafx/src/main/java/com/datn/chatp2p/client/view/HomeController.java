@@ -1,36 +1,51 @@
 package com.datn.chatp2p.client.view;
 
-import com.datn.chatp2p.client.session.RoomConfig;
 import com.datn.chatp2p.client.session.AuthClient;
-import com.datn.chatp2p.client.util.RoomNameGenerator;
+import com.datn.chatp2p.client.session.AuthClient.RoomSummary;
+import com.datn.chatp2p.client.session.ChatSession;
+import com.datn.chatp2p.client.session.ChatSessions;
+import com.datn.chatp2p.client.session.RoomConfig;
 import com.datn.chatp2p.client.util.ThemeManager;
-import javafx.animation.PauseTransition;
+import com.datn.chatp2p.common.log.SecretLogging;
+import javafx.application.Platform;
 import javafx.fxml.FXML;
+import javafx.geometry.Pos;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
-import javafx.scene.control.TextField;
+import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
-import javafx.scene.control.Alert;
-import javafx.scene.control.ButtonType;
-import javafx.scene.input.ClipboardContent;
-import javafx.scene.input.Clipboard;
+import javafx.scene.control.TextField;
+import javafx.scene.input.KeyCode;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
-import javafx.util.Duration;
 import org.kordamp.ikonli.feather.Feather;
 import org.kordamp.ikonli.javafx.FontIcon;
 
 import java.security.SecureRandom;
+import java.util.List;
+import java.util.Locale;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
- * Man hinh dau tien: nhap ten hien thi va ten phong roi vao phong
- * (De-cuong-Chat-P2P-Java.md muc 5 - "tao/tham gia phong chat"). Khong co
- * dang nhap/tai khoan - "danh tinh" chi la ten hien thi + khoa sinh tren may.
+ * Sanh cho (man hinh Home) - De-cuong-Chat-P2P-Java.md muc 5 "tao/tham gia phong chat".
+ *
+ * <ul>
+ *   <li><b>Vao phong</b>: bam 1 phong trong danh sach -&gt; hop xac nhan -&gt; neu phong co mat khau
+ *       thi hop nhap mat khau -&gt; vao.</li>
+ *   <li><b>Tao phong</b>: bam "Tao phong" -&gt; hop "Thong tin phong" (ten, tuy chon dat mat khau).</li>
+ *   <li><b>Vao phong bang ten</b>: cho khach (khong co danh sach phong) hoac phong ban be gui ten.</li>
+ * </ul>
+ * Quy tac kiem tra / cau chu nam o {@link LobbyRules}, hop thoai o {@link RoomDialogs}.
  */
 public class HomeController {
 
     private static final SecureRandom RANDOM = new SecureRandom();
+    private static final Logger LOG = Logger.getLogger(HomeController.class.getName());
     private static final String DEFAULT_SERVER_URI = "ws://165.101.47.83:8080";
 
     @FXML
@@ -40,10 +55,16 @@ public class HomeController {
     private TextField userNameField;
 
     @FXML
-    private TextField roomNameField;
+    private VBox createColumn;
 
     @FXML
-    private Button copyRoomButton;
+    private Button createRoomButton;
+
+    @FXML
+    private Button joinByNameButton;
+
+    @FXML
+    private Label joiningLabel;
 
     @FXML
     private TextField serverField;
@@ -52,7 +73,7 @@ public class HomeController {
     private VBox roomBrowserBox;
 
     @FXML
-    private ListView<AuthClient.RoomSummary> roomListView;
+    private ListView<RoomSummary> roomListView;
 
     @FXML
     private TextField roomSearchField;
@@ -60,27 +81,37 @@ public class HomeController {
     @FXML
     private Label errorLabel;
 
-    private String authToken;
-    private java.util.List<AuthClient.RoomSummary> activeRooms = java.util.List.of();
-
     @FXML
     private Button themeToggleButton;
 
+    private String authToken;
+    private List<RoomSummary> activeRooms = List.of();
     private Stage stage;
     private boolean accountMode;
+    private boolean joining;
 
     @FXML
     private void initialize() {
         userNameField.textProperty().addListener((obs, old, name) -> refreshAvatar(name));
         userNameField.setText("Khách-" + (1000 + RANDOM.nextInt(9000)));
-        roomNameField.setText(RoomNameGenerator.generate());
         serverField.setText(DEFAULT_SERVER_URI);
         roomSearchField.textProperty().addListener((obs, old, value) -> filterRooms(value));
 
+        roomListView.setCellFactory(list -> new RoomCell());
+        roomListView.setPlaceholder(new Label("Chưa có phòng nào đang hoạt động"));
+        roomListView.setOnKeyPressed(event -> {
+            RoomSummary selected = roomListView.getSelectionModel().getSelectedItem();
+            if (event.getCode() == KeyCode.ENTER && selected != null) {
+                onRoomChosen(selected);
+            }
+        });
+
         ThemeManager.installToggle(themeToggleButton);
-        // Chi chiem cho trong the khi thuc su co loi de hien
+        // Chi chiem cho trong the khi thuc su co noi dung de hien
         errorLabel.managedProperty().bind(errorLabel.textProperty().isNotEmpty());
         errorLabel.visibleProperty().bind(errorLabel.managedProperty());
+        joiningLabel.managedProperty().bind(joiningLabel.textProperty().isNotEmpty());
+        joiningLabel.visibleProperty().bind(joiningLabel.managedProperty());
     }
 
     public void setStage(Stage stage) {
@@ -92,6 +123,11 @@ public class HomeController {
         if (roomBrowserBox != null) {
             roomBrowserBox.setVisible(accountMode);
             roomBrowserBox.setManaged(accountMode);
+        }
+        if (createColumn != null) {
+            // Che do khach khong co cot danh sach phong -> cot tao phong gian het chieu ngang.
+            createColumn.setMaxWidth(accountMode ? 300 : Double.MAX_VALUE);
+            HBox.setHgrow(createColumn, accountMode ? Priority.NEVER : Priority.ALWAYS);
         }
     }
 
@@ -108,49 +144,43 @@ public class HomeController {
         }
     }
 
+    // ------------------------------------------------------------ hanh dong
+
+    /** Nut "Tao phong" -&gt; hop "Thong tin phong". */
     @FXML
-    private void onGenerateRoomName() {
-        roomNameField.setText(RoomNameGenerator.generate());
+    private void onCreateRoom() {
+        if (!checkCanJoin()) {
+            return;
+        }
+        RoomDialogs.showCreate(stage, activeRooms).ifPresent(choice -> {
+            LOG.info(() -> "Tao phong '" + choice.roomName() + "' "
+                    + (choice.password().isEmpty() ? "(cong khai)" : "(co mat khau: " + SecretLogging.reveal(choice.password()) + ")"));
+            enterRoom(choice.roomName(), choice.password());
+        });
     }
 
+    /** Nut "Vao phong bang ten" -&gt; hop nhap ten + mat khau (neu co). */
     @FXML
-    private void onCopyRoomName() {
-        ClipboardContent content = new ClipboardContent();
-        content.putString(roomNameField.getText());
-        Clipboard.getSystemClipboard().setContent(content);
-
-        // Doi icon thanh dau tich trong chop mat de nguoi dung biet da sao chep
-        copyRoomButton.setGraphic(new FontIcon(Feather.CHECK));
-        PauseTransition revert = new PauseTransition(Duration.seconds(1.5));
-        revert.setOnFinished(e -> copyRoomButton.setGraphic(new FontIcon(Feather.COPY)));
-        revert.play();
+    private void onJoinByName() {
+        if (!checkCanJoin()) {
+            return;
+        }
+        RoomDialogs.showJoinByName(stage).ifPresent(choice -> enterRoom(choice.roomName(), choice.password()));
     }
 
-    @FXML
-    private void onJoinRoom() {
-        String userName = trimmed(userNameField.getText());
-        String roomName = trimmed(roomNameField.getText());
-        String serverUri = trimmed(serverField.getText());
-
-        if (userName.isEmpty() || roomName.isEmpty()) {
-            errorLabel.setText("Vui lòng nhập tên hiển thị và tên phòng.");
+    /** Bam 1 phong trong danh sach -&gt; xac nhan -&gt; (neu co mat khau) nhap mat khau -&gt; vao. */
+    private void onRoomChosen(RoomSummary room) {
+        if (joining || !checkCanJoin()) {
             return;
         }
-        if (serverUri.isEmpty()) {
-            errorLabel.setText("Vui lòng nhập địa chỉ signaling server.");
+        if (!RoomDialogs.confirmJoin(stage, room)) {
             return;
         }
-        if (accountMode && (authToken == null || authToken.isBlank())) {
-            errorLabel.setText("Vui lòng đăng nhập trước khi vào phòng.");
+        if (!room.passwordProtected()) {
+            enterRoom(room.roomId(), "");
             return;
         }
-
-        try {
-            Navigator.showRoom(stage, new RoomConfig(userName, roomName, serverUri,
-                    accountMode ? authToken : ""));
-        } catch (RuntimeException e) {
-            errorLabel.setText(e.getMessage() == null ? "Không thể vào phòng." : e.getMessage());
-        }
+        RoomDialogs.askPassword(stage, room.roomId()).ifPresent(password -> enterRoom(room.roomId(), password));
     }
 
     @FXML
@@ -158,32 +188,77 @@ public class HomeController {
         loadRooms();
     }
 
-    @FXML
-    private void onCreateRoom() {
-        String roomName = trimmed(roomNameField.getText());
-        if (roomName.isEmpty()) {
-            errorLabel.setText("Nhập tên phòng trước khi tạo.");
-            return;
+    // ------------------------------------------------------------ vao phong
+
+    /** Kiem tra chung truoc khi mo bat ky hop vao phong nao. */
+    private boolean checkCanJoin() {
+        errorLabel.setText("");
+        String error = LobbyRules.validateUserName(LobbyRules.normalizeName(userNameField.getText()));
+        if (error == null && LobbyRules.normalizeName(serverField.getText()).isEmpty()) {
+            error = "Vui lòng nhập địa chỉ signaling server (mục Tuỳ chọn kết nối).";
         }
-        confirmAndJoin(roomName);
+        if (error == null && accountMode && (authToken == null || authToken.isBlank())) {
+            error = "Vui lòng đăng nhập trước khi vào phòng.";
+        }
+        if (error != null) {
+            errorLabel.setText(error);
+            return false;
+        }
+        return true;
     }
 
-    @FXML
-    private void onSelectRoom() {
-        AuthClient.RoomSummary selected =
-                roomListView.getSelectionModel().getSelectedItem();
-        if (selected != null) {
-            confirmAndJoin(selected.roomId());
-        }
+    /** Tao session tren luong nen (phong co mat khau can PBKDF2 ~0,1-0,3 s) roi mo man hinh phong. */
+    private void enterRoom(String roomName, String roomPassword) {
+        String userName = LobbyRules.normalizeName(userNameField.getText());
+        String serverUri = LobbyRules.normalizeName(serverField.getText());
+        LOG.info(() -> "Vao phong: ten=" + userName + ", phong=" + roomName
+                + (roomPassword.isEmpty() ? " (cong khai)" : " (co mat khau: " + SecretLogging.reveal(roomPassword) + ")")
+                + ", che do=" + (accountMode ? "tai khoan" : "khach"));
+        RoomConfig config = new RoomConfig(userName, roomName, serverUri, accountMode ? authToken : "", roomPassword);
+        setJoining(true, roomName);
+        Thread worker = new Thread(() -> {
+            try {
+                ChatSession session = ChatSessions.create(config);
+                Platform.runLater(() -> {
+                    try {
+                        Navigator.showRoom(stage, config, session);
+                    } catch (RuntimeException e) {
+                        session.leave();
+                        joinFailed(roomName, e);
+                    }
+                });
+            } catch (RuntimeException | LinkageError e) {
+                // LinkageError: vd cau hinh TURN sai lam P2pChatSession loi khi khoi tao lop.
+                Platform.runLater(() -> joinFailed(roomName, e));
+            }
+        }, "join-room");
+        worker.setDaemon(true);
+        worker.start();
     }
+
+    private void joinFailed(String roomName, Throwable e) {
+        LOG.log(Level.WARNING, "Khong vao duoc phong " + roomName, e);
+        setJoining(false, null);
+        Throwable cause = e instanceof LinkageError && e.getCause() != null ? e.getCause() : e;
+        errorLabel.setText(cause.getMessage() == null ? "Không thể vào phòng." : cause.getMessage());
+    }
+
+    private void setJoining(boolean joining, String roomName) {
+        this.joining = joining;
+        createRoomButton.setDisable(joining);
+        joinByNameButton.setDisable(joining);
+        roomListView.setDisable(joining);
+        joiningLabel.setText(joining ? "Đang vào phòng \"" + roomName + "\"…" : "");
+    }
+
+    // ------------------------------------------------------------ danh sach phong
 
     private void loadRooms() {
         if (authToken == null || authToken.isBlank()) {
             return;
         }
         try {
-            AuthClient authClient = new AuthClient();
-            activeRooms = authClient.rooms(serverField.getText(), authToken);
+            activeRooms = new AuthClient().rooms(serverField.getText(), authToken);
             filterRooms(roomSearchField.getText());
         } catch (RuntimeException error) {
             errorLabel.setText(error.getMessage());
@@ -194,29 +269,46 @@ public class HomeController {
         if (roomListView == null) {
             return;
         }
-        String normalized = trimmed(query).toLowerCase(java.util.Locale.ROOT);
+        String normalized = LobbyRules.normalizeName(query).toLowerCase(Locale.ROOT);
         roomListView.getItems().setAll(activeRooms.stream()
-                .filter(room -> room.roomId().toLowerCase(java.util.Locale.ROOT).contains(normalized))
+                .filter(room -> room.roomId().toLowerCase(Locale.ROOT).contains(normalized))
                 .toList());
-    }
-
-    private void confirmAndJoin(String roomName) {
-        Alert alert = new Alert(Alert.AlertType.CONFIRMATION,
-                "Bạn có muốn vào phòng \"" + roomName + "\" không?",
-                ButtonType.CANCEL, ButtonType.OK);
-        alert.setTitle("Xác nhận vào phòng");
-        alert.setHeaderText("Tham gia phòng");
-        if (alert.showAndWait().orElse(ButtonType.CANCEL) == ButtonType.OK) {
-            roomNameField.setText(roomName);
-            onJoinRoom();
-        }
     }
 
     private void refreshAvatar(String name) {
         avatarHolder.getChildren().setAll(Avatars.create(name, 24));
     }
 
-    private static String trimmed(String value) {
-        return value == null ? "" : value.trim();
+    /** 1 dong trong danh sach phong: icon (khoa / nguoi), ten, so nguoi. Bam vao la bat dau vao phong. */
+    private final class RoomCell extends ListCell<RoomSummary> {
+        RoomCell() {
+            setPrefWidth(0); // co theo chieu rong ListView, khong hien thanh cuon ngang
+            setOnMouseClicked(event -> {
+                if (!isEmpty() && getItem() != null) {
+                    onRoomChosen(getItem());
+                }
+            });
+        }
+
+        @Override
+        protected void updateItem(RoomSummary room, boolean empty) {
+            super.updateItem(room, empty);
+            setText(null);
+            if (empty || room == null) {
+                setGraphic(null);
+                return;
+            }
+            FontIcon icon = new FontIcon(room.passwordProtected() ? Feather.LOCK : Feather.HASH);
+            icon.getStyleClass().add(room.passwordProtected() ? "room-lock-icon" : "room-public-icon");
+            Label name = new Label(room.roomId());
+            name.getStyleClass().add("room-list-name");
+            Label count = new Label(room.peerCount() + " người", new FontIcon(Feather.USERS));
+            count.getStyleClass().add("room-list-count");
+            Region spacer = new Region();
+            HBox.setHgrow(spacer, Priority.ALWAYS);
+            HBox row = new HBox(8, icon, name, spacer, count);
+            row.setAlignment(Pos.CENTER_LEFT);
+            setGraphic(row);
+        }
     }
 }

@@ -1037,14 +1037,50 @@ ECDH hoàn tất và được kiểm tra bằng challenge `roomId + "_" + peerId
 
 | # | Rủi ro / giới hạn | Mức độ | Biện pháp giảm thiểu / ghi chú |
 |---|---|---|---|
-| 1 | Không chống MITM tuyệt đối ở lần gặp đầu tiên (xác thực chữ ký chỉ chống mạo danh lặp lại) | Trung bình — hạn chế cố hữu của mọi hệ không có PKI tập trung | Nêu rõ trong báo cáo (mục E.5.3); có thể bổ sung xác thực fingerprint thủ công như một lớp tuỳ chọn nếu còn thời gian |
+| 1 | Không chống MITM tuyệt đối ở lần gặp đầu tiên (xác thực chữ ký chỉ chống mạo danh lặp lại) | Trung bình — hạn chế cố hữu của mọi hệ không có PKI tập trung | Chữ ký `PEER_IDENTITY` đã gắn với khoá ECDH của phiên (`IdentitySignatureService.handshakeChallengeFor`), nên kẻ đứng giữa không thể chuyển tiếp chữ ký thật; nhưng lần gặp đầu vẫn phải tin khoá danh tính nhận được (TOFU) — người dùng nên đối chiếu fingerprint qua kênh khác (mục E.5.3) |
 | 2 | Đường dẫn dự án chứa dấu tiếng Việt gây lỗi `spring-boot:run` trên Windows | Thấp — đã có cách khắc phục | Dùng `java -jar` thay vì `spring-boot:run` (Phần G.5) |
 | 3 | Video/audio/screen share dùng Motion-JPEG/PCM thô thay vì codec chuẩn | Trung bình — chất lượng/độ trễ kém hơn WebRTC thật | Đánh đổi có chủ đích để tránh phụ thuộc native binding (Phần E.8.5); nêu rõ trong báo cáo là giới hạn đã biết, không phải thiếu sót |
 | 4 | ICE qua NAT symmetric có thể thất bại ngay cả khi có TURN nếu TURN cấu hình sai/quá tải | Trung bình | Test kỹ theo Phần F.5.3, tự host coturn thay vì phụ thuộc TURN free công khai khi đo số liệu chính thức (Phần G.6) |
 | 5 | `signaling-server` là điểm chịu lỗi duy nhất tạm thời (không phải nội dung, nhưng sập thì không ai vào phòng mới được) | Thấp với quy mô đồ án | Ephemeral by design — chấp nhận được; nếu cần độ sẵn sàng cao hơn, cân nhắc chạy nhiều instance sau `RoomRegistry` dùng bộ nhớ chia sẻ (ngoài phạm vi đồ án) |
 | 6 | Kiến trúc mesh N² giới hạn quy mô phòng | Thấp với quy mô đồ án | Giới hạn khuyến nghị 2-6 peer/phòng khi demo/đánh giá (Phần F.3) |
-| 7 | UDP không đảm bảo thứ tự/không mất gói — `P2pDataChannel` bản đầu chưa có retry | Trung bình cho truyền file, thấp cho chat text | Cân nhắc thêm ACK/retry cho `FILE_CHUNK` nếu còn thời gian (Phần H.3) |
+| 7 | UDP không đảm bảo thứ tự/không mất gói — `P2pDataChannel` không có retry ở tầng dưới | Thấp (đã giảm thiểu) | Đã thêm ACK/gửi lại ở tầng ứng dụng: `MESSAGE` và `MESSAGE_TRANSCRIPT` có `MESSAGE_ACK` (gửi lại tối đa 6 lần), truyền file có `ReliableChunkSender` (cửa sổ trượt + backoff). Thứ tự tin nhắn chữ vẫn chưa được đảm bảo tuyệt đối (Phần H.3) |
 | 8 | Double-encrypt cho `FILE_CHUNK` (mã hoá chunk rồi mã hoá cả Envelope) tốn CPU thừa | Rất thấp | Chấp nhận được, ưu tiên đơn giản hoá code hơn tối ưu vi mô (đã ghi chú ở mục E.3.3) |
+| 9 | **Signaling dùng `ws://` không mã hoá** — token đăng nhập (JOIN), mật khẩu khi gọi REST `/auth/*`, tên phòng và ICE candidate (địa chỉ IP) đi dạng rõ giữa client và signaling server | **Cao** khi chạy qua Internet công khai | Nội dung chat **không** bị ảnh hưởng (đã mã hoá đầu-cuối trên kênh P2P), nhưng kẻ nghe lén đường truyền có thể lấy token để mạo danh tài khoản và biết ai đang vào phòng nào. **Chưa triển khai — kế hoạch ở mục J.1** |
+| 10 | Lịch sử chat cho người mới vào (`MESSAGE_TRANSCRIPT`) không xác minh được người viết từng tin | Trung bình | Chỉ nhận lịch sử từ peer đã xác thực danh tính, tối đa 200 tin/peer; giao diện gắn nhãn "lịch sử · X chia sẻ". Muốn xác minh tuyệt đối phải ký từng tin bằng khoá danh tính của người viết (hướng phát triển) |
+| 11 | Phòng có mật khẩu: peer gửi bằng chứng sai chỉ bị **bỏ qua**, kết nối P2P với họ vẫn mở tới khi họ rời phòng | Thấp | Họ không thấy/không gửi được gì (mọi bản tin bị lọc). Nên bổ sung API chủ động ngắt 1 peer trong `RoomSession` |
+| 12 | Mật khẩu TURN cũ từng nằm trong lịch sử git (commit `fa173d1`) | Cao cho đến khi đổi mật khẩu | Đã chuyển credential ra khỏi jar (biến môi trường / `~/.chat-p2p-java/client.properties`); **bắt buộc đổi mật khẩu TURN trên VPS** |
+| 13 | **Nhập sai mật khẩu phòng không được báo ngay**: client JOIN vào `tên~thẻ-khác`, tức một phòng trống khác; chỉ có gợi ý sau 20 s ở một mình. Server cũng chưa báo lý do khi từ chối JOIN (token hết hạn, phòng đầy) | Trung bình (trải nghiệm, không phải lỗ hổng: mật khẩu sai không lọt vào phòng thật) | Server cố ý không gửi thẻ phòng cho client, để tránh dò mật khẩu offline. **Chưa triển khai — kế hoạch ở mục J.2** |
+
+## J.1 Kế hoạch chuyển signaling sang `wss://` (chưa triển khai)
+
+*Ghi nhận ngày 2026-11-19, triển khai ở giai đoạn sau. Không cần thay đổi giao thức signaling — chỉ thay lớp vận chuyển.*
+
+1. **Tên miền + chứng chỉ:** trỏ 1 tên miền (vd `chat.ten-mien.vn`) về IP VPS; xin chứng chỉ miễn phí Let's Encrypt (certbot), tự gia hạn.
+2. **Reverse proxy (khuyến nghị):** đặt Nginx/Caddy trước signaling server, nhận `443` (TLS) và chuyển tiếp nội bộ tới `127.0.0.1:8080`, nhớ bật nâng cấp WebSocket (`Upgrade`/`Connection`). Signaling server chỉ bind `127.0.0.1`, đóng cổng `8080` ra Internet. *(Phương án thay thế: bật TLS thẳng trong Spring Boot bằng `server.ssl.*` + keystore PKCS12.)*
+3. **Client:** đổi địa chỉ mặc định trong `HomeController` từ `ws://IP:8080` sang `wss://ten-mien`; `AuthClient` dùng `https://` cho `/auth/*` và `/rooms`. Có thể từ chối `ws://`/`http://` với địa chỉ không phải `localhost` để tránh cấu hình nhầm.
+4. **Kiểm thử:** chạy lại bộ test hiện có (server test dùng cổng cục bộ, không cần TLS); thêm 1 bước kiểm tra thủ công kết nối `wss://` qua Internet và xác nhận bằng Wireshark rằng token không còn đọc được.
+5. **Báo cáo:** sau khi xong, cập nhật dòng 9 ở bảng trên thành "đã giảm thiểu".
+
+Ảnh hưởng: không đổi gì ở kênh P2P (ICE/UDP, mã hoá đầu-cuối), không ảnh hưởng TURN.
+
+## J.2 Kế hoạch báo "sai mật khẩu" ngay và bản tin `JOIN_REJECTED` (chưa triển khai)
+
+*Ghi nhận ngày 2026-11-19, triển khai ở giai đoạn sau. Giải quyết rủi ro 13; cần sửa cả server lẫn client và deploy lại server.*
+
+**Hiện trạng:** phòng có mật khẩu có `roomId = tên~thẻ`, trong đó thẻ suy ra từ (tên phòng, mật khẩu) bằng PBKDF2. Nhập sai mật khẩu sinh ra thẻ khác, nên client vào một phòng trống khác mà không được báo. Server từ chối JOIN (token hết hạn, phòng đầy) cũng chỉ ghi log.
+
+**Vì sao không cho client tự kiểm tra:** muốn client so được mật khẩu thì server phải gửi thẻ về. Khi đó bất kỳ ai đã đăng nhập cũng có thể lấy thẻ về máy và dò mật khẩu **offline**, thử không giới hạn.
+
+**Thiết kế:**
+1. **Server kiểm tra khi JOIN:** nếu đang có phòng có mật khẩu tên `X` với thẻ `T1` mà nhận được JOIN `X~T2` (`T2 ≠ T1`), server **không cho vào** và gửi lại bản tin mới `JOIN_REJECTED {reason}`. Server vốn đã biết các thẻ đang dùng, nên không lộ thêm thông tin nào.
+2. **Giới hạn số lần thử:** tối đa khoảng 5 lần `WRONG_PASSWORD` mỗi phút cho mỗi kết nối hoặc địa chỉ IP. Người ngoài chỉ thử được từng lần (online), không dò hàng loạt được.
+3. **Bản tin dùng chung cho mọi lý do từ chối:** `WRONG_PASSWORD`, `ROOM_FULL` (đủ 8 người), `AUTH_REQUIRED` / `AUTH_EXPIRED` (thiếu hoặc hết hạn token), `DUPLICATE_PEER`, `RATE_LIMITED`.
+4. **Client:** nhận `JOIN_REJECTED` thì quay về sảnh và hiện thông báo tương ứng. Với `WRONG_PASSWORD`, mở lại hộp nhập mật khẩu của đúng phòng đó; với `AUTH_EXPIRED`, chuyển sang màn hình đăng nhập.
+5. **Hệ quả cần chấp nhận:** không còn chuyện hai nhóm dùng cùng tên phòng với hai mật khẩu khác nhau. Nhóm vào sau bị báo sai mật khẩu và phải chọn tên khác.
+6. **Tương thích:** client cũ không hiểu `JOIN_REJECTED`, nên mọi máy cần cập nhật cùng lúc với server.
+7. **Kiểm thử:** test server cho từng lý do từ chối và cho giới hạn số lần thử; test tích hợp "sai mật khẩu → nhận `WRONG_PASSWORD` → nhập đúng → vào được phòng".
+
+Sau khi xong, cập nhật rủi ro 13 thành "đã giảm thiểu", và bỏ gợi ý 20 s cho trường hợp sai mật khẩu (vẫn giữ cho trường hợp "chưa ai vào").
 
 ---
 
@@ -1091,3 +1127,5 @@ ECDH hoàn tất và được kiểm tra bằng challenge `roomId + "_" + peerId
 | 2026-08-21 | Tạo `Tai-lieu-ky-thuat-Chitchatter.md` (phân tích bản gốc) và `Thiet-ke-ky-thuat-chat-p2p-java.md` (thiết kế thi công) riêng biệt. |
 | 2026-08-21 | Gộp 2 tài liệu thành `Tai-lieu-ky-thuat.md` (Phần I / Phần II). |
 | 2026-08-21 | Viết lại toàn diện thành tài liệu kỹ thuật đầy đủ (Phần A-K): bổ sung tổng quan hệ thống, kiến trúc module hiện có trong repo, yêu cầu phi chức năng, chiến lược kiểm thử, cấu hình/vận hành, xử lý lỗi/logging, rủi ro kỹ thuật, phụ lục thuật ngữ — không còn chỉ giới hạn ở thiết kế chức năng. |
+| 2026-11-19 | Phần J: thêm rủi ro 13 (nhập sai mật khẩu phòng không được báo ngay, server chưa báo lý do từ chối JOIN) và mục J.2 kế hoạch kiểm tra mật khẩu phía server + bản tin `JOIN_REJECTED`. |
+| 2026-11-19 | Phần J: cập nhật rủi ro 1 và 7 theo code hiện tại; thêm rủi ro 9-12 (signaling `ws://` chưa mã hoá, lịch sử không xác minh người viết, peer sai mật khẩu chưa bị ngắt, mật khẩu TURN trong lịch sử git) và mục J.1 kế hoạch chuyển sang `wss://`. |

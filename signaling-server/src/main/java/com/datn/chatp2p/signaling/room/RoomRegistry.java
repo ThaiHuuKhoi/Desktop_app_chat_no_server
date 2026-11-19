@@ -21,6 +21,9 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 public class RoomRegistry {
 
+    public static final int MAX_PEERS_PER_ROOM = 8;
+    /** Ky tu ngan cach ten phong va "the" mat khau trong roomId cua phong co mat khau (khop RoomConfig o client). */
+    static final char PRIVATE_ROOM_SEPARATOR = '~';
     private final Map<String, Map<String, PeerSession>> roomsByRoomId = new ConcurrentHashMap<>();
 
     /**
@@ -36,12 +39,22 @@ public class RoomRegistry {
      * khi 2 RoomSession that join gan nhu dong thoi qua 1 signaling-server that.
      */
     public List<PeerSession> join(PeerSession newPeer) {
+        return tryJoin(newPeer).orElseThrow(() -> new IllegalStateException("Room da day hoac peerId da ton tai"));
+    }
+
+    public Optional<List<PeerSession>> tryJoin(PeerSession newPeer) {
         Map<String, PeerSession> room =
                 roomsByRoomId.computeIfAbsent(newPeer.getRoomId(), roomId -> new ConcurrentHashMap<>());
         synchronized (room) {
+            if (room.containsKey(newPeer.getPeerId()) || room.size() >= MAX_PEERS_PER_ROOM) {
+                if (room.isEmpty()) {
+                    roomsByRoomId.remove(newPeer.getRoomId(), room);
+                }
+                return Optional.empty();
+            }
             List<PeerSession> existingPeers = List.copyOf(room.values());
             room.put(newPeer.getPeerId(), newPeer);
-            return existingPeers;
+            return Optional.of(existingPeers);
         }
     }
 
@@ -72,18 +85,27 @@ public class RoomRegistry {
         return room == null ? Optional.empty() : Optional.ofNullable(room.get(peerId));
     }
 
+    /**
+     * Danh sach phong dang co nguoi cho man hinh sanh. Phong co mat khau co roomId "ten~the" (the suy
+     * ra tu mat khau o client): van liet ke (de nguoi dung chon roi nhap mat khau) nhung CAT BO the -
+     * chi tra ve ten + {@code passwordProtected = true}, khong lo gi de do mat khau.
+     */
     public List<RoomSnapshot> activeRooms() {
         List<RoomSnapshot> result = new ArrayList<>();
         roomsByRoomId.forEach((roomId, peers) -> {
             if (!peers.isEmpty()) {
                 PeerSession owner = peers.values().iterator().next();
-                result.add(new RoomSnapshot(roomId, peers.size(), owner.getUserName()));
+                int separator = roomId.indexOf(PRIVATE_ROOM_SEPARATOR);
+                boolean passwordProtected = separator >= 0;
+                String displayName = passwordProtected ? roomId.substring(0, separator) : roomId;
+                result.add(new RoomSnapshot(displayName, peers.size(), owner.getUserName(), passwordProtected));
             }
         });
         return result;
     }
 
-    public record RoomSnapshot(String roomId, int peerCount, String ownerUserName) {
+    /** @param roomId ten phong de hien thi (da cat "the" mat khau neu co). */
+    public record RoomSnapshot(String roomId, int peerCount, String ownerUserName, boolean passwordProtected) {
     }
 
     /** Tim va xoa peer gan voi mot WebSocketSession bi dong (duyet tat ca phong). */

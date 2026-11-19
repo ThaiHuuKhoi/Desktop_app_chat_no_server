@@ -9,7 +9,18 @@ import com.datn.chatp2p.common.model.ChatMessage;
  */
 sealed interface TranscriptEntry {
 
-    record UserMessage(ChatMessage message) implements TranscriptEntry {
+    /**
+     * @param sharedBy null voi tin nhan truc tiep; ten nguoi chia se neu tin den tu lich su
+     *                 (khong xac minh duoc nguoi viet - giao dien danh dau rieng).
+     */
+    record UserMessage(ChatMessage message, String sharedBy) implements TranscriptEntry {
+        UserMessage(ChatMessage message) {
+            this(message, null);
+        }
+
+        boolean fromHistory() {
+            return sharedBy != null;
+        }
     }
 
     record SystemNotice(NoticeKind kind, String text) implements TranscriptEntry {

@@ -51,7 +51,7 @@ class RoomSessionRealSignalingServerTest {
         // (tuong duong tham so dong lenh "--server.port=0"), co do uu tien cao
         // nhat, moi ghi de duoc gia tri trong application.yml.
         serverContext = new SpringApplicationBuilder(SignalingServerApplication.class)
-                .run("--server.port=0"); // 0 = de he dieu hanh tu chon 1 cong trong, tranh dung do 8080
+                .run("--server.port=0", "--chat-p2p.auth.required=false"); // 0 = de he dieu hanh tu chon 1 cong trong, tranh dung do 8080
         int port = ((ServletWebServerApplicationContext) serverContext).getWebServer().getPort();
         signalingServerUri = "ws://localhost:" + port;
     }

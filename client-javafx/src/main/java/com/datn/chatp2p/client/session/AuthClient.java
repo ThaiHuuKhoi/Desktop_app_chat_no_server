@@ -1,5 +1,6 @@
 package com.datn.chatp2p.client.session;
 
+import com.datn.chatp2p.common.log.SecretLogging;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
@@ -13,15 +14,38 @@ import java.util.List;
 
 /** HTTP client for the signaling server account API. */
 public final class AuthClient {
-    private static final ObjectMapper JSON = new ObjectMapper();
+    /** Bo qua truong la tu server (server moi hon client van doc duoc). */
+    private static final ObjectMapper JSON = new ObjectMapper()
+            .configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+    private static final java.util.logging.Logger LOG = java.util.logging.Logger.getLogger(AuthClient.class.getName());
     private final HttpClient http = HttpClient.newHttpClient();
 
+    // Mat khau / token chi hien that khi bat che do log bi mat (SecretLogging), mac dinh la "***".
+
     public AuthResult login(String serverUri, String username, String password, String publicKey) {
-        return post(serverUri, "/auth/login", new Credentials(username, password, publicKey), AuthResult.class);
+        LOG.info(() -> "Dang nhap tai khoan '" + username + "', mat khau=" + SecretLogging.reveal(password)
+                + " qua " + httpBase(serverUri));
+        try {
+            AuthResult result = post(serverUri, "/auth/login", new Credentials(username, password, publicKey), AuthResult.class);
+            LOG.info(() -> "Dang nhap thanh cong: '" + result.username() + "', token=" + SecretLogging.reveal(result.token())
+                    + ", het han luc " + result.expiresAt());
+            return result;
+        } catch (RuntimeException e) {
+            LOG.warning(() -> "Dang nhap '" + username + "' that bai: " + e.getMessage());
+            throw e;
+        }
     }
 
     public void register(String serverUri, String username, String password, String publicKey) {
-        post(serverUri, "/auth/register", new Credentials(username, password, publicKey), RegisterResult.class);
+        LOG.info(() -> "Dang ky tai khoan '" + username + "', mat khau=" + SecretLogging.reveal(password)
+                + " qua " + httpBase(serverUri));
+        try {
+            post(serverUri, "/auth/register", new Credentials(username, password, publicKey), RegisterResult.class);
+            LOG.info(() -> "Dang ky thanh cong: '" + username + "'");
+        } catch (RuntimeException e) {
+            LOG.warning(() -> "Dang ky '" + username + "' that bai: " + e.getMessage());
+            throw e;
+        }
     }
 
     public void logout(String serverUri, String token) {
@@ -33,8 +57,10 @@ public final class AuthClient {
                     .build();
             HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() / 100 != 2) {
+                LOG.warning("Dang xuat that bai: HTTP " + response.statusCode());
                 throw new IllegalStateException("Đăng xuất thất bại");
             }
+            LOG.info(() -> "Da dang xuat, token " + SecretLogging.reveal(token) + " bi thu hoi tren server");
         } catch (IOException e) {
             throw new IllegalStateException("Không thể kết nối auth server", e);
         } catch (InterruptedException e) {
@@ -51,9 +77,14 @@ public final class AuthClient {
                     .GET().build();
             HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() / 100 != 2) {
+                LOG.warning("Tai danh sach phong that bai: HTTP " + response.statusCode());
                 throw new IllegalStateException("Không thể tải danh sách phòng");
             }
-            return Arrays.asList(JSON.readValue(response.body(), RoomSummary[].class));
+            List<RoomSummary> result = Arrays.stream(JSON.readValue(response.body(), RoomSummary[].class))
+                    .map(RoomSummary::normalized)
+                    .toList();
+            LOG.info(() -> "Tai danh sach phong: " + result.size() + " phong dang hoat dong");
+            return result;
         } catch (IOException e) {
             throw new IllegalStateException("Không thể tải danh sách phòng", e);
         } catch (InterruptedException e) {
@@ -94,10 +125,28 @@ public final class AuthClient {
     }
     public record AuthResult(String token, String username, String expiresAt) {
     }
-    public record RoomSummary(String roomId, int peerCount, String ownerUserName) {
+    /**
+     * 1 phong dang co nguoi.
+     *
+     * @param roomId            ten phong de hien thi va de vao (khong kem "the" mat khau).
+     * @param passwordProtected phong co mat khau - phai hoi mat khau truoc khi vao.
+     */
+    public record RoomSummary(String roomId, int peerCount, String ownerUserName, boolean passwordProtected) {
+
+        /**
+         * Server cu (truoc khi co truong passwordProtected) tra nguyen roomId "ten~the" cua phong co
+         * mat khau - tach ra o day de giao dien chi thay ten + co mat khau, khong dung toi "the".
+         */
+        public RoomSummary normalized() {
+            int separator = roomId == null ? -1 : roomId.indexOf(RoomConfig.PRIVATE_ROOM_SEPARATOR);
+            return separator < 0
+                    ? this
+                    : new RoomSummary(roomId.substring(0, separator), peerCount, ownerUserName, true);
+        }
+
         @Override
         public String toString() {
-            return roomId + "  ·  " + peerCount + " người";
+            return roomId + "  ·  " + peerCount + " người" + (passwordProtected ? "  ·  có mật khẩu" : "");
         }
     }
     private record RegisterResult(String token, String username, String expiresAt) {

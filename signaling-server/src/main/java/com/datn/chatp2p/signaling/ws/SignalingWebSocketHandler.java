@@ -51,6 +51,7 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
 
     private static final String ROOM_ID_ATTR = "roomId";
     private static final String PEER_ID_ATTR = "peerId";
+    private static final String AUTH_TOKEN_ATTR = "authToken";
 
     private final RoomRegistry roomRegistry;
     private final ObjectMapper objectMapper;
@@ -95,7 +96,7 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
         switch (signal.getType()) {
             case JOIN -> handleJoin(session, signal);
             case LEAVE -> handleLeave(session);
-            case OFFER, ANSWER, ICE_CANDIDATE -> relayToTargetPeer(signal);
+            case OFFER, ANSWER, ICE_CANDIDATE -> relayToTargetPeer(session, signal);
             case PEER_JOINED, PEER_LEFT, PEER_LIST ->
                     log.debug("Bo qua ban tin chi server moi duoc phat: {}", signal.getType());
         }
@@ -114,7 +115,13 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
                 || (authenticationRequired && authenticatedUser.isEmpty())
                 || (signal.getAuthToken() != null && !signal.getAuthToken().isBlank()
                 && authenticatedUser.isEmpty())) {
-            log.warn("Bo qua ban tin JOIN thieu roomId/fromPeerId/userName tu session {}", session.getId());
+            String reason = signal.getRoomId() == null || signal.getFromPeerId() == null || signal.getUserName() == null
+                    ? "thieu roomId/fromPeerId/userName"
+                    : (signal.getAuthToken() == null || signal.getAuthToken().isBlank())
+                    ? "server yeu cau dang nhap nhung JOIN khong co token"
+                    : "token khong hop le hoac da het han";
+            log.warn("Tu choi JOIN tu session {} (room={}): {}, token={}", session.getId(), signal.getRoomId(), reason,
+                    com.datn.chatp2p.common.log.SecretLogging.reveal(signal.getAuthToken()));
             return;
         }
         authenticatedUser.ifPresent(user -> signal.setUserName(user.username()));
@@ -130,10 +137,19 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
         }
 
         PeerSession self = new PeerSession(session, signal.getRoomId(), signal.getFromPeerId(), signal.getUserName());
+        Optional<List<PeerSession>> joined = roomRegistry.tryJoin(self);
+        if (joined.isEmpty()) {
+            log.warn("Tu choi JOIN room={} peer={} do trung peerId hoac phong da day",
+                    self.getRoomId(), self.getPeerId());
+            return;
+        }
         session.getAttributes().put(ROOM_ID_ATTR, self.getRoomId());
         session.getAttributes().put(PEER_ID_ATTR, self.getPeerId());
+        if (signal.getAuthToken() != null && !signal.getAuthToken().isBlank()) {
+            session.getAttributes().put(AUTH_TOKEN_ATTR, signal.getAuthToken());
+        }
 
-        List<PeerSession> existingPeers = roomRegistry.join(self);
+        List<PeerSession> existingPeers = joined.get();
 
         send(session, peerListMessage(self.getRoomId(), existingPeers));
 
@@ -171,7 +187,12 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
         log.info("Peer {} ({}) da roi phong {}", peer.getPeerId(), peer.getUserName(), peer.getRoomId());
     }
 
-    private void relayToTargetPeer(SignalMessage signal) {
+    private void relayToTargetPeer(WebSocketSession sender, SignalMessage signal) {
+        if (!isAuthorized(sender, signal)) {
+            log.warn("Tu choi relay {} tu session {} do sender identity khong hop le",
+                    signal.getType(), sender.getId());
+            return;
+        }
         if (signal.getRoomId() == null || signal.getToPeerId() == null) {
             log.warn("Ban tin {} thieu roomId/toPeerId, bo qua", signal.getType());
             return;
@@ -183,6 +204,20 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
             return;
         }
         send(target.get().getWebSocketSession(), signal);
+    }
+
+    private boolean isAuthorized(WebSocketSession session, SignalMessage signal) {
+        Object joinedRoom = session.getAttributes().get(ROOM_ID_ATTR);
+        Object joinedPeer = session.getAttributes().get(PEER_ID_ATTR);
+        if (signal.getRoomId() == null || signal.getFromPeerId() == null
+                || !signal.getRoomId().equals(joinedRoom) || !signal.getFromPeerId().equals(joinedPeer)) {
+            return false;
+        }
+        if (!authenticationRequired || authService == null) {
+            return true;
+        }
+        Object token = session.getAttributes().get(AUTH_TOKEN_ATTR);
+        return token instanceof String tokenValue && authService.authenticate(tokenValue).isPresent();
     }
 
     private SignalMessage peerListMessage(String roomId, List<PeerSession> peers) {

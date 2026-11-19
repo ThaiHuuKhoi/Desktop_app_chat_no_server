@@ -78,6 +78,13 @@
       <artifactId>junit-jupiter</artifactId>
       <scope>test</scope>
     </dependency>
+    <!-- CHI test-scope: P2pChatSessionIntegrationTest tu boot signaling-server THAT de kiem tra
+         lich su cho nguoi moi va phong co mat khau giua nhieu client that. -->
+    <dependency>
+      <groupId>com.datn.chatp2p</groupId>
+      <artifactId>signaling-server</artifactId>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <build>

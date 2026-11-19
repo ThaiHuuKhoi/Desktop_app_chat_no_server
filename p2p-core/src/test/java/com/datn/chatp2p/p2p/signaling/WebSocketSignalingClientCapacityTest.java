@@ -41,9 +41,12 @@ class WebSocketSignalingClientCapacityTest {
     @Test
     void manyPeersJoiningConcurrentlyAllDiscoverEachOtherCorrectly() throws Exception {
         int peerCount = 100; // tang tu 30 len 100 de tim gioi han thuc te hon (Tomcat maxThreads mac dinh la 200)
+        // Server gioi han moi phong toi da RoomRegistry.MAX_PEERS_PER_ROOM peer (mesh nho) -
+        // chia 100 nguoi dung vao nhieu phong de van do tai cua server theo SO NGUOI DUNG.
+        int roomSize = com.datn.chatp2p.signaling.room.RoomRegistry.MAX_PEERS_PER_ROOM;
 
         ConfigurableApplicationContext serverContext = new SpringApplicationBuilder(SignalingServerApplication.class)
-                .run("--server.port=0");
+                .run("--server.port=0", "--chat-p2p.auth.required=false");
         int port = ((ServletWebServerApplicationContext) serverContext).getWebServer().getPort();
         String signalingServerUri = "ws://localhost:" + port;
 
@@ -68,7 +71,7 @@ class WebSocketSignalingClientCapacityTest {
                     });
                     client.onPeerJoined(message -> known.add(message.getFromPeerId()));
 
-                    client.connect(signalingServerUri, "room-capacity", peerId, "Peer-" + peerId);
+                    client.connect(signalingServerUri, roomOf(peerId, roomSize), peerId, "Peer-" + peerId);
                     clients.add(client);
                     allJoined.countDown();
                 });
@@ -93,9 +96,10 @@ class WebSocketSignalingClientCapacityTest {
                 String peerId = "peer-" + i;
                 Set<String> expected = allPeerIds.stream()
                         .filter(id -> !id.equals(peerId))
+                        .filter(id -> roomOf(id, roomSize).equals(roomOf(peerId, roomSize)))
                         .collect(Collectors.toSet());
                 assertEquals(expected, knownPeersByClient.get(peerId),
-                        peerId + " phai biet dung tat ca " + (peerCount - 1) + " peer con lai, khong thieu/du");
+                        peerId + " phai biet dung tat ca peer cung phong, khong thieu/du");
             }
         } finally {
             executor.shutdown();
@@ -104,5 +108,10 @@ class WebSocketSignalingClientCapacityTest {
             }
             serverContext.close();
         }
+    }
+
+    private static String roomOf(String peerId, int roomSize) {
+        int index = Integer.parseInt(peerId.substring("peer-".length()));
+        return "room-capacity-" + (index / roomSize);
     }
 }

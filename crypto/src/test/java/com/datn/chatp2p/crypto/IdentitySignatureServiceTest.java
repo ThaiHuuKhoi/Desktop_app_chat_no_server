@@ -71,6 +71,39 @@ class IdentitySignatureServiceTest {
     }
 
     @Test
+    void handshakeBoundSignatureVerifiesForTheSameEcdhSession() {
+        KeyPair bobIdentity = IdentitySignatureService.generateIdentityKeyPair();
+        byte[] aliceEcdh = KeyExchangeService.generateKeyPair().getPublic().getEncoded();
+        byte[] bobEcdh = KeyExchangeService.generateKeyPair().getPublic().getEncoded();
+
+        // Bob ky: signer = Bob, receiver = Alice.
+        byte[] signature = IdentitySignatureService.sign(bobIdentity.getPrivate(),
+                IdentitySignatureService.handshakeChallengeFor("room", "bob", bobEcdh, aliceEcdh));
+
+        // Alice xac thuc voi khoa ECDH ma CHINH Alice thay trong phien.
+        assertTrue(IdentitySignatureService.verify(bobIdentity.getPublic(), signature,
+                IdentitySignatureService.handshakeChallengeFor("room", "bob", bobEcdh, aliceEcdh)));
+    }
+
+    @Test
+    void forwardedIdentityFailsWhenMitmSubstitutedEcdhKeys() {
+        KeyPair bobIdentity = IdentitySignatureService.generateIdentityKeyPair();
+        byte[] aliceEcdh = KeyExchangeService.generateKeyPair().getPublic().getEncoded();
+        byte[] bobEcdh = KeyExchangeService.generateKeyPair().getPublic().getEncoded();
+        byte[] malloryToAlice = KeyExchangeService.generateKeyPair().getPublic().getEncoded();
+        byte[] malloryToBob = KeyExchangeService.generateKeyPair().getPublic().getEncoded();
+
+        // Bob dang noi chuyen voi Mallory (tuong la Alice): Bob thay khoa malloryToBob.
+        byte[] bobSignature = IdentitySignatureService.sign(bobIdentity.getPrivate(),
+                IdentitySignatureService.handshakeChallengeFor("room", "bob", bobEcdh, malloryToBob));
+
+        // Mallory chuyen tiep nguyen ban cho Alice; Alice thay signer = malloryToAlice, receiver = aliceEcdh.
+        assertFalse(IdentitySignatureService.verify(bobIdentity.getPublic(), bobSignature,
+                IdentitySignatureService.handshakeChallengeFor("room", "bob", malloryToAlice, aliceEcdh)),
+                "Chu ky danh tinh bi chuyen tiep qua MITM phai that bai vi khoa ECDH khong khop");
+    }
+
+    @Test
     void challengeFollowsRoomIdUnderscoreUserIdConvention() {
         assertEquals("room-1_user-1", IdentitySignatureService.challengeFor("room-1", "user-1"));
     }
