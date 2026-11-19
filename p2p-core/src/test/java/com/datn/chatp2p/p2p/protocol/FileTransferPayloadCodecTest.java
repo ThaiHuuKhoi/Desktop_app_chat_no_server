@@ -123,7 +123,7 @@ class FileTransferPayloadCodecTest {
                 EnvelopeType.MEDIA_FRAME,
                 EnvelopeType.MESSAGE_ACK, EnvelopeType.ROOM_PROOF,
                 EnvelopeType.FILE_ANSWER, EnvelopeType.FILE_ACK, EnvelopeType.FILE_CANCEL,
-                EnvelopeType.MESSAGE_READ, EnvelopeType.MESSAGE_REACTION);
+                EnvelopeType.MESSAGE_READ, EnvelopeType.MESSAGE_REACTION, EnvelopeType.MESSAGE_EDIT);
 
         assertEquals(expected, List.of(EnvelopeType.values()));
     }

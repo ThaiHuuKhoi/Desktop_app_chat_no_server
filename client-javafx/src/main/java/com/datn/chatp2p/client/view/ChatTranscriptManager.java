@@ -47,6 +47,19 @@ final class ChatTranscriptManager {
                 .findFirst().orElse(null);
     }
 
+    /** Thay noi dung tin {@code updated.getId()} o moi khung (sau khi tac gia sua / xoa). */
+    void replaceMessage(ChatMessage updated) {
+        java.util.List<ObservableList<TranscriptEntry>> lists = new java.util.ArrayList<>(directTranscripts.values());
+        lists.add(groupTranscript);
+        for (ObservableList<TranscriptEntry> list : lists) {
+            for (int i = 0; i < list.size(); i++) {
+                if (list.get(i) instanceof TranscriptEntry.UserMessage user && user.message().getId().equals(updated.getId())) {
+                    list.set(i, new TranscriptEntry.UserMessage(updated, user.sharedBy()));
+                }
+            }
+        }
+    }
+
     /** Ve lai moi khung chat (vd khi trang thai "da nhan" cua 1 tin thay doi). */
     void refreshAll() {
         if (groupView != null) {

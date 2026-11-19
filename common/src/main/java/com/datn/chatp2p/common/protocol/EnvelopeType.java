@@ -52,5 +52,7 @@ public enum EnvelopeType {
     /** Nguoi nhan da XEM cac tin (best-effort) - payload {@link MessageReadPayload}. */
     MESSAGE_READ,
     /** Them / bo 1 cam xuc tren 1 tin (best-effort) - payload {@link ReactionPayload}. */
-    MESSAGE_REACTION
+    MESSAGE_REACTION,
+    /** Tac gia sua / xoa tin cua minh (tin cay, co ACK) - payload {@link MessageEditPayload}. */
+    MESSAGE_EDIT
 }

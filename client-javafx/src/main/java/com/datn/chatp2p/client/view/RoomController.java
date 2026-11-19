@@ -29,6 +29,7 @@ import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
+import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
 import javafx.scene.control.TabPane;
@@ -127,6 +128,8 @@ public class RoomController implements ChatSessionListener {
     /** Trang thai "dang gui / da nhan" cua cac tin minh gui. */
     private final DeliveryStatuses deliveryStatuses = new DeliveryStatuses();
     private final ReactionStore reactions = new ReactionStore();
+    /** Tin da bi tac gia sua (false) hoac xoa (true). */
+    private final Map<String, Boolean> editedOrDeleted = new HashMap<>();
     /** Tin nguoi khac gui ma minh chua "xem": khoa = null (khung nhom) hoac peerId (tab rieng). */
     private final Map<String, List<ChatMessage>> unreadByTab = new HashMap<>();
     /** Tin dang duoc tra loi (hien thanh "Dang tra loi ..." tren o nhap), hoac null. */
@@ -446,6 +449,38 @@ public class RoomController implements ChatSessionListener {
         });
     }
 
+    @Override
+    public void onMessageEdited(String messageId, String peerId, String newText) {
+        Platform.runLater(() -> {
+            ChatMessage original = transcriptManager.findMessage(messageId);
+            // Chi tac gia moi duoc sua / xoa tin cua ho.
+            if (original == null || !original.getAuthorId().equals(peerId)) {
+                return;
+            }
+            applyEdit(original, newText);
+        });
+    }
+
+    /** Sua / xoa tin cua minh: cap nhat ngay tren may minh roi gui cho moi nguoi. */
+    private void applyOwnEdit(ChatMessage message, String newText) {
+        try {
+            session.editMessage(transcriptManager.selectedDirectPeerId(), message.getId(), newText);
+            applyEdit(message, newText);
+        } catch (RuntimeException e) {
+            notice(NoticeKind.WARNING, (newText == null ? "Xoá" : "Sửa") + " tin thất bại: " + e.getMessage());
+        }
+    }
+
+    /** {@code newText} null = xoa. */
+    private void applyEdit(ChatMessage original, String newText) {
+        editedOrDeleted.put(original.getId(), newText == null);
+        ChatMessage updated = new ChatMessage(original.getId(), original.getAuthorId(),
+                newText == null ? original.getText() : newText, original.getTimeSent(),
+                original.getTimeReceived(), original.getReplyToId());
+        transcriptManager.replaceMessage(updated);
+        transcriptManager.refreshAll();
+    }
+
     /** Tin nguoi khac vua toi: ghi nho la chua xem, roi bao "da xem" ngay neu dang mo dung tab do. */
     private void queueReadReceipt(String directPeerId, ChatMessage message) {
         unreadByTab.computeIfAbsent(directPeerId, key -> new java.util.ArrayList<>()).add(message);
@@ -532,6 +567,52 @@ public class RoomController implements ChatSessionListener {
         @Override
         public void reply(ChatMessage message) {
             startReply(message);
+        }
+
+        @Override
+        public boolean isEdited(String messageId) {
+            return Boolean.FALSE.equals(editedOrDeleted.get(messageId));
+        }
+
+        @Override
+        public boolean isDeleted(String messageId) {
+            return Boolean.TRUE.equals(editedOrDeleted.get(messageId));
+        }
+
+        @Override
+        public void edit(ChatMessage message) {
+            TextArea editor = new TextArea(message.getText());
+            editor.setWrapText(true);
+            editor.setPrefRowCount(4);
+            editor.setPrefWidth(420);
+            ButtonType save = new ButtonType("Lưu", ButtonBar.ButtonData.OK_DONE);
+            Dialog<String> dialog = new Dialog<>();
+            dialog.initOwner(stage);
+            dialog.setTitle("Sửa tin nhắn");
+            dialog.setHeaderText("Sửa tin nhắn");
+            dialog.getDialogPane().setContent(editor);
+            dialog.getDialogPane().getButtonTypes().addAll(save, ButtonType.CANCEL);
+            dialog.setResultConverter(button -> button == save ? editor.getText().strip() : null);
+            Navigator.style(dialog.getDialogPane());
+            Platform.runLater(editor::requestFocus);
+            dialog.showAndWait()
+                    .filter(text -> !text.isEmpty() && !text.equals(message.getText()))
+                    .ifPresent(text -> applyOwnEdit(message, text));
+        }
+
+        @Override
+        public void delete(ChatMessage message) {
+            ButtonType remove = new ButtonType("Xoá", ButtonBar.ButtonData.OK_DONE);
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                    "Tin sẽ bị xoá ở máy mọi người trong phòng. Người khác có thể đã đọc hoặc lưu lại nội dung.",
+                    remove, ButtonType.CANCEL);
+            confirm.initOwner(stage);
+            confirm.setHeaderText("Xoá tin nhắn này?");
+            confirm.getDialogPane().lookupButton(remove).getStyleClass().add(Styles.DANGER);
+            Navigator.style(confirm.getDialogPane());
+            if (confirm.showAndWait().orElse(ButtonType.CANCEL) == remove) {
+                applyOwnEdit(message, null);
+            }
         }
 
         @Override

@@ -249,11 +249,20 @@ class TranscriptCell extends ListCell<TranscriptEntry> {
     private Node messageRow(ChatMessage message, boolean continuation, String sharedBy) {
         boolean mine = selfPeerId.equals(message.getAuthorId());
 
+        boolean deleted = messageContext.isDeleted(message.getId());
         // Markdown (dam/nghieng/code/link...) - MarkdownView tu dat min height = pref de khong bi cat.
-        Node textLabel = MarkdownView.render(message.getText());
+        Node textLabel;
+        if (deleted) {
+            Label removed = new Label("Tin nhắn đã bị xoá", new FontIcon(Feather.SLASH));
+            removed.getStyleClass().add("message-deleted");
+            textLabel = removed;
+        } else {
+            textLabel = MarkdownView.render(message.getText());
+        }
         textLabel.getStyleClass().add("message-text");
 
-        Label timeLabel = new Label(TIME_FORMATTER.format(Instant.ofEpochMilli(message.getTimeSent())));
+        Label timeLabel = new Label(TIME_FORMATTER.format(Instant.ofEpochMilli(message.getTimeSent()))
+                + (!deleted && messageContext.isEdited(message.getId()) ? " · đã sửa" : ""));
         timeLabel.getStyleClass().add("message-time");
         if (mine) {
             DeliveryStatuses.Status delivery = messageContext.delivery(message.getId());
@@ -308,14 +317,16 @@ class TranscriptCell extends ListCell<TranscriptEntry> {
         }
 
         VBox bubble = new VBox(2, textLabel, timeRow);
-        Node quote = replyQuote(message);
+        Node quote = deleted ? null : replyQuote(message);
         if (quote != null) {
             bubble.getChildren().add(0, quote);
         }
         bubble.setMaxWidth(MAX_BUBBLE_WIDTH);
         bubble.getStyleClass().add(mine ? "bubble-mine" : "bubble-other");
-        installMessageMenu(bubble, message);
-        Node reactions = reactionRow(message, mine);
+        if (!deleted) {
+            installMessageMenu(bubble, message, mine);
+        }
+        Node reactions = deleted ? null : reactionRow(message, mine);
 
         HBox row = new HBox(8);
         row.setPadding(new Insets(continuation ? 1 : 8, 0, 1, 0));
@@ -390,7 +401,7 @@ class TranscriptCell extends ListCell<TranscriptEntry> {
     }
 
     /** Chuot phai vao bong bong: Tra loi, tha cam xuc, sao chep. */
-    private void installMessageMenu(Node bubble, ChatMessage message) {
+    private void installMessageMenu(Node bubble, ChatMessage message, boolean mine) {
         javafx.scene.control.ContextMenu menu = new javafx.scene.control.ContextMenu();
         javafx.scene.control.MenuItem reply = new javafx.scene.control.MenuItem("Trả lời", new FontIcon(Feather.CORNER_UP_LEFT));
         reply.setOnAction(event -> messageContext.reply(message));
@@ -400,7 +411,16 @@ class TranscriptCell extends ListCell<TranscriptEntry> {
             content.putString(message.getText());
             javafx.scene.input.Clipboard.getSystemClipboard().setContent(content);
         });
-        menu.getItems().addAll(reply, copy, new javafx.scene.control.SeparatorMenuItem());
+        menu.getItems().addAll(reply, copy);
+        // Chi tin cua minh, va khong phai tin lay tu lich su nguoi khac chia se.
+        if (mine && getItem() instanceof UserMessage user && !user.fromHistory()) {
+            javafx.scene.control.MenuItem edit = new javafx.scene.control.MenuItem("Sửa", new FontIcon(Feather.EDIT_2));
+            edit.setOnAction(event -> messageContext.edit(message));
+            javafx.scene.control.MenuItem delete = new javafx.scene.control.MenuItem("Xoá", new FontIcon(Feather.TRASH_2));
+            delete.setOnAction(event -> messageContext.delete(message));
+            menu.getItems().addAll(edit, delete);
+        }
+        menu.getItems().add(new javafx.scene.control.SeparatorMenuItem());
         for (String emoji : com.datn.chatp2p.common.protocol.ReactionPayload.ALLOWED) {
             boolean already = messageContext.reactedBySelf(message.getId(), emoji);
             javafx.scene.control.MenuItem item = new javafx.scene.control.MenuItem(

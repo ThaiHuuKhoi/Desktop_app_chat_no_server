@@ -43,6 +43,34 @@ final class GroupHistory {
         return true;
     }
 
+    /**
+     * Tac gia sua tin: thay noi dung. Chi khi {@code authorId} dung la tac gia trong lich su.
+     *
+     * @return {@code true} neu da sua.
+     */
+    synchronized boolean edit(String id, String authorId, String newText) {
+        for (int i = 0; i < messages.size(); i++) {
+            HistoryMessage old = messages.get(i);
+            if (old.id().equals(id) && old.authorId().equals(authorId)) {
+                HistoryMessage updated = new HistoryMessage(id, authorId, old.authorName(), newText, old.timeSent());
+                if (!isAcceptable(updated)) {
+                    return false;
+                }
+                messages.set(i, updated);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Tac gia xoa tin: bo khoi lich su nhung GIU id trong {@link #ids}, de ban cu nam trong lich su
+     * cua nguoi khac khong duoc them lai.
+     */
+    synchronized boolean remove(String id, String authorId) {
+        return messages.removeIf(message -> message.id().equals(id) && message.authorId().equals(authorId));
+    }
+
     synchronized boolean contains(String id) {
         return ids.contains(id);
     }

@@ -23,6 +23,24 @@ interface MessageContext {
     /** Bat / tat cam xuc {@code emoji} cua minh tren tin. */
     void toggleReaction(ChatMessage message, String emoji);
 
+    /** Tin da bi tac gia sua. */
+    default boolean isEdited(String messageId) {
+        return false;
+    }
+
+    /** Tin da bi tac gia xoa. */
+    default boolean isDeleted(String messageId) {
+        return false;
+    }
+
+    /** Sua tin cua minh. */
+    default void edit(ChatMessage message) {
+    }
+
+    /** Xoa tin cua minh. */
+    default void delete(ChatMessage message) {
+    }
+
     /** Dung cho test / noi khong can tuong tac. */
     MessageContext NONE = new MessageContext() {
         @Override
