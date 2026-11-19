@@ -47,6 +47,7 @@ public final class UserSettings {
 
     public void setTheme(String theme) {
         this.theme = theme;
+        LOG.info(() -> "Cai dat: theme=" + theme);
         save();
     }
 
@@ -56,6 +57,7 @@ public final class UserSettings {
 
     public void setSoundEnabled(boolean enabled) {
         this.soundEnabled = enabled;
+        LOG.info(() -> "Cai dat: am bao=" + (enabled ? "bat" : "tat"));
         save();
     }
 
@@ -65,6 +67,7 @@ public final class UserSettings {
 
     public void setDesktopNotificationsEnabled(boolean enabled) {
         this.desktopNotificationsEnabled = enabled;
+        LOG.info(() -> "Cai dat: thong bao man hinh=" + (enabled ? "bat" : "tat"));
         save();
     }
 

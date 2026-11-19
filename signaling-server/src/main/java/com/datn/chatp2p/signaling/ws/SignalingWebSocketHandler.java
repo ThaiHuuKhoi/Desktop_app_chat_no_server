@@ -115,7 +115,12 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
                 || (authenticationRequired && authenticatedUser.isEmpty())
                 || (signal.getAuthToken() != null && !signal.getAuthToken().isBlank()
                 && authenticatedUser.isEmpty())) {
-            log.warn("Bo qua ban tin JOIN thieu roomId/fromPeerId/userName tu session {}", session.getId());
+            String reason = signal.getRoomId() == null || signal.getFromPeerId() == null || signal.getUserName() == null
+                    ? "thieu roomId/fromPeerId/userName"
+                    : (signal.getAuthToken() == null || signal.getAuthToken().isBlank())
+                    ? "server yeu cau dang nhap nhung JOIN khong co token"
+                    : "token khong hop le hoac da het han";
+            log.warn("Tu choi JOIN tu session {} (room={}): {}", session.getId(), signal.getRoomId(), reason);
             return;
         }
         authenticatedUser.ifPresent(user -> signal.setUserName(user.username()));

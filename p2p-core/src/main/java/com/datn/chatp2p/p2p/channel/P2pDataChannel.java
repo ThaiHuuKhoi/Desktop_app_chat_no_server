@@ -43,6 +43,11 @@ public final class P2pDataChannel implements DataChannel {
     private volatile Consumer<byte[]> receiveHandler;
     private volatile boolean closed;
 
+    private static final java.util.logging.Logger LOG =
+            java.util.logging.Logger.getLogger(P2pDataChannel.class.getName());
+    /** So dong log "goi bi bo qua" da ghi cho kenh nay - xem {@link #logDropped}. */
+    private final java.util.concurrent.atomic.AtomicInteger droppedLogged = new java.util.concurrent.atomic.AtomicInteger();
+
     /**
      * @param socket        socket UDP da duoc ICE chon (vi du lay tu
      *                      {@code Component.getSocket()} cua ice4j sau khi
@@ -172,6 +177,7 @@ public final class P2pDataChannel implements DataChannel {
             // IdentitySignatureService cua B, chua co - xem docs/Bao-cao-thuc-hien-Nhiem-vu-A.md
             // muc "Chua lam").
             if (!isFromExpectedRemote(packet)) {
+                logDropped("goi tu dia chi la " + packet.getAddress() + ":" + packet.getPort());
                 continue;
             }
 
@@ -180,6 +186,7 @@ public final class P2pDataChannel implements DataChannel {
                 data = unframe(packet.getData(), packet.getLength());
             } catch (RuntimeException malformed) {
                 // Goi tin khong dung dinh dang length-prefix - bo qua, khong lam chet vong lap nhan.
+                logDropped("goi sai dinh dang (" + packet.getLength() + " byte)");
                 continue;
             }
 
@@ -199,6 +206,7 @@ public final class P2pDataChannel implements DataChannel {
                     // nhan duoc gi nua. Dung nguyen tac da ap dung xuyen suot du an (Tai-lieu-ky-thuat.md
                     // Phan H.1): 1 goi tin loi khong duoc lam gian doan viec nhan cac goi
                     // tin sau do - bo qua dung goi tin nay, tiep tuc vong lap.
+                    logDropped("khong giai ma/xu ly duoc (" + data.length + " byte): " + handlerFailure.getMessage());
                     continue;
                 }
             }
@@ -212,6 +220,18 @@ public final class P2pDataChannel implements DataChannel {
      * dung {@code SocketAddress.equals} de tranh phu thuoc vao kieu con cu the
      * cua {@code InetSocketAddress} tra ve tu {@code DatagramPacket}).
      */
+    /**
+     * Log goi bi bo qua o muc FINE (chi hien khi bat debug) va gioi han 20 dong/kenh - ke tan cong
+     * spam goi rac khong lam day terminal.
+     */
+    private void logDropped(String reason) {
+        int count = droppedLogged.incrementAndGet();
+        if (count <= 20) {
+            LOG.fine(() -> "Bo qua goi UDP tu " + remoteAddress + ": " + reason
+                    + (count == 20 ? " (da dat 20 dong, ngung log goi bi bo qua cua kenh nay)" : ""));
+        }
+    }
+
     private boolean isFromExpectedRemote(DatagramPacket packet) {
         return packet.getPort() == remoteAddress.getPort()
                 && packet.getAddress().equals(remoteAddress.getAddress());

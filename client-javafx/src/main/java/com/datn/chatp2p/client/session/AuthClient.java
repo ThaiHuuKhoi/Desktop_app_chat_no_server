@@ -14,14 +14,32 @@ import java.util.List;
 /** HTTP client for the signaling server account API. */
 public final class AuthClient {
     private static final ObjectMapper JSON = new ObjectMapper();
+    private static final java.util.logging.Logger LOG = java.util.logging.Logger.getLogger(AuthClient.class.getName());
     private final HttpClient http = HttpClient.newHttpClient();
 
+    // Log chi ghi ten tai khoan + ket qua - KHONG BAO GIO ghi mat khau hay token.
+
     public AuthResult login(String serverUri, String username, String password, String publicKey) {
-        return post(serverUri, "/auth/login", new Credentials(username, password, publicKey), AuthResult.class);
+        LOG.info(() -> "Dang nhap tai khoan '" + username + "' qua " + httpBase(serverUri));
+        try {
+            AuthResult result = post(serverUri, "/auth/login", new Credentials(username, password, publicKey), AuthResult.class);
+            LOG.info(() -> "Dang nhap thanh cong: '" + result.username() + "', token het han luc " + result.expiresAt());
+            return result;
+        } catch (RuntimeException e) {
+            LOG.warning(() -> "Dang nhap '" + username + "' that bai: " + e.getMessage());
+            throw e;
+        }
     }
 
     public void register(String serverUri, String username, String password, String publicKey) {
-        post(serverUri, "/auth/register", new Credentials(username, password, publicKey), RegisterResult.class);
+        LOG.info(() -> "Dang ky tai khoan '" + username + "' qua " + httpBase(serverUri));
+        try {
+            post(serverUri, "/auth/register", new Credentials(username, password, publicKey), RegisterResult.class);
+            LOG.info(() -> "Dang ky thanh cong: '" + username + "'");
+        } catch (RuntimeException e) {
+            LOG.warning(() -> "Dang ky '" + username + "' that bai: " + e.getMessage());
+            throw e;
+        }
     }
 
     public void logout(String serverUri, String token) {
@@ -33,8 +51,10 @@ public final class AuthClient {
                     .build();
             HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() / 100 != 2) {
+                LOG.warning("Dang xuat that bai: HTTP " + response.statusCode());
                 throw new IllegalStateException("Đăng xuất thất bại");
             }
+            LOG.info("Da dang xuat, token bi thu hoi tren server");
         } catch (IOException e) {
             throw new IllegalStateException("Không thể kết nối auth server", e);
         } catch (InterruptedException e) {
@@ -51,9 +71,12 @@ public final class AuthClient {
                     .GET().build();
             HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() / 100 != 2) {
+                LOG.warning("Tai danh sach phong that bai: HTTP " + response.statusCode());
                 throw new IllegalStateException("Không thể tải danh sách phòng");
             }
-            return Arrays.asList(JSON.readValue(response.body(), RoomSummary[].class));
+            List<RoomSummary> result = Arrays.asList(JSON.readValue(response.body(), RoomSummary[].class));
+            LOG.info(() -> "Tai danh sach phong: " + result.size() + " phong dang hoat dong");
+            return result;
         } catch (IOException e) {
             throw new IllegalStateException("Không thể tải danh sách phòng", e);
         } catch (InterruptedException e) {

@@ -87,9 +87,13 @@ public final class P2pChatSession implements ChatSession {
             });
     private final MessageDeliveryTracker deliveryTracker = new MessageDeliveryTracker(
             retryExecutor, MESSAGE_MAX_RETRIES, MESSAGE_RETRY_INTERVAL_MILLIS,
-            (peerId, messageId) -> notifyConnectionFailed(peerId, new IOException(
-                    "tin nhắn chưa tới nơi (không nhận được xác nhận sau "
-                            + MESSAGE_MAX_RETRIES + " lần gửi lại)")));
+            (peerId, messageId) -> {
+                LOG.warning(() -> "Het luot gui lai: id=" + shortId(messageId) + " toi " + who(peerId)
+                        + " khong nhan duoc ACK sau " + MESSAGE_MAX_RETRIES + " lan");
+                notifyConnectionFailed(peerId, new IOException(
+                        "tin nhắn chưa tới nơi (không nhận được xác nhận sau "
+                                + MESSAGE_MAX_RETRIES + " lần gửi lại)"));
+            });
     private final RoomSession roomSession;
 
     private volatile ChatSessionListener listener;
@@ -104,11 +108,12 @@ public final class P2pChatSession implements ChatSession {
         String serverRoomId = roomSecret == null
                 ? config.roomName()
                 : config.roomName() + RoomConfig.PRIVATE_ROOM_SEPARATOR + roomSecret.serverRoomTag();
-        LOG.info(() -> "P2P session create: peerId=" + selfPeerId
-                + ", signalingServer=" + config.serverUri()
-                + ", room=" + config.roomName()
-                + ", passwordProtected=" + (roomSecret != null)
-                + ", stunServers=" + STUN_SERVERS);
+        LOG.info(() -> "Tao phien: toi=" + config.userName() + " (" + shortId(selfPeerId) + ")"
+                + ", phong=" + config.roomName()
+                + (roomSecret != null ? " [co mat khau, roomId tren server=" + serverRoomId + "]" : " [cong khai]")
+                + ", server=" + config.serverUri()
+                + ", dang nhap=" + (config.authToken() != null && !config.authToken().isBlank())
+                + ", TURN=" + (TURN_SERVERS.isEmpty() ? "khong cau hinh" : TURN_SERVERS.size() + " server"));
         this.signalingClient = new WebSocketSignalingClient();
         this.signalingClient.setAuthToken(config.authToken());
         this.roomSession = new RoomSession(
@@ -128,7 +133,7 @@ public final class P2pChatSession implements ChatSession {
     @Override
     public void start(ChatSessionListener listener) {
         this.listener = listener;
-        LOG.info(() -> "P2P session start: peerId=" + selfPeerId);
+        LOG.info(() -> "Vao phong: gui JOIN toi signaling server " + config.serverUri());
         roomSession.onPeerJoined(this::handleConnectionReady);
         roomSession.onPeerLeft(this::notifyPeerLeft);
         roomSession.onConnectionFailed(this::notifyConnectionFailed);
@@ -159,7 +164,11 @@ public final class P2pChatSession implements ChatSession {
                 message.getId(), message.getAuthorId(), message.getText(), message.getTimeSent());
         history.add(new HistoryMessage(message.getId(), selfPeerId, config.userName(),
                 message.getText(), message.getTimeSent()));
-        for (String peerId : admittedPeerIds()) {
+        List<String> recipients = admittedPeerIds();
+        LOG.info(() -> "Gui tin NHOM id=" + shortId(message.getId()) + " (" + message.getText().length()
+                + " ky tu) toi " + recipients.size() + " nguoi"
+                + (recipients.isEmpty() ? " - phong chua co ai, chi luu vao lich su" : ""));
+        for (String peerId : recipients) {
             try {
                 sendMessageReliably(peerId, null, payload);
             } catch (RuntimeException error) {
@@ -179,6 +188,8 @@ public final class P2pChatSession implements ChatSession {
         }
         MessagePayload payload = new MessagePayload(
                 message.getId(), message.getAuthorId(), message.getText(), message.getTimeSent());
+        LOG.info(() -> "Gui tin RIENG id=" + shortId(message.getId()) + " (" + message.getText().length()
+                + " ky tu) toi " + who(peerId));
         sendMessageReliably(peerId, EnvelopeNamespace.DIRECT_MESSAGE, payload);
     }
 
@@ -188,6 +199,7 @@ public final class P2pChatSession implements ChatSession {
             return;
         }
         TypingStatusPayload payload = new TypingStatusPayload(typing);
+        LOG.fine(() -> "Gui dang go=" + typing + (directPeerId == null ? " (nhom)" : " (rieng toi " + who(directPeerId) + ")"));
         // Best-effort: khong ACK, khong gui lai, khong bao loi len UI (tranh lam phien vi
         // 1 tin hieu "dang go" bi mat). Ben gui nhac lai dinh ky, ben nhan tu het han.
         if (directPeerId != null) {
@@ -207,6 +219,8 @@ public final class P2pChatSession implements ChatSession {
             return;
         }
         left = true;
+        LOG.info(() -> "Roi phong " + config.roomName() + " - dong " + roomSession.getPeerIds().size()
+                + " ket noi P2P va ngat signaling");
         retryExecutor.shutdownNow();
         roomSession.leave();
     }
@@ -250,10 +264,14 @@ public final class P2pChatSession implements ChatSession {
         if (left) {
             return;
         }
+        LOG.info(() -> "Kenh ma hoa da san sang voi " + who(connection.getPeerId())
+                + " (ECDH xong, AES-256-GCM)");
         if (roomSecret == null) {
             admit(connection);
             return;
         }
+        LOG.info(() -> "Phong co mat khau: gui ROOM_PROOF toi " + who(connection.getPeerId())
+                + ", cho bang chung cua ho");
         Runnable sendProof = () -> {
             byte[] proof = roomSecret.proof(selfPeerId,
                     connection.getLocalEcdhPublicKey(), connection.getRemoteEcdhPublicKey());
@@ -281,10 +299,11 @@ public final class P2pChatSession implements ChatSession {
             valid = false;
         }
         if (valid) {
+            LOG.info(() -> "ROOM_PROOF cua " + who(peerId) + " hop le - ho biet dung mat khau phong");
             admit(connection);
         } else {
             rejectedPeers.add(peerId);
-            LOG.warning("Tu choi peer " + peerId + ": bang chung mat khau phong khong hop le");
+            LOG.warning("Tu choi " + who(peerId) + ": ROOM_PROOF khong hop le (sai mat khau phong)");
             notifyConnectionFailed(peerId, new SecurityException("người này không có đúng mật khẩu phòng"));
         }
     }
@@ -312,6 +331,7 @@ public final class P2pChatSession implements ChatSession {
                         ? PeerVerificationState.VERIFYING
                         : PeerVerificationState.VERIFIED);
         knownPeers.put(peerId, peer);
+        LOG.info(() -> "Nguoi moi trong phong: " + who(peerId) + " - hien len giao dien, gui PEER_IDENTITY");
         currentListener.onPeerJoined(peer);
         Runnable sendIdentity = () -> sendIdentity(connection);
         sendIdentity.run();
@@ -366,8 +386,12 @@ public final class P2pChatSession implements ChatSession {
         // Luon ACK (ca ban trung) - ACK truoc co the da bi mat tren duong truyen.
         sendQuietly(peerId, EnvelopeType.MESSAGE_ACK, null, new MessageAckPayload(payload.id()));
         if (!deliveryTracker.markReceived(peerId, payload.id())) {
+            LOG.fine(() -> "Bo qua ban trung id=" + shortId(payload.id()) + " tu " + who(peerId) + " (da ACK lai)");
             return; // ban gui lai cua tin nhan da hien thi
         }
+        LOG.info(() -> "Nhan tin " + (EnvelopeNamespace.DIRECT_MESSAGE.equals(envelope.namespace()) ? "RIENG" : "NHOM")
+                + " id=" + shortId(payload.id()) + " (" + payload.text().length() + " ky tu) tu " + who(peerId)
+                + " - da gui ACK");
         long now = System.currentTimeMillis();
         // Tac gia LUON la peer gui ket noi nay (khong tin authorId trong payload); dong ho cua
         // peer co the lech - khong cho thoi gian o tuong lai.
@@ -391,6 +415,7 @@ public final class P2pChatSession implements ChatSession {
     private void handleMessageAck(String peerId, Envelope envelope) {
         try {
             MessageAckPayload ack = OBJECT_MAPPER.readValue(envelope.payload(), MessageAckPayload.class);
+            LOG.fine(() -> "Nhan ACK id=" + shortId(ack.messageId()) + " tu " + who(peerId));
             deliveryTracker.acknowledge(peerId, ack.messageId());
         } catch (IOException error) {
             LOG.fine(() -> "Bo qua MESSAGE_ACK hong tu " + peerId);
@@ -404,6 +429,8 @@ public final class P2pChatSession implements ChatSession {
         }
         try {
             TypingStatusPayload payload = OBJECT_MAPPER.readValue(envelope.payload(), TypingStatusPayload.class);
+            LOG.fine(() -> "Nhan dang go=" + payload.typing() + " tu " + who(peerId)
+                    + (EnvelopeNamespace.DIRECT_MESSAGE.equals(envelope.namespace()) ? " (rieng)" : " (nhom)"));
             currentListener.onPeerTyping(peerId,
                     EnvelopeNamespace.DIRECT_MESSAGE.equals(envelope.namespace()), payload.typing());
         } catch (IOException error) {
@@ -418,7 +445,12 @@ public final class P2pChatSession implements ChatSession {
         if (!historySentTo.add(peerId)) {
             return;
         }
-        for (List<HistoryMessage> batch : GroupHistory.batches(history.snapshot())) {
+        List<HistoryMessage> snapshot = history.snapshot();
+        List<List<HistoryMessage>> batches = GroupHistory.batches(snapshot);
+        LOG.info(() -> snapshot.isEmpty()
+                ? "Lich su nhom rong - khong co gi de gui cho " + who(peerId)
+                : "Gui lich su cho " + who(peerId) + ": " + snapshot.size() + " tin trong " + batches.size() + " goi");
+        for (List<HistoryMessage> batch : batches) {
             MessageTranscriptPayload payload = new MessageTranscriptPayload(UUID.randomUUID().toString(), batch);
             try {
                 sendReliably(peerId, payload.batchId(),
@@ -433,6 +465,7 @@ public final class P2pChatSession implements ChatSession {
     private void handleTranscript(String peerId, Envelope envelope) {
         if (!verifiedRemoteFingerprints.containsKey(peerId)) {
             // Chua xac thuc danh tinh nguoi chia se: KHONG ACK de ho gui lai sau khi xac thuc xong.
+            LOG.fine(() -> "Tam bo qua goi lich su tu " + who(peerId) + " - chua xac thuc danh tinh, cho ho gui lai");
             return;
         }
         MessageTranscriptPayload payload;
@@ -471,6 +504,9 @@ public final class P2pChatSession implements ChatSession {
                 }
             }
         }
+        int total = payload.messages().size();
+        LOG.info(() -> "Nhan goi lich su tu " + who(peerId) + ": " + total + " tin, " + added.size()
+                + " tin moi" + (added.size() < total ? " (" + (total - added.size()) + " da co/khong hop le)" : ""));
         ChatSessionListener currentListener = listener;
         if (!added.isEmpty() && currentListener != null && !left) {
             currentListener.onHistoryReceived(peerId, added, authorNames);
@@ -501,6 +537,8 @@ public final class P2pChatSession implements ChatSession {
                     payload, config.roomName(), peerId,
                     connection.getRemoteEcdhPublicKey(), connection.getLocalEcdhPublicKey());
             if (!verification.valid()) {
+                LOG.warning("Chu ky PEER_IDENTITY cua " + who(peerId)
+                        + " KHONG hop le (gia mao hoac khoa ECDH bi trao - nghi ngo MITM)");
                 notifyConnectionFailed(peerId, new SecurityException("Identity peer khong hop le"));
                 return;
             }
@@ -508,6 +546,8 @@ public final class P2pChatSession implements ChatSession {
             String remoteFingerprint = verification.fingerprint();
             boolean firstVerification = verifiedRemoteFingerprints.put(peerId, remoteFingerprint) == null;
             if (firstVerification) {
+                LOG.info(() -> "Da xac thuc danh tinh " + who(peerId) + ", fingerprint "
+                        + remoteFingerprint.substring(0, Math.min(19, remoteFingerprint.length())) + "...");
                 sendHistoryTo(peerId);
             }
             SessionPeer current = knownPeers.get(peerId);
@@ -534,6 +574,8 @@ public final class P2pChatSession implements ChatSession {
     // ------------------------------------------------------------ roi phong / loi
 
     private void notifyPeerLeft(String peerId) {
+        String name = who(peerId);
+        LOG.info(() -> name + " da roi phong" + (admittedPeers.contains(peerId) ? "" : " (chua tung vao duoc phong)"));
         deliveryTracker.forgetPeer(peerId);
         knownPeers.remove(peerId);
         verifiedRemoteFingerprints.remove(peerId);
@@ -548,6 +590,8 @@ public final class P2pChatSession implements ChatSession {
     }
 
     private void notifyConnectionFailed(String peerId, Throwable error) {
+        LOG.warning(() -> "Loi voi " + (peerId == null || peerId.isEmpty() ? "signaling server" : who(peerId))
+                + ": " + (error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage()));
         ChatSessionListener currentListener = listener;
         if (currentListener != null && !left) {
             String reason = error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
@@ -558,6 +602,20 @@ public final class P2pChatSession implements ChatSession {
     private String displayName(String peerId) {
         SessionPeer peer = knownPeers.get(peerId);
         return peer == null ? null : peer.displayName();
+    }
+
+    /** "Ten (8 ky tu dau peerId)" cho log - de phan biet nhieu client cung ten khi test. */
+    private String who(String peerId) {
+        String name = displayName(peerId);
+        if (name == null) {
+            PeerConnection connection = roomSession.getPeerConnection(peerId);
+            name = connection == null ? null : connection.getCustomUsername();
+        }
+        return (name == null ? "peer" : name) + " (" + shortId(peerId) + ")";
+    }
+
+    private static String shortId(String id) {
+        return id == null ? "?" : id.substring(0, Math.min(8, id.length()));
     }
 
     // ------------------------------------------------------------ cau hinh TURN

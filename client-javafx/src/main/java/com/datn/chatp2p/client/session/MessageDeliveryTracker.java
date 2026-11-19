@@ -26,6 +26,8 @@ import java.util.function.BiConsumer;
 final class MessageDeliveryTracker {
 
     static final int RECEIVED_WINDOW_SIZE = 512;
+    private static final java.util.logging.Logger LOG =
+            java.util.logging.Logger.getLogger(MessageDeliveryTracker.class.getName());
 
     private final ScheduledExecutorService scheduler;
     private final int maxRetries;
@@ -61,6 +63,9 @@ final class MessageDeliveryTracker {
                 }
                 throw new IllegalStateException("het luot gui lai"); // ngung lich lap
             }
+            int attempt = maxRetries - remaining.get();
+            LOG.fine(() -> "Chua co ACK - gui lai lan " + attempt + "/" + maxRetries + " id="
+                    + messageId.substring(0, Math.min(8, messageId.length())));
             try {
                 resend.run();
             } catch (RuntimeException ignored) {

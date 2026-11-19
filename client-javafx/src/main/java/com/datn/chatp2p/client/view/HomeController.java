@@ -32,6 +32,7 @@ import java.security.SecureRandom;
 public class HomeController {
 
     private static final SecureRandom RANDOM = new SecureRandom();
+    private static final java.util.logging.Logger LOG = java.util.logging.Logger.getLogger(HomeController.class.getName());
     private static final String DEFAULT_SERVER_URI = "ws://165.101.47.83:8080";
 
     @FXML
@@ -155,9 +156,13 @@ public class HomeController {
 
         try {
             String roomPassword = roomPasswordField.getText() == null ? "" : roomPasswordField.getText();
+            LOG.info(() -> "Bam Vao phong: ten=" + userName + ", phong=" + roomName
+                    + (roomPassword.isEmpty() ? " (cong khai)" : " (co mat khau)")
+                    + ", che do=" + (accountMode ? "tai khoan" : "khach"));
             Navigator.showRoom(stage, new RoomConfig(userName, roomName, serverUri,
                     accountMode ? authToken : "", roomPassword));
         } catch (RuntimeException e) {
+            LOG.log(java.util.logging.Level.WARNING, "Khong vao duoc phong " + roomName, e);
             errorLabel.setText(e.getMessage() == null ? "Không thể vào phòng." : e.getMessage());
         }
     }

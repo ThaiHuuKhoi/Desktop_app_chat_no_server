@@ -56,6 +56,8 @@ import java.util.Map;
  */
 public class RoomController implements ChatSessionListener {
 
+    private static final java.util.logging.Logger LOG = java.util.logging.Logger.getLogger(RoomController.class.getName());
+
     @FXML
     private Label roomNameLabel;
 
@@ -399,6 +401,10 @@ public class RoomController implements ChatSessionListener {
         boolean focused = stage.isFocused();
         String selectedDirect = transcriptManager.selectedDirectPeerId();
         boolean looking = focused && (direct ? peerId.equals(selectedDirect) : selectedDirect == null);
+        LOG.fine(() -> "Tin moi tu " + displayNames.getOrDefault(peerId, peerId) + ": cua so "
+                + (focused ? "dang chon" : "KHONG duoc chon") + ", dang xem dung khung chat=" + looking
+                + " -> am bao=" + (!looking && settings.soundEnabled())
+                + ", thong bao=" + (!focused && settings.desktopNotificationsEnabled()));
         if (!looking && settings.soundEnabled()) {
             SoundPlayer.playIncoming();
         }

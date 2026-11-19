@@ -83,6 +83,9 @@ import java.util.function.BiConsumer;
  */
 public final class PeerConnection {
 
+    private static final java.util.logging.Logger LOG =
+            java.util.logging.Logger.getLogger(PeerConnection.class.getName());
+
     /** So lan GUI LAI (khong tinh lan dau) neu ben kia chua xac nhan handshake xong - xem javadoc lop nay. */
     static final int HANDSHAKE_RETRY_ATTEMPTS = 5;
     /** Khoang cach giua 2 lan gui lai public key ECDH. */
@@ -167,6 +170,7 @@ public final class PeerConnection {
      */
     public void sendEcdhPublicKey() {
         byte[] publicKeyEncoded = ecdhKeyPair.getPublic().getEncoded();
+        LOG.info(() -> "Gui public key ECDH toi peer " + shortId(peerId) + " (bat dau trao khoa)");
         dataChannel.send(publicKeyEncoded);
 
         AtomicInteger remainingRetries = new AtomicInteger(HANDSHAKE_RETRY_ATTEMPTS);
@@ -175,8 +179,13 @@ public final class PeerConnection {
             // hanh vi co san cua scheduleAtFixedRate: 1 task nem loi se tu dong
             // KHONG duoc lich lai nua, khong can tu quan ly co (flag) rieng.
             if (remainingRetries.getAndDecrement() <= 0) {
+                if (codec == null) {
+                    LOG.warning(() -> "Het " + HANDSHAKE_RETRY_ATTEMPTS + " lan gui lai public key ECDH ma chua nhan duoc khoa cua peer "
+                            + shortId(peerId) + " (mat goi UDP?)");
+                }
                 throw new IllegalStateException("Da het luot gui lai public key ECDH cho peer " + peerId);
             }
+            LOG.fine(() -> "Gui lai public key ECDH toi peer " + shortId(peerId));
             // dataChannel.send() cung co the tu nem loi (vd channel da dong vi
             // peer roi phong) - cung se tu dung lich lai theo dung co che tren.
             dataChannel.send(publicKeyEncoded);
@@ -248,10 +257,15 @@ public final class PeerConnection {
         // toi day qua nhanh else nay, tu bi tu choi neu trung van tay, dung y
         // muon: khong can xu ly lai nhung ban sao handshake du thua).
         if (!recentCiphertextFingerprints.add(sha256Hex(data))) {
+            LOG.fine(() -> "Bo qua goi trung y het (replay / nhan doi) tu peer " + shortId(peerId));
             return; // da thay CHINH XAC ban ma hoa nay truoc do - bo qua, khong xu ly lai.
         }
         Envelope envelope = codec.decode(data);
         onEnvelopeReceived.accept(this, envelope);
+    }
+
+    private static String shortId(String id) {
+        return id.substring(0, Math.min(8, id.length()));
     }
 
     private static String sha256Hex(byte[] data) {
@@ -270,6 +284,7 @@ public final class PeerConnection {
         SecretKey sessionKey = KeyExchangeService.deriveSharedSecret(ecdhKeyPair.getPrivate(), peerPublicKey);
         this.remoteEcdhPublicKey = peerPublicKeyEncoded.clone();
         this.codec = new EnvelopeCodec(sessionKey);
+        LOG.info(() -> "Trao khoa ECDH xong voi peer " + shortId(peerId) + " - tu day moi goi duoc ma hoa AES-256-GCM");
         if (onHandshakeComplete != null) {
             onHandshakeComplete.run();
         }
