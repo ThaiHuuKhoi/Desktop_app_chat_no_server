@@ -6,18 +6,11 @@ import com.datn.chatp2p.common.protocol.Envelope;
 import com.datn.chatp2p.common.protocol.EnvelopeType;
 import com.datn.chatp2p.crypto.KeyExchangeService;
 import com.datn.chatp2p.p2p.protocol.EnvelopeCodec;
+import com.datn.chatp2p.p2p.protocol.ReplayedPacketException;
 
-import javax.crypto.SecretKey;
 import java.security.KeyPair;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.security.PublicKey;
-import java.util.Collections;
-import java.util.HexFormat;
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -66,13 +59,14 @@ import java.util.function.BiConsumer;
  * (xem muc "Vong doi trao khoa" o tren) nen mat luon bao ve do - da xac nhan
  * THAT bang test: gui lai y nguyen 1 ban ma hoa da gui thanh cong truoc do
  * (mo phong ke tan cong bat duoc goi tin tren duong truyen roi phat lai) VAN
- * duoc xu ly thanh cong lan 2 neu khong co gi ngan. {@link #handleIncoming}
- * vi vay tu kiem tra "van tay" (SHA-256) cua tung ban ma hoa nhan duoc trong
- * 1 "cua so truot" {@value #REPLAY_WINDOW_SIZE} ban gan nhat cho DUNG peer
- * nay - trung thi bo qua (khong xu ly lai). Dung "vi tri" (khong phai thu
- * tu/timestamp) nen an toan voi viec UDP co the giao goi tin SAI THU TU (2
- * ban tin hop le, KHAC nhau, gui gan nhau van co the toi khong dung thu tu
- * do do tre mang - khong duoc coi nham la replay).
+ * duoc xu ly thanh cong lan 2 neu khong co gi ngan. Vi vay moi goi mang 1 SO
+ * THU TU (nam trong nonce AES-GCM nen duoc xac thuc) va {@link EnvelopeCodec}
+ * giu 1 cua so truot {@value #REPLAY_WINDOW_SIZE} so nhu DTLS: goi trung hoac
+ * cu hon cua so bi bo ({@link ReplayedPacketException}); goi den SAI THU TU
+ * nhung con trong cua so van nhan (UDP co the dao thu tu).
+ *
+ * <p><b>Khoa phien</b>: {@code KeyExchangeService.deriveSessionKeys} dung HKDF-SHA256 tach
+ * 2 khoa rieng cho 2 chieu gui, gan voi dung 2 public key ECDH cua phien.
  *
  * <p><b>Gan danh tinh voi phien ECDH</b>: goi tin ECDH dau tien KHONG duoc xac
  * thuc, nen lop nay luu lai public key ECDH cua ca 2 ben
@@ -91,8 +85,8 @@ public final class PeerConnection {
     /** Khoang cach giua 2 lan gui lai public key ECDH. */
     static final long HANDSHAKE_RETRY_INTERVAL_MILLIS = 300;
 
-    /** So ban ma hoa gan nhat giu lai de doi chieu chong replay - xem javadoc lop nay. */
-    static final int REPLAY_WINDOW_SIZE = 256;
+    /** Do rong cua so chong replay theo so thu tu goi (bang {@code ReplayWindow.SIZE} trong EnvelopeCodec). */
+    static final int REPLAY_WINDOW_SIZE = 1024;
 
     /**
      * Dung CHUNG cho MOI {@code PeerConnection} (khong phai 1 executor rieng
@@ -118,21 +112,6 @@ public final class PeerConnection {
     private volatile PeerVerificationState verificationState = PeerVerificationState.UNVERIFIED;
     private volatile String customUsername;
     private volatile ScheduledFuture<?> handshakeRetryTask;
-
-    /**
-     * "Cua so truot" cac van tay (SHA-256, dang hex) cua {@link #REPLAY_WINDOW_SIZE}
-     * ban ma hoa GAN NHAT da nhan tu DUNG peer nay - xem javadoc lop nay muc
-     * "Chong tan cong REPLAY". Dung {@link LinkedHashMap#removeEldestEntry} de
-     * tu dong loai bo van tay CU NHAT khi vuot qua suc chua, tao thanh 1 hang
-     * doi FIFO co gioi han kich thuoc ma khong can tu quan ly rieng.
-     */
-    private final Set<String> recentCiphertextFingerprints = Collections.synchronizedSet(
-            Collections.newSetFromMap(new LinkedHashMap<>(REPLAY_WINDOW_SIZE + 1, 1.0f, false) {
-                @Override
-                protected boolean removeEldestEntry(Map.Entry<String, Boolean> eldest) {
-                    return size() > REPLAY_WINDOW_SIZE;
-                }
-            }));
 
     /**
      * @param peerId              id on dinh cua peer ben kia (khong doi trong suot phien).
@@ -256,11 +235,13 @@ public final class PeerConnection {
         // dau tien, vi ban sao GUI LAI cua no - co y, xem sendEcdhPublicKey - deu
         // toi day qua nhanh else nay, tu bi tu choi neu trung van tay, dung y
         // muon: khong can xu ly lai nhung ban sao handshake du thua).
-        if (!recentCiphertextFingerprints.add(sha256Hex(data))) {
-            LOG.fine(() -> "Bo qua goi trung y het (replay / nhan doi) tu peer " + shortId(peerId));
-            return; // da thay CHINH XAC ban ma hoa nay truoc do - bo qua, khong xu ly lai.
+        Envelope envelope;
+        try {
+            envelope = codec.decode(data);
+        } catch (ReplayedPacketException e) {
+            LOG.fine(() -> "Bo qua goi trung / qua cu (replay / nhan doi) tu peer " + shortId(peerId));
+            return;
         }
-        Envelope envelope = codec.decode(data);
         onEnvelopeReceived.accept(this, envelope);
     }
 
@@ -268,26 +249,18 @@ public final class PeerConnection {
         return id.substring(0, Math.min(8, id.length()));
     }
 
-    private static String sha256Hex(byte[] data) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            return HexFormat.of().formatHex(digest.digest(data));
-        } catch (NoSuchAlgorithmException e) {
-            // SHA-256 la thuat toan bat buoc phai co trong moi JVM chuan (JLS/JCA) -
-            // khong bao gio xay ra tren thuc te, chi de thoa man checked exception.
-            throw new IllegalStateException("SHA-256 khong duoc JVM nay ho tro", e);
-        }
-    }
-
     private void completeHandshake(byte[] peerPublicKeyEncoded) {
         PublicKey peerPublicKey = KeyExchangeService.decodePublicKey(peerPublicKeyEncoded);
-        SecretKey sessionKey = KeyExchangeService.deriveSharedSecret(ecdhKeyPair.getPrivate(), peerPublicKey);
+        KeyExchangeService.SessionKeys keys = KeyExchangeService.deriveSessionKeys(ecdhKeyPair, peerPublicKey);
         this.remoteEcdhPublicKey = peerPublicKeyEncoded.clone();
-        this.codec = new EnvelopeCodec(sessionKey);
-        LOG.info(() -> "Trao khoa ECDH xong voi peer " + shortId(peerId) + " - tu day moi goi duoc ma hoa AES-256-GCM");
+        this.codec = new EnvelopeCodec(keys);
+        LOG.info(() -> "Trao khoa ECDH xong voi peer " + shortId(peerId)
+                + " - tu day moi goi duoc ma hoa AES-256-GCM (HKDF, khoa rieng moi chieu, co so thu tu goi)");
         if (com.datn.chatp2p.common.log.SecretLogging.enabled()) {
-            LOG.info(() -> "  [bi mat] khoa phien AES-256 voi peer " + shortId(peerId) + " = "
-                    + com.datn.chatp2p.common.log.SecretLogging.revealHex(sessionKey.getEncoded()));
+            LOG.info(() -> "  [bi mat] khoa GUI AES-256 toi peer " + shortId(peerId) + " = "
+                    + com.datn.chatp2p.common.log.SecretLogging.revealHex(keys.sendKey().getEncoded()));
+            LOG.info(() -> "  [bi mat] khoa NHAN AES-256 tu peer " + shortId(peerId) + " = "
+                    + com.datn.chatp2p.common.log.SecretLogging.revealHex(keys.receiveKey().getEncoded()));
             LOG.info(() -> "  [bi mat] public key ECDH cua minh = "
                     + com.datn.chatp2p.common.log.SecretLogging.revealHex(ecdhKeyPair.getPublic().getEncoded()));
             LOG.info(() -> "  [bi mat] public key ECDH cua peer = "

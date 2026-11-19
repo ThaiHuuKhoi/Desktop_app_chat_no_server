@@ -78,7 +78,7 @@ class PeerConnectionReplayAttackTest {
         // nay tren duong truyen, roi gui thang qua channelA (bo qua PeerConnection.send()
         // de kiem soat chinh xac viec gui 2 LAN Y HET nhau).
         EnvelopeCodec codecMirroringPeerA = new EnvelopeCodec(
-                KeyExchangeService.deriveSharedSecret(keyPairA.getPrivate(), keyPairB.getPublic()));
+                KeyExchangeService.deriveSessionKeys(keyPairA, keyPairB.getPublic()));
         byte[] capturedCiphertext = codecMirroringPeerA.encode(
                 EnvelopeType.MESSAGE, new MessagePayload("m-1", "peer-a", "ban tin can bi bat lai", 1L));
 

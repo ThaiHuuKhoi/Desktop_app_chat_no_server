@@ -44,6 +44,40 @@ public final class AesGcmCipher {
         }
     }
 
+    /**
+     * Ma hoa voi nonce do nguoi goi cap (12 byte). Nguoi goi PHAI dam bao khong bao gio dung lai
+     * cung (khoa, nonce) - vd nonce chua so thu tu goi tang dan. Output: {@code ciphertext+tag}
+     * (KHONG kem nonce - nguoi goi tu gui nonce).
+     */
+    public static byte[] encryptWithNonce(SecretKey key, byte[] nonce, byte[] plaintext) {
+        requireNonce(nonce);
+        try {
+            Cipher cipher = Cipher.getInstance(TRANSFORMATION);
+            cipher.init(Cipher.ENCRYPT_MODE, key, new GCMParameterSpec(TAG_LENGTH_BITS, nonce));
+            return cipher.doFinal(plaintext);
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException("Ma hoa AES-GCM that bai", e);
+        }
+    }
+
+    /** Nguoc lai {@link #encryptWithNonce}. Nonce sai (bi sua) thi xac thuc that bai. */
+    public static byte[] decryptWithNonce(SecretKey key, byte[] nonce, byte[] ciphertext) {
+        requireNonce(nonce);
+        try {
+            Cipher cipher = Cipher.getInstance(TRANSFORMATION);
+            cipher.init(Cipher.DECRYPT_MODE, key, new GCMParameterSpec(TAG_LENGTH_BITS, nonce));
+            return cipher.doFinal(ciphertext);
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException("Giai ma AES-GCM that bai (sai khoa hoac du lieu bi thay doi)", e);
+        }
+    }
+
+    private static void requireNonce(byte[] nonce) {
+        if (nonce == null || nonce.length != IV_LENGTH_BYTES) {
+            throw new IllegalArgumentException("Nonce AES-GCM phai dai " + IV_LENGTH_BYTES + " byte");
+        }
+    }
+
     public static byte[] decrypt(SecretKey key, byte[] ivAndCiphertext) {
         if (ivAndCiphertext.length < IV_LENGTH_BYTES) {
             throw new IllegalArgumentException("Du lieu qua ngan, thieu IV");
