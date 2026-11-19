@@ -16,7 +16,6 @@ import org.ice4j.Transport;
 import org.ice4j.TransportAddress;
 
 import java.io.IOException;
-import java.nio.file.Path;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledExecutorService;
@@ -53,7 +52,6 @@ public final class P2pChatSession implements ChatSession {
                 return thread;
             });
     private final RoomSession roomSession;
-    private final FileTransferManager fileTransfers;
 
     private volatile ChatSessionListener listener;
     private volatile boolean left;
@@ -73,9 +71,6 @@ public final class P2pChatSession implements ChatSession {
                 signalingClient,
                 STUN_SERVERS,
                 TURN_SERVERS);
-        this.fileTransfers = new FileTransferManager(
-                (peerId, type, namespace, payload) -> roomSession.sendTo(peerId, type, namespace, payload),
-                this::notifyFileTransfer);
     }
 
     @Override
@@ -93,10 +88,6 @@ public final class P2pChatSession implements ChatSession {
                 notifyConnectionFailed(peerId, error));
         roomSession.onEnvelope(EnvelopeType.MESSAGE, this::handleMessage);
         roomSession.onEnvelope(EnvelopeType.PEER_IDENTITY, this::handlePeerIdentity);
-        for (EnvelopeType type : List.of(EnvelopeType.FILE_OFFER, EnvelopeType.FILE_ANSWER,
-                EnvelopeType.FILE_CHUNK, EnvelopeType.FILE_ACK, EnvelopeType.FILE_CANCEL)) {
-            roomSession.onEnvelope(type, fileTransfers::handleEnvelope);
-        }
 
         try {
             roomSession.join(config.serverUri());
@@ -148,40 +139,10 @@ public final class P2pChatSession implements ChatSession {
     }
 
     @Override
-    public long maxFileSize() {
-        return fileTransfers.limits().maxFileSize();
-    }
-
-    @Override
-    public void sendFile(String peerId, Path file, boolean direct) {
-        if (left) {
-            throw new IllegalStateException("Da roi phong, khong the gui file");
-        }
-        fileTransfers.sendFile(peerId, file, direct);
-    }
-
-    @Override
-    public void acceptFile(String fileId, Path directory) {
-        fileTransfers.acceptFile(fileId, directory);
-    }
-
-    @Override
-    public void rejectFile(String fileId) {
-        fileTransfers.rejectFile(fileId);
-    }
-
-    @Override
-    public void cancelFile(String fileId) {
-        fileTransfers.cancelFile(fileId);
-    }
-
-    @Override
     public void leave() {
         if (left) {
             return;
         }
-        // Bao ben kia huy cac lan truyen file TRUOC khi dong ket noi
-        fileTransfers.close();
         left = true;
         identityRetryExecutor.shutdownNow();
         roomSession.leave();
@@ -278,15 +239,7 @@ public final class P2pChatSession implements ChatSession {
         }
     }
 
-    private void notifyFileTransfer(FileTransferStatus status) {
-        ChatSessionListener currentListener = listener;
-        if (currentListener != null && !left) {
-            currentListener.onFileTransferUpdated(status);
-        }
-    }
-
     private void notifyPeerLeft(String peerId) {
-        fileTransfers.onPeerLeft(peerId);
         knownPeers.remove(peerId);
         verifiedRemoteFingerprints.remove(peerId);
         ChatSessionListener currentListener = listener;

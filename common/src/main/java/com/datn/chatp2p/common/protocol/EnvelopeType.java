@@ -20,9 +20,9 @@ public enum EnvelopeType {
     TYPING_STATUS_CHANGE,
     /** Public key + chu ky danh tinh - xac thuc peer tu dong (chua co IdentitySignatureService). */
     PEER_IDENTITY,
-    /** Loi moi gui 1 file - payload {@link FileOfferPayload} (docs/Thong-nhat-giao-thuc-truyen-file.md D1). */
+    /** Rao 1 file dang chia se (hoac fileId=null de thu hoi). */
     FILE_OFFER,
-    /** 1 chunk du lieu file - payload {@link FileChunkPayload}. */
+    /** 1 chunk du lieu file da ma hoa. */
     FILE_CHUNK,
     /** Bat/tat mic. */
     AUDIO_CHANGE,
@@ -31,13 +31,5 @@ public enum EnvelopeType {
     /** Bat/tat chia se man hinh. */
     SCREEN_SHARE_CHANGE,
     /** 1 khung hinh video/screen-share (Motion-JPEG hoac PCM). */
-    MEDIA_FRAME,
-    // Ba gia tri duoi day them VAO CUOI de khong doi thu tu cac gia tri co san
-    // (docs/Thong-nhat-giao-thuc-truyen-file.md D2).
-    /** Nguoi nhan dong y / tu choi FILE_OFFER - payload {@link FileAnswerPayload}. */
-    FILE_ANSWER,
-    /** Nguoi nhan xac nhan cac chunk da nhan - payload {@link FileAckPayload}. */
-    FILE_ACK,
-    /** Huy hoac bao loi 1 lan truyen file, gui 2 chieu - payload {@link FileCancelPayload}. */
-    FILE_CANCEL
+    MEDIA_FRAME
 }

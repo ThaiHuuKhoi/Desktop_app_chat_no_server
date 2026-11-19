@@ -20,13 +20,6 @@ public interface ChatSessionListener {
     default void onDirectMessageReceived(String peerId, ChatMessage message) {
     }
 
-    /**
-     * 1 lan truyen file thay doi trang thai: loi moi moi ({@code OFFERED}), dang
-     * cho tra loi, tien do, hoan tat, bi tu choi / huy / loi.
-     */
-    default void onFileTransferUpdated(FileTransferStatus status) {
-    }
-
     /** Khong ket noi duoc voi 1 peer; {@code reason} da viet cho nguoi dung doc. */
     void onPeerConnectionFailed(String peerId, String reason);
 }

@@ -3,7 +3,6 @@ package com.datn.chatp2p.client.view;
 import atlantafx.base.theme.Styles;
 import com.datn.chatp2p.client.session.ChatSession;
 import com.datn.chatp2p.client.session.ChatSessionListener;
-import com.datn.chatp2p.client.session.FileTransferStatus;
 import com.datn.chatp2p.client.session.RoomConfig;
 import com.datn.chatp2p.client.session.SessionPeer;
 import com.datn.chatp2p.client.session.SessionPeer.ConnectionKind;
@@ -26,26 +25,18 @@ import javafx.scene.control.TabPane;
 import javafx.scene.control.TextArea;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
-import javafx.scene.input.Dragboard;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
-import javafx.scene.input.TransferMode;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
-import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import org.kordamp.ikonli.feather.Feather;
 import org.kordamp.ikonli.javafx.FontIcon;
 
-import java.awt.Desktop;
-import java.io.File;
-import java.io.IOException;
-import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 
 /**
  * Man hinh phong chat (De-cuong-Chat-P2P-Java.md muc 5): cot trai la phong +
@@ -130,10 +121,8 @@ public class RoomController implements ChatSessionListener {
 
         transcriptManager = new ChatTranscriptManager(
                 session.selfPeerId(),
-                peerId -> displayNames.getOrDefault(peerId, "Người lạ"),
-                new FileCardActions());
+                peerId -> displayNames.getOrDefault(peerId, "Người lạ"));
         transcriptManager.configure(chatTabs, transcriptListView);
-        installFileDrop();
 
         // Dong cua so khi dang trong phong cung phai roi phong dang hoang (dong ket noi P2P/signaling)
         stage.setOnCloseRequest(event -> session.leave());
@@ -209,14 +198,6 @@ public class RoomController implements ChatSessionListener {
     }
 
     @Override
-    public void onFileTransferUpdated(FileTransferStatus status) {
-        Platform.runLater(() -> {
-            transcriptManager.upsertFile(status, displayNames.getOrDefault(status.peerId(), "Người lạ"));
-            refreshRoomState();
-        });
-    }
-
-    @Override
     public void onPeerConnectionFailed(String peerId, String reason) {
         Platform.runLater(() -> notice(NoticeKind.WARNING,
                 "Không kết nối được với " + displayNames.getOrDefault(peerId, "một người") + ": " + reason));
@@ -263,128 +244,6 @@ public class RoomController implements ChatSessionListener {
         } catch (RuntimeException e) {
             // Khong im lang khi gui loi (bai hoc tu issue #618 cua chitchatter)
             notice(NoticeKind.WARNING, "Gửi tin thất bại: " + e.getMessage());
-        }
-    }
-
-    // ---------- Gui file ----------
-
-    @FXML
-    private void onAttachFile() {
-        if (fileTargets().isEmpty()) {
-            notice(NoticeKind.WARNING, "Chưa có ai trong phòng để gửi tệp");
-            return;
-        }
-        FileChooser chooser = new FileChooser();
-        chooser.setTitle("Chọn tệp để gửi");
-        File file = chooser.showOpenDialog(stage);
-        if (file != null) {
-            sendFile(file.toPath());
-        }
-    }
-
-    /** Keo tha file vao khung chat de gui. */
-    private void installFileDrop() {
-        chatTabs.setOnDragOver(event -> {
-            Dragboard board = event.getDragboard();
-            if (board.hasFiles() && board.getFiles().size() == 1 && board.getFiles().get(0).isFile()) {
-                event.acceptTransferModes(TransferMode.COPY);
-            }
-            event.consume();
-        });
-        chatTabs.setOnDragDropped(event -> {
-            Dragboard board = event.getDragboard();
-            boolean accepted = board.hasFiles() && board.getFiles().size() == 1;
-            if (accepted) {
-                sendFile(board.getFiles().get(0).toPath());
-            }
-            event.setDropCompleted(accepted);
-            event.consume();
-        });
-    }
-
-    /** Tab DM -> gui cho nguoi do; tab Nhom -> gui rieng cho tung nguoi trong phong (1-1). */
-    private List<String> fileTargets() {
-        String directPeerId = transcriptManager.selectedDirectPeerId();
-        if (directPeerId != null) {
-            boolean stillHere = peers.stream().anyMatch(item -> item.peer.peerId().equals(directPeerId));
-            return stillHere ? List.of(directPeerId) : List.of();
-        }
-        return peers.stream().map(item -> item.peer.peerId()).toList();
-    }
-
-    private void sendFile(Path file) {
-        List<String> targets = fileTargets();
-        if (targets.isEmpty()) {
-            notice(NoticeKind.WARNING, "Chưa có ai trong phòng để gửi tệp");
-            return;
-        }
-        long maxSize = session.maxFileSize();
-        long size = file.toFile().length();
-        if (maxSize > 0 && size > maxSize) {
-            notice(NoticeKind.WARNING, "Tệp " + file.getFileName() + " (" + FileTransferTexts.size(size)
-                    + ") vượt giới hạn " + FileTransferTexts.size(maxSize));
-            return;
-        }
-        boolean direct = transcriptManager.selectedDirectPeerId() != null;
-        for (String peerId : targets) {
-            // sendFile doc ca file de tinh SHA-256 -> chay ngoai luong giao dien
-            CompletableFuture.runAsync(() -> session.sendFile(peerId, file, direct))
-                    .exceptionally(error -> {
-                        Throwable cause = error.getCause() == null ? error : error.getCause();
-                        Platform.runLater(() -> notice(NoticeKind.WARNING,
-                                "Không gửi được tệp " + file.getFileName() + ": " + cause.getMessage()));
-                        return null;
-                    });
-        }
-    }
-
-    /** Thu muc luu file nhan: ~/Downloads (tao neu chua co). */
-    private static Path downloadDirectory() {
-        return Path.of(System.getProperty("user.home"), "Downloads");
-    }
-
-    /** Xu ly cac nut tren the file. */
-    private final class FileCardActions implements FileTransferActions {
-
-        @Override
-        public void accept(FileTransferStatus status) {
-            runFileAction(() -> session.acceptFile(status.fileId(), downloadDirectory()));
-        }
-
-        @Override
-        public void reject(FileTransferStatus status) {
-            runFileAction(() -> session.rejectFile(status.fileId()));
-        }
-
-        @Override
-        public void cancel(FileTransferStatus status) {
-            runFileAction(() -> session.cancelFile(status.fileId()));
-        }
-
-        @Override
-        public void showInFolder(FileTransferStatus status) {
-            Path saved = status.savedFile();
-            CompletableFuture.runAsync(() -> {
-                try {
-                    if (System.getProperty("os.name", "").toLowerCase().contains("win")) {
-                        // Mo Explorer va chon san file vua nhan
-                        new ProcessBuilder("explorer.exe", "/select,", saved.toString()).start();
-                    } else {
-                        Desktop.getDesktop().open(saved.getParent().toFile());
-                    }
-                } catch (IOException | RuntimeException e) {
-                    Platform.runLater(() -> notice(NoticeKind.WARNING,
-                            "Không mở được thư mục: " + saved.getParent()));
-                }
-            });
-        }
-
-        private void runFileAction(Runnable action) {
-            try {
-                action.run();
-            } catch (RuntimeException e) {
-                notice(NoticeKind.WARNING, "Thao tác với tệp thất bại: " + e.getMessage());
-            }
         }
     }
 
