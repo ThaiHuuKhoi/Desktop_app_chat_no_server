@@ -479,3 +479,76 @@
 .fingerprint-warning .ikonli-font-icon {
     -fx-icon-color: -color-warning-fg;
 }
+
+/* ---------- Markdown trong tin nhan (MarkdownView) ---------- */
+
+.md-text {
+    -fx-font-size: 13px;
+    -fx-fill: -color-fg-default;
+}
+
+.bubble-mine .md-text {
+    -fx-fill: -color-fg-emphasis;
+}
+
+.md-bold {
+    -fx-font-weight: bold;
+}
+
+.md-italic {
+    -fx-font-style: italic;
+}
+
+.md-strike {
+    -fx-strikethrough: true;
+}
+
+.md-code {
+    -fx-font-family: "Consolas", "Cascadia Mono", "Menlo", monospace;
+    -fx-font-size: 12px;
+}
+
+.md-code-block {
+    -fx-font-family: "Consolas", "Cascadia Mono", "Menlo", monospace;
+    -fx-font-size: 12px;
+    -fx-text-fill: -color-fg-default;
+    -fx-background-color: -color-bg-inset;
+    -fx-background-radius: 6;
+    -fx-padding: 6 8 6 8;
+}
+
+.md-quote {
+    -fx-border-color: transparent transparent transparent -color-border-default;
+    -fx-border-width: 0 0 0 3;
+    -fx-padding: 0 0 0 8;
+}
+
+.md-link {
+    -fx-padding: 0;
+    -fx-font-size: 13px;
+    -fx-underline: true;
+}
+
+.bubble-mine .md-link {
+    -fx-text-fill: -color-fg-emphasis;
+}
+
+/* ---------- Dang go, cai dat ---------- */
+
+.typing-indicator {
+    -fx-font-size: 11px;
+    -fx-font-style: italic;
+    -fx-text-fill: -color-fg-muted;
+    -fx-padding: 0 0 0 4;
+}
+
+.settings-section {
+    -fx-font-weight: bold;
+    -fx-text-fill: -color-fg-muted;
+    -fx-padding: 6 0 0 0;
+}
+
+.settings-hint {
+    -fx-font-size: 11px;
+    -fx-text-fill: -color-fg-subtle;
+}

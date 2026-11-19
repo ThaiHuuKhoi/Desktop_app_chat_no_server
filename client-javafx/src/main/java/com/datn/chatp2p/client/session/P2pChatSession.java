@@ -6,6 +6,7 @@ import com.datn.chatp2p.common.protocol.Envelope;
 import com.datn.chatp2p.common.protocol.EnvelopeType;
 import com.datn.chatp2p.common.protocol.IdentityPayload;
 import com.datn.chatp2p.common.protocol.MessageAckPayload;
+import com.datn.chatp2p.common.protocol.TypingStatusPayload;
 import com.datn.chatp2p.common.protocol.MessagePayload;
 import com.datn.chatp2p.common.protocol.EnvelopeNamespace;
 import com.datn.chatp2p.p2p.PeerConnection;
@@ -98,6 +99,7 @@ public final class P2pChatSession implements ChatSession {
                 notifyConnectionFailed(peerId, error));
         roomSession.onEnvelope(EnvelopeType.MESSAGE, this::handleMessage);
         roomSession.onEnvelope(EnvelopeType.MESSAGE_ACK, this::handleMessageAck);
+        roomSession.onEnvelope(EnvelopeType.TYPING_STATUS_CHANGE, this::handleTypingStatus);
         roomSession.onEnvelope(EnvelopeType.PEER_IDENTITY, this::handlePeerIdentity);
 
         try {
@@ -154,6 +156,45 @@ public final class P2pChatSession implements ChatSession {
                 message.getText(),
                 System.currentTimeMillis());
         sendReliably(peerId, EnvelopeNamespace.DIRECT_MESSAGE, payload);
+    }
+
+    @Override
+    public void sendTypingStatus(String directPeerId, boolean typing) {
+        if (left) {
+            return;
+        }
+        TypingStatusPayload payload = new TypingStatusPayload(typing);
+        // Best-effort: khong ACK, khong gui lai, khong bao loi len UI (tranh lam phien vi
+        // 1 tin hieu "dang go" bi mat). Ben gui nhac lai dinh ky, ben nhan tu het han.
+        if (directPeerId != null) {
+            sendTypingQuietly(directPeerId, EnvelopeNamespace.DIRECT_MESSAGE, payload);
+            return;
+        }
+        for (String peerId : roomSession.getPeerIds()) {
+            sendTypingQuietly(peerId, null, payload);
+        }
+    }
+
+    private void sendTypingQuietly(String peerId, String namespace, TypingStatusPayload payload) {
+        try {
+            roomSession.sendTo(peerId, EnvelopeType.TYPING_STATUS_CHANGE, namespace, payload);
+        } catch (RuntimeException error) {
+            LOG.fine(() -> "Gui TYPING_STATUS_CHANGE toi " + peerId + " that bai: " + error.getMessage());
+        }
+    }
+
+    private void handleTypingStatus(String peerId, Envelope envelope) {
+        ChatSessionListener currentListener = listener;
+        if (currentListener == null || left) {
+            return;
+        }
+        try {
+            TypingStatusPayload payload = OBJECT_MAPPER.readValue(envelope.payload(), TypingStatusPayload.class);
+            currentListener.onPeerTyping(peerId,
+                    EnvelopeNamespace.DIRECT_MESSAGE.equals(envelope.namespace()), payload.typing());
+        } catch (IOException error) {
+            LOG.fine(() -> "Bo qua TYPING_STATUS_CHANGE hong tu " + peerId);
+        }
     }
 
     /**

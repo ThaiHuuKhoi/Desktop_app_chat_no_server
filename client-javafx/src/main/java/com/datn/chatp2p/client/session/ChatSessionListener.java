@@ -20,6 +20,14 @@ public interface ChatSessionListener {
     default void onDirectMessageReceived(String peerId, ChatMessage message) {
     }
 
+    /**
+     * 1 peer bat dau / ngung go.
+     *
+     * @param direct {@code true} neu peer dang go trong tab tin nhan rieng voi minh.
+     */
+    default void onPeerTyping(String peerId, boolean direct, boolean typing) {
+    }
+
     /** Khong ket noi duoc voi 1 peer; {@code reason} da viet cho nguoi dung doc. */
     void onPeerConnectionFailed(String peerId, String reason);
 }

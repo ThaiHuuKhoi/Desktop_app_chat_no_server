@@ -74,10 +74,8 @@ class TranscriptCell extends ListCell<TranscriptEntry> {
     private Node messageRow(ChatMessage message, boolean continuation) {
         boolean mine = selfPeerId.equals(message.getAuthorId());
 
-        Label textLabel = new Label(message.getText());
-        textLabel.setWrapText(true);
-        // Khong cho Label co lai thanh "..." - luon cao du de hien het cac dong
-        textLabel.setMinHeight(Region.USE_PREF_SIZE);
+        // Markdown (dam/nghieng/code/link...) - MarkdownView tu dat min height = pref de khong bi cat.
+        Node textLabel = MarkdownView.render(message.getText());
         textLabel.getStyleClass().add("message-text");
 
         Label timeLabel = new Label(TIME_FORMATTER.format(Instant.ofEpochMilli(message.getTimeSent())));

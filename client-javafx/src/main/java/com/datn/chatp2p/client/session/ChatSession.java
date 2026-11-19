@@ -32,6 +32,14 @@ public interface ChatSession {
         throw new UnsupportedOperationException("Che do nay chua ho tro tin nhan rieng");
     }
 
+    /**
+     * Bao trang thai dang go (best-effort, khong nem loi, mat goi cung khong sao).
+     *
+     * @param directPeerId null = dang go o khung chat nhom; khac null = trong tab tin nhan rieng.
+     */
+    default void sendTypingStatus(String directPeerId, boolean typing) {
+    }
+
     /** Roi phong, dong moi ket noi. Goi nhieu lan khong sao. */
     void leave();
 }
