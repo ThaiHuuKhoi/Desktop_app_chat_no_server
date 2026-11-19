@@ -43,6 +43,7 @@ final class FingerprintDialog {
 
         VBox content = new VBox(14,
                 intro,
+                qrBlock(item.peer.localFingerprint(), item.peer.remoteFingerprint(), peerName),
                 block("Vân tay khoá của bạn", item.peer.localFingerprint()),
                 block("Vân tay khoá của " + peerName, item.peer.remoteFingerprint()),
                 warning);
@@ -69,6 +70,32 @@ final class FingerprintDialog {
             return Result.MATCH;
         }
         return chosen == mismatch ? Result.MISMATCH : Result.CANCELLED;
+    }
+
+    /** Ma QR chung: tren may cua nguoi kia phai hien Y HET ma nay (so bang mat hoac quet bang dien thoai). */
+    private static VBox qrBlock(String localFingerprint, String remoteFingerprint, String peerName) {
+        Label title = new Label("Mã an toàn chung (trên máy của " + peerName + " phải giống hệt)");
+        title.getStyleClass().add("fingerprint-title");
+        boolean[][] cells = SafetyCode.qrMatrix(SafetyCode.combine(localFingerprint, remoteFingerprint));
+        int scale = Math.max(2, 180 / cells.length);
+        javafx.scene.image.WritableImage image =
+                new javafx.scene.image.WritableImage(cells.length * scale, cells.length * scale);
+        javafx.scene.image.PixelWriter pixels = image.getPixelWriter();
+        for (int y = 0; y < cells.length; y++) {
+            for (int x = 0; x < cells[y].length; x++) {
+                javafx.scene.paint.Color color = cells[y][x] ? javafx.scene.paint.Color.BLACK : javafx.scene.paint.Color.WHITE;
+                for (int dy = 0; dy < scale; dy++) {
+                    for (int dx = 0; dx < scale; dx++) {
+                        pixels.setColor(x * scale + dx, y * scale + dy, color);
+                    }
+                }
+            }
+        }
+        javafx.scene.image.ImageView view = new javafx.scene.image.ImageView(image);
+        VBox block = new VBox(6, title, view);
+        block.setAlignment(javafx.geometry.Pos.CENTER);
+        block.getStyleClass().add("fingerprint-block");
+        return block;
     }
 
     private static VBox block(String title, String fingerprint) {

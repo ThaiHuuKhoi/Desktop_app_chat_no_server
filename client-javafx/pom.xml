@@ -49,6 +49,12 @@
       <artifactId>jna-platform</artifactId>
       <version>5.13.0</version>
     </dependency>
+    <!-- Ma QR "ma an toan" trong hop so van tay (SafetyCode). -->
+    <dependency>
+      <groupId>com.google.zxing</groupId>
+      <artifactId>core</artifactId>
+      <version>3.5.3</version>
+    </dependency>
 
     <dependency>
       <groupId>org.openjfx</groupId>
