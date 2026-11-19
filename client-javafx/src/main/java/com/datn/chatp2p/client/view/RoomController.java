@@ -11,11 +11,13 @@ import com.datn.chatp2p.client.session.SessionPeer.ConnectionKind;
 import com.datn.chatp2p.client.util.DesktopNotifier;
 import com.datn.chatp2p.client.util.SoundPlayer;
 import com.datn.chatp2p.client.util.ThemeManager;
+import com.datn.chatp2p.client.util.TrustedPeers;
 import com.datn.chatp2p.client.util.UserSettings;
 import com.datn.chatp2p.client.view.TranscriptEntry.NoticeKind;
 import com.datn.chatp2p.client.view.TranscriptEntry.SystemNotice;
 import com.datn.chatp2p.client.view.TranscriptEntry.UserMessage;
 import com.datn.chatp2p.common.model.ChatMessage;
+import com.datn.chatp2p.common.model.PeerVerificationState;
 import javafx.animation.Animation;
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
@@ -120,6 +122,10 @@ public class RoomController implements ChatSessionListener {
     private static final int ALONE_HINT_SECONDS = 20;
     /** Da nhan JOIN_REJECTED va dang quay ve sanh (server co the gui lai khi tu ket noi lai). */
     private boolean joinRejected;
+    /** Peer da duoc canh bao "khoa da doi" (chi canh bao 1 lan moi peer). */
+    private final java.util.Set<String> keyChangeWarned = new java.util.HashSet<>();
+    /** Trang thai "dang gui / da nhan" cua cac tin minh gui. */
+    private final DeliveryStatuses deliveryStatuses = new DeliveryStatuses();
     private final javafx.animation.PauseTransition aloneHintTimer =
             new javafx.animation.PauseTransition(Duration.seconds(ALONE_HINT_SECONDS));
     private final Map<String, String> displayNames = new HashMap<>();
@@ -153,13 +159,15 @@ public class RoomController implements ChatSessionListener {
         selfAvatarHolder.getChildren().setAll(Avatars.create(config.userName(), 16));
 
         peerListView.setItems(peers);
-        peerListView.setCellFactory(list -> new PeerListCell(this::openDirectMessage));
+        peerListView.setCellFactory(list -> new PeerListCell(this::openDirectMessage, this::verifyFingerprint,
+                item -> TrustedPeers.get().status(item.peer.displayName(), item.peer.remoteFingerprint())));
         peerListView.setPlaceholder(new Label("Chưa có ai khác"));
 
         transcriptManager = new ChatTranscriptManager(
                 session.selfPeerId(),
                 peerId -> displayNames.getOrDefault(peerId, "Người lạ"),
-                new FileCardActions());
+                new FileCardActions(),
+                deliveryStatuses::status);
         transcriptManager.configure(chatTabs, transcriptListView);
         installFileDrop();
 
@@ -226,14 +234,82 @@ public class RoomController implements ChatSessionListener {
             if (!updated) {
                 pendingPeerUpdates.put(peer.peerId(), peer);
             }
+            warnIfKeyChanged(peer);
             peerListView.refresh();
             refreshRoomState();
+        });
+    }
+
+    /** Nguoi nay da tung duoc xac minh van tay ma gio van tay khac -&gt; canh bao ro (1 lan moi peer). */
+    private void warnIfKeyChanged(SessionPeer peer) {
+        if (peer.verificationState() != PeerVerificationState.VERIFIED || !keyChangeWarned.add(peer.peerId())) {
+            return;
+        }
+        if (TrustedPeers.get().status(peer.displayName(), peer.remoteFingerprint()) == TrustedPeers.Status.CHANGED) {
+            LOG.warning("Van tay cua '" + peer.displayName() + "' khac lan da xac minh truoc do");
+            notice(NoticeKind.WARNING, "Khoá danh tính của " + peer.displayName()
+                    + " KHÁC với lần bạn đã xác minh trước đây. Có thể là người khác dùng cùng tên, "
+                    + "hoặc họ đã đổi máy. Đừng gửi thông tin nhạy cảm cho tới khi so lại vân tay "
+                    + "(bấm vào biểu tượng cạnh tên họ).");
+        }
+    }
+
+    /** Mo hop so van tay; "Khop" -&gt; ghi nho la tin cay, "Khong khop" -&gt; bo tin cay + canh bao. */
+    private void verifyFingerprint(PeerItem item) {
+        if (item.peer.remoteFingerprint() == null) {
+            notice(NoticeKind.INFO, "Chưa có vân tay của " + item.peer.displayName() + ", vui lòng đợi xác minh xong.");
+            return;
+        }
+        switch (FingerprintDialog.show(stage, item)) {
+            case MATCH -> {
+                TrustedPeers.get().trust(item.peer.displayName(), item.peer.remoteFingerprint());
+                notice(NoticeKind.SECURE, "Đã đánh dấu tin cậy " + item.peer.displayName()
+                        + ". Lần sau nếu khoá của người tên này thay đổi, bạn sẽ được cảnh báo.");
+            }
+            case MISMATCH -> {
+                TrustedPeers.get().forget(item.peer.displayName());
+                notice(NoticeKind.WARNING, "Vân tay của " + item.peer.displayName()
+                        + " KHÔNG khớp: có thể có người đang xen giữa. Đừng gửi thông tin nhạy cảm.");
+            }
+            case CANCELLED -> {
+                return;
+            }
+        }
+        peerListView.refresh();
+    }
+
+    @Override
+    public void onMessageSent(String messageId, List<String> recipientPeerIds) {
+        Platform.runLater(() -> {
+            deliveryStatuses.sent(messageId, recipientPeerIds);
+            transcriptManager.refreshAll();
+        });
+    }
+
+    @Override
+    public void onMessageDelivered(String messageId, String peerId) {
+        Platform.runLater(() -> {
+            if (deliveryStatuses.delivered(messageId, peerId)) {
+                transcriptManager.refreshAll();
+            }
+        });
+    }
+
+    @Override
+    public void onMessageDeliveryFailed(String messageId, String peerId) {
+        Platform.runLater(() -> {
+            if (deliveryStatuses.failed(messageId, peerId)) {
+                transcriptManager.refreshAll();
+            }
         });
     }
 
     @Override
     public void onPeerLeft(String peerId) {
         Platform.runLater(() -> {
+            if (deliveryStatuses.peerLeft(peerId)) {
+                transcriptManager.refreshAll();
+            }
             peers.removeIf(item -> item.peer.peerId().equals(peerId));
             pendingPeerUpdates.remove(peerId);
             typingTracker.removePeer(peerId);

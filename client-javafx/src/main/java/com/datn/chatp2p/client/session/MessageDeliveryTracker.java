@@ -78,12 +78,18 @@ final class MessageDeliveryTracker {
         }
     }
 
-    /** Nhan duoc ACK - ngung gui lai. */
-    void acknowledge(String peerId, String messageId) {
+    /**
+     * Nhan duoc ACK - ngung gui lai.
+     *
+     * @return {@code true} neu tin nay dang cho ACK (lan dau xac nhan), {@code false} neu ACK trung / la.
+     */
+    boolean acknowledge(String peerId, String messageId) {
         ScheduledFuture<?> task = pending.remove(new Key(peerId, messageId));
         if (task != null) {
             task.cancel(false);
+            return true;
         }
+        return false;
     }
 
     /** @return {@code true} neu la lan DAU nhan {@code messageId} tu {@code peerId} (khong phai ban gui lai). */

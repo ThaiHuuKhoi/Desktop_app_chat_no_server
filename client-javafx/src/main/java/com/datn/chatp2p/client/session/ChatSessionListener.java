@@ -46,6 +46,21 @@ public interface ChatSessionListener {
     }
 
     /**
+     * Tin {@code messageId} cua minh vua duoc gui toi {@code recipientPeerIds} (rong neu phong chua
+     * co ai). Goi TRUOC moi {@link #onMessageDelivered} cua tin do.
+     */
+    default void onMessageSent(String messageId, java.util.List<String> recipientPeerIds) {
+    }
+
+    /** {@code peerId} da xac nhan nhan tin {@code messageId} (MESSAGE_ACK). */
+    default void onMessageDelivered(String messageId, String peerId) {
+    }
+
+    /** Het luot gui lai ma {@code peerId} van chua xac nhan tin {@code messageId}. */
+    default void onMessageDeliveryFailed(String messageId, String peerId) {
+    }
+
+    /**
      * Server tu choi cho vao phong (sai mat khau, phong day, token het han...). {@code reason} la ma
      * {@link com.datn.chatp2p.common.signal.JoinRejectReason}; giao dien nen roi phong va bao nguoi dung.
      */

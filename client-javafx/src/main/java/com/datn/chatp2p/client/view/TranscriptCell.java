@@ -50,12 +50,14 @@ class TranscriptCell extends ListCell<TranscriptEntry> {
     private final String selfPeerId;
     private final Function<String, String> displayNameResolver;
     private final FileTransferActions fileActions;
+    private final Function<String, DeliveryStatuses.Status> deliveryResolver;
 
     TranscriptCell(String selfPeerId, Function<String, String> displayNameResolver,
-                   FileTransferActions fileActions) {
+                   FileTransferActions fileActions, Function<String, DeliveryStatuses.Status> deliveryResolver) {
         this.selfPeerId = selfPeerId;
         this.displayNameResolver = displayNameResolver;
         this.fileActions = fileActions;
+        this.deliveryResolver = deliveryResolver;
         // De ListView tu co theo chieu rong, khong hien thanh cuon ngang khi tin dai
         setPrefWidth(0);
     }
@@ -212,8 +214,42 @@ class TranscriptCell extends ListCell<TranscriptEntry> {
         Label timeLabel = new Label(TIME_FORMATTER.format(Instant.ofEpochMilli(message.getTimeSent())));
         timeLabel.getStyleClass().add("message-time");
         if (mine) {
-            timeLabel.setGraphic(new FontIcon(Feather.CHECK));
+            DeliveryStatuses.Status delivery = deliveryResolver.apply(message.getId());
+            Feather icon = Feather.CHECK;
+            String tooltip = null;
+            if (delivery != null) {
+                switch (delivery.kind()) {
+                    case SENDING -> {
+                        icon = Feather.CLOCK;
+                        tooltip = "Đang chờ người nhận xác nhận";
+                    }
+                    case DELIVERED -> {
+                        icon = Feather.CHECK_CIRCLE;
+                        tooltip = "Máy người nhận đã xác nhận nhận được tin";
+                    }
+                    case PARTIAL -> {
+                        icon = Feather.CHECK;
+                        tooltip = delivery.delivered() + " trên " + delivery.recipients() + " người đã nhận";
+                    }
+                    case FAILED -> {
+                        icon = Feather.ALERT_CIRCLE;
+                        tooltip = "Không nhận được xác nhận (người nhận rời phòng hoặc mất kết nối)";
+                    }
+                    case NO_RECIPIENT -> tooltip = "Phòng chưa có ai, tin chỉ lưu vào lịch sử";
+                }
+                String label = delivery.label();
+                if (!label.isEmpty()) {
+                    timeLabel.setText(timeLabel.getText() + " · " + label);
+                }
+                if (delivery.kind() == DeliveryStatuses.Status.Kind.FAILED) {
+                    timeLabel.getStyleClass().add("message-time-failed");
+                }
+            }
+            timeLabel.setGraphic(new FontIcon(icon));
             timeLabel.setContentDisplay(ContentDisplay.RIGHT);
+            if (tooltip != null) {
+                timeLabel.setTooltip(new Tooltip(tooltip));
+            }
         }
         HBox timeRow = new HBox(6, timeLabel);
         timeRow.setAlignment(Pos.CENTER_RIGHT);

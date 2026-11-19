@@ -92,6 +92,7 @@ public final class P2pChatSession implements ChatSession {
             (peerId, messageId) -> {
                 LOG.warning(() -> "Het luot gui lai: id=" + shortId(messageId) + " toi " + who(peerId)
                         + " khong nhan duoc ACK sau " + MESSAGE_MAX_RETRIES + " lan");
+                notifyDeliveryFailed(messageId, peerId);
                 notifyConnectionFailed(peerId, new IOException(
                         "tin nhắn chưa tới nơi (không nhận được xác nhận sau "
                                 + MESSAGE_MAX_RETRIES + " lần gửi lại)"));
@@ -183,11 +184,13 @@ public final class P2pChatSession implements ChatSession {
         LOG.info(() -> "Gui tin NHOM id=" + shortId(message.getId()) + " " + SecretLogging.text(message.getText())
                 + " toi " + recipients.size() + " nguoi"
                 + (recipients.isEmpty() ? " - phong chua co ai, chi luu vao lich su" : ""));
+        notifyMessageSent(message.getId(), recipients);
         for (String peerId : recipients) {
             try {
                 sendMessageReliably(peerId, null, payload);
             } catch (RuntimeException error) {
                 // 1 peer loi khong duoc chan viec gui toi cac peer con lai.
+                notifyDeliveryFailed(message.getId(), peerId);
                 notifyConnectionFailed(peerId, error);
             }
         }
@@ -205,7 +208,22 @@ public final class P2pChatSession implements ChatSession {
                 message.getId(), message.getAuthorId(), message.getText(), message.getTimeSent());
         LOG.info(() -> "Gui tin RIENG id=" + shortId(message.getId()) + " " + SecretLogging.text(message.getText())
                 + " toi " + who(peerId));
+        notifyMessageSent(message.getId(), List.of(peerId));
         sendMessageReliably(peerId, EnvelopeNamespace.DIRECT_MESSAGE, payload);
+    }
+
+    private void notifyMessageSent(String messageId, List<String> recipients) {
+        ChatSessionListener currentListener = listener;
+        if (currentListener != null && !left) {
+            currentListener.onMessageSent(messageId, List.copyOf(recipients));
+        }
+    }
+
+    private void notifyDeliveryFailed(String messageId, String peerId) {
+        ChatSessionListener currentListener = listener;
+        if (currentListener != null && !left) {
+            currentListener.onMessageDeliveryFailed(messageId, peerId);
+        }
     }
 
     @Override
@@ -464,7 +482,12 @@ public final class P2pChatSession implements ChatSession {
         try {
             MessageAckPayload ack = OBJECT_MAPPER.readValue(envelope.payload(), MessageAckPayload.class);
             LOG.fine(() -> "Nhan ACK id=" + shortId(ack.messageId()) + " tu " + who(peerId));
-            deliveryTracker.acknowledge(peerId, ack.messageId());
+            if (deliveryTracker.acknowledge(peerId, ack.messageId())) {
+                ChatSessionListener currentListener = listener;
+                if (currentListener != null && !left) {
+                    currentListener.onMessageDelivered(ack.messageId(), peerId);
+                }
+            }
         } catch (IOException error) {
             LOG.fine(() -> "Bo qua MESSAGE_ACK hong tu " + peerId);
         }

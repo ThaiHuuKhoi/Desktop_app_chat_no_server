@@ -21,6 +21,8 @@ final class ChatTranscriptManager {
     private final String selfPeerId;
     private final Function<String, String> displayNameResolver;
     private final FileTransferActions fileActions;
+    private final Function<String, DeliveryStatuses.Status> deliveryResolver;
+    private ListView<TranscriptEntry> groupView;
     private final ObservableList<TranscriptEntry> groupTranscript = FXCollections.observableArrayList();
     private final Map<String, ObservableList<TranscriptEntry>> directTranscripts = new HashMap<>();
     private final Map<String, ListView<TranscriptEntry>> directViews = new HashMap<>();
@@ -28,14 +30,24 @@ final class ChatTranscriptManager {
     private TabPane tabs;
 
     ChatTranscriptManager(String selfPeerId, Function<String, String> displayNameResolver,
-                          FileTransferActions fileActions) {
+                          FileTransferActions fileActions, Function<String, DeliveryStatuses.Status> deliveryResolver) {
         this.selfPeerId = selfPeerId;
         this.displayNameResolver = displayNameResolver;
         this.fileActions = fileActions;
+        this.deliveryResolver = deliveryResolver;
+    }
+
+    /** Ve lai moi khung chat (vd khi trang thai "da nhan" cua 1 tin thay doi). */
+    void refreshAll() {
+        if (groupView != null) {
+            groupView.refresh();
+        }
+        directViews.values().forEach(ListView::refresh);
     }
 
     void configure(TabPane tabs, ListView<TranscriptEntry> groupView) {
         this.tabs = tabs;
+        this.groupView = groupView;
         groupView.setItems(groupTranscript);
         groupView.setCellFactory(list -> newCell());
         groupTranscript.addListener((ListChangeListener<TranscriptEntry>) change -> {
@@ -172,7 +184,7 @@ final class ChatTranscriptManager {
     }
 
     private TranscriptCell newCell() {
-        return new TranscriptCell(selfPeerId, displayNameResolver, fileActions);
+        return new TranscriptCell(selfPeerId, displayNameResolver, fileActions, deliveryResolver);
     }
 
     String selectedDirectPeerId() {

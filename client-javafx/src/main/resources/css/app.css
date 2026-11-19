@@ -219,6 +219,22 @@
     -fx-icon-color: -color-success-fg;
 }
 
+.peer-trusted-badge .ikonli-font-icon {
+    -fx-icon-size: 18px;
+    -fx-icon-color: -color-accent-fg;
+}
+
+.peer-changed-badge {
+    -fx-text-fill: -color-danger-fg;
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+}
+
+.peer-changed-badge .ikonli-font-icon {
+    -fx-icon-size: 16px;
+    -fx-icon-color: -color-danger-fg;
+}
+
 .self-card {
     -fx-padding: 14 12 14 16;
     -fx-background-color: -color-bg-default;
@@ -331,6 +347,12 @@
     -fx-font-size: 10px;
     -fx-text-fill: -color-fg-subtle;
     -fx-graphic-text-gap: 3;
+}
+
+.message-time-failed,
+.message-time-failed .ikonli-font-icon {
+    -fx-text-fill: -color-danger-fg;
+    -fx-icon-color: -color-danger-fg;
 }
 
 .message-time .ikonli-font-icon {
