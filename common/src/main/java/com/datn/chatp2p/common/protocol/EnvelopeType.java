@@ -31,5 +31,13 @@ public enum EnvelopeType {
     /** Bat/tat chia se man hinh. */
     SCREEN_SHARE_CHANGE,
     /** 1 khung hinh video/screen-share (Motion-JPEG hoac PCM). */
-    MEDIA_FRAME
+    MEDIA_FRAME,
+
+    // Gia tri moi LUON them vao CUOI enum (quy uoc A/B, khong doi thu tu gia tri cu).
+
+    /**
+     * Xac nhan da nhan 1 {@link #MESSAGE} (payload {@link MessageAckPayload}) - UDP
+     * khong co ACK o tang duoi, nen ben gui tu gui lai cho toi khi nhan duoc ACK.
+     */
+    MESSAGE_ACK
 }

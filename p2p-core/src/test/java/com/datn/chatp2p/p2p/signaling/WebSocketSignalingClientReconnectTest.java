@@ -101,7 +101,7 @@ class WebSocketSignalingClientReconnectTest {
 
     private static ConfigurableApplicationContext startServerOnPort(int port) {
         ConfigurableApplicationContext context = new SpringApplicationBuilder(SignalingServerApplication.class)
-                .run("--server.port=" + port);
+                .run("--server.port=" + port, "--chat-p2p.auth.required=false");
         int actualPort = ((ServletWebServerApplicationContext) context).getWebServer().getPort();
         if (actualPort != port) {
             // Khong nen xay ra (da chi dinh port cu the, khong phai 0) nhung kiem tra

@@ -23,11 +23,27 @@ Maven multi-module, chia theo tang ky thuat dung nhu
 
 | Module | Vai tro | Phu trach |
 |---|---|---|
-| [common](common) | Model dung chung + interface `DataChannel` + giao thuc signaling | A + B |
-| [crypto](crypto) | Trao khoa ECDH, ma hoa AES-GCM, fingerprint xac thuc | Thanh vien B |
-| [p2p-core](p2p-core) | Cai dat `DataChannel`: `LoopbackDataChannel` (demo), `P2pDataChannel` (khung, TODO ice4j), `SignalingClient` | Thanh vien A |
-| [signaling-server](signaling-server) | Spring Boot + WebSocket: quan ly phong, relay SDP/ICE candidate | Thanh vien A |
-| [client-javafx](client-javafx) | Giao dien desktop JavaFX | Thanh vien B |
+| [common](common) | Model dung chung, interface `DataChannel`, giao thuc `Envelope` (P2P) va `SignalMessage` (signaling) | A + B |
+| [crypto](crypto) | Trao khoa ECDH, ma hoa AES-256-GCM, chu ky danh tinh ECDSA, luu khoa danh tinh, fingerprint | Thanh vien B |
+| [p2p-core](p2p-core) | `RoomSession` (mesh), `PeerConnection` (trao khoa + chong replay), ICE/STUN/TURN bang ice4j (`IceP2pConnectionEstablisher`), `P2pDataChannel` (UDP), `WebSocketSignalingClient`; `LoopbackDataChannel` chi dung cho test | Thanh vien A |
+| [signaling-server](signaling-server) | Spring Boot + WebSocket: quan ly phong, relay OFFER/ANSWER/ICE; REST `/auth/*` + MySQL cho tai khoan | Thanh vien A |
+| [client-javafx](client-javafx) | Giao dien desktop JavaFX, ket noi that qua `P2pChatSession` | Thanh vien B |
+
+### Luong ket noi va bao mat
+
+1. Client JOIN phong qua WebSocket -> server tra `PEER_LIST`; nguoi moi vao gui
+   ICE OFFER toi tung peer co san, server chi relay OFFER/ANSWER.
+2. ICE xong -> 2 ben co duong UDP truc tiep (hoac qua TURN). Moi ben gui public
+   key ECDH tam thoi (goi duy nhat khong ma hoa) -> suy ra khoa AES-256-GCM.
+3. Moi goi tiep theo la `Envelope` ma hoa AES-GCM, co chong replay.
+4. Hai ben gui `PEER_IDENTITY`: public key ECDSA lau dai + chu ky tren
+   `roomId | peerId | SHA-256(khoa ECDH ben ky) | SHA-256(khoa ECDH ben nhan)`.
+   Vi chu ky gan voi khoa ECDH cua phien, ke dung giua (vd signaling server bi
+   chiem) thay khoa ECDH se lam chu ky that bai. Nguoi dung van nen doi chieu
+   fingerprint o lan gap dau tien.
+5. Tin nhan (`MESSAGE`) duoc ben nhan tra `MESSAGE_ACK`; ben gui tu gui lai
+   (toi da 6 lan, cach 500ms) neu chua co ACK, ben nhan loai ban trung theo id.
+   Het luot thi UI hien canh bao. Thu tu tin nhan van khong duoc dam bao tuyet doi.
 
 Interface chung giua hai phan viec (da chot trong Phan-cong-cong-viec.md):
 
@@ -45,20 +61,31 @@ public interface DataChannel {
 # Build toan bo
 mvn -q -DskipTests package
 
-# Test module crypto (ECDH + AES-GCM)
-mvn -pl crypto test
+# Chay toan bo test (test p2p-core can module signaling-server, nen chay tu goc repo)
+mvn test
 
-# Test signaling server (khoi dong that mot Spring context + WebSocket that de test)
-mvn -pl signaling-server test
-
-# Chay signaling server that (mac dinh cong 8080)
-mvn -pl signaling-server -DskipTests package
+# Chay signaling server that (mac dinh cong 8080, can MySQL - xem ben duoi)
 java -jar signaling-server/target/signaling-server.jar
 
-# Chay demo giao dien JavaFX (dung LoopbackDataChannel + ma hoa that,
-# chua can signaling-server dang chay)
+# Chay client JavaFX (can signaling-server dang chay)
 mvn -pl client-javafx javafx:run
 ```
+
+### Cau hinh TURN cho client
+
+TURN credential **khong** nam trong repo/jar. Dat bang bien moi truong
+(`CHAT_P2P_TURN_HOST`, `CHAT_P2P_TURN_PORT`, `CHAT_P2P_TURN_USERNAME`,
+`CHAT_P2P_TURN_PASSWORD`), `-D` system property cung ten, hoac file cuc bo
+`~/.chat-p2p-java/client.properties`:
+
+```properties
+chat.p2p.turn.host=turn.example.com
+chat.p2p.turn.port=3478
+chat.p2p.turn.username=chatuser
+chat.p2p.turn.password=mat-khau-turn
+```
+
+De trong ca 4 gia tri thi client chi dung ICE truc tiep (STUN).
 
 ### Cau hinh tai khoan
 
@@ -75,9 +102,9 @@ java -jar signaling-server/target/signaling-server.jar
 Khi mo client, nguoi dung co the chon **Khach tu do** hoac **Dang nhap / Dang ky**.
 Client dang ky/dang nhap qua REST `/auth/*`, sau do gui opaque session token
 trong ban tin JOIN WebSocket. Server chi luu hash token va BCrypt hash cua
-mat khau; khong luu plaintext. Guest duoc phep JOIN khi
-`CHAT_P2P_AUTH_REQUIRED=false` (mac dinh cho demo); dat bien nay thanh `true`
-de bat buoc tai khoan. Trong moi truong test, co the dung H2 tu
+mat khau; khong luu plaintext. WebSocket bat buoc tai khoan mac dinh;
+chi dat `CHAT_P2P_AUTH_REQUIRED=false` trong moi truong demo/test tin cay.
+Trong moi truong test, co the dung H2 tu
 `signaling-server/src/test/resources/application.yml`.
 
 #### Chay MySQL bang Docker
@@ -96,11 +123,21 @@ Khi signaling server chay tren may host, dung:
 ```powershell
 $env:CHAT_P2P_DB_URL="jdbc:mysql://localhost:3306/chat_p2p?serverTimezone=UTC"
 $env:CHAT_P2P_DB_USERNAME="chat_p2p"
-$env:CHAT_P2P_DB_PASSWORD="chat_p2p_dev_password"
+$env:CHAT_P2P_DB_PASSWORD="mat-khau-trong-env"
 ```
 
-Neu khong dat `CHAT_P2P_DB_PASSWORD`, server mac dinh dung mat khau
-`chat_p2p_dev_password` tu `docker-compose.yml`.
+`CHAT_P2P_DB_URL`, `CHAT_P2P_DB_USERNAME` va `CHAT_P2P_DB_PASSWORD` phai duoc
+dat khi chay server; server khong con fallback ve credential mac dinh.
+Compose cung yeu cau `MYSQL_PASSWORD` va `MYSQL_ROOT_PASSWORD`, va chi bind
+MySQL vao `127.0.0.1` de khong public cong database ra Internet.
+
+ICE direct P2P dung UDP port range `10000-11000`. Tren VPS va may client,
+mo UDP outbound/inbound cho range nay; signaling TCP `8080` chi dung de trao
+doi candidate, khong chuyen tiep du lieu chat. Client chi quang ba candidate
+IPv4 routable, loai bo IPv6 link-local, loopback va multicast de tranh ICE
+kiem tra cac adapter ao khong the truy cap. Direct P2P van khong the vuot qua
+mot so symmetric NAT; khi do client fallback qua TURN neu da cau hinh (xem
+"Cau hinh TURN cho client").
 
 Schema duoc Docker khoi tao tu dong trong lan dau volume duoc tao; server
 khong chay lai schema tren moi lan khoi dong. De xoa du lieu database va tao
@@ -116,27 +153,16 @@ docker compose down -v
 > classpath cua plugin, da kiem chung thuc te) - dung `mvn package` roi
 > `java -jar ...` nhu tren se chay dung.
 
-Demo JavaFX: nhap ten hien thi -> tao/vao phong -> man hinh Room hien hai
-"peer": ban va mot "Nguoi dung demo" (mo phong noi bo qua `LoopbackDataChannel`
-va client P2P that qua signaling server.
-Goi tin nhan se duoc ma hoa AES-GCM that (khoa phien sinh tu ECDH that) truoc
-khi gui qua kenh, va Nguoi dung demo se tu dong tra loi sau ~1 giay - chung
-minh tron pipeline UI + ma hoa + DataChannel hoat dong dung truoc khi lap
-mang P2P that.
+Chay client JavaFX: chon Khach tu do hoac Dang nhap -> nhap ten -> tao/vao
+phong. Mo them client thu 2 (cung may hoac may khac) vao cung phong de chat
+P2P that; danh sach peer hien trang thai xac thuc va fingerprint.
 
 ## Trang thai va viec tiep theo
 
-Ban scaffold hien tai **chua** co ket noi P2P qua Internet that (chua co
-ice4j/STUN/TURN), chua noi `client-javafx` voi `signaling-server` qua mang,
-chua co truyen file/video/audio - dung nhu ke hoach trong De-cuong (giai doan
-4 tro di, tuan 7+).
+Da co: ket noi P2P that qua ice4j (STUN, TURN fallback), signaling + tai
+khoan, ma hoa dau-cuoi, xac thuc danh tinh gan voi phien ECDH, tin nhan nhom
+va tin nhan rieng co ACK/gui lai.
 
-Buoc tiep theo, anh xa vao [Phan-cong-cong-viec.md](docs/Phan-cong-cong-viec.md):
-
-- **Thanh vien A**: cai dat that `P2pDataChannel` va `WebSocketSignalingClient`
-  (module `p2p-core`) bang ice4j - xem cac TODO trong hai file do.
-- **Thanh vien B**: tich hop client JavaFX voi `RoomSession` that
-  trong [RoomController](client-javafx/src/main/java/com/datn/chatp2p/client/view/RoomController.java)
-  bang ket noi that toi cac peer khac trong phong (qua `SignalingClient` +
-  `P2pDataChannel`); logic ma hoa/UI giu nguyen. Sau do them truyen file
-  (chia chunk, ma hoa tung chunk).
+Chua co (theo De-cuong): trang thai dang go, backfill lich su chat, truyen
+file (chia chunk, ma hoa tung chunk), audio/video/screen share - cac
+`EnvelopeType` tuong ung moi chi khai bao.

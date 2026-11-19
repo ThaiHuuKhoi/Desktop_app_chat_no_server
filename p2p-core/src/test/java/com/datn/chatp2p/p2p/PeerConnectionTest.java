@@ -59,6 +59,9 @@ class PeerConnectionTest {
         assertTrue(bothHandshakeDone.await(5, TimeUnit.SECONDS), "Ca 2 ben phai hoan tat trao khoa ECDH trong 5s");
         assertTrue(peerA.isHandshakeComplete());
         assertTrue(peerB.isHandshakeComplete());
+        // Moi ben phai thay dung khoa ECDH cua ben kia - co so de gan chu ky danh tinh vao phien.
+        org.junit.jupiter.api.Assertions.assertArrayEquals(peerB.getLocalEcdhPublicKey(), peerA.getRemoteEcdhPublicKey());
+        org.junit.jupiter.api.Assertions.assertArrayEquals(peerA.getLocalEcdhPublicKey(), peerB.getRemoteEcdhPublicKey());
 
         MessagePayload sent = new MessagePayload("msg-1", "peer-a", "xin chao qua Envelope", 12_345L);
         peerA.send(EnvelopeType.MESSAGE, EnvelopeNamespace.GROUP, sent);

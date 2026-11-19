@@ -5,6 +5,7 @@ import com.datn.chatp2p.common.model.PeerVerificationState;
 import com.datn.chatp2p.common.protocol.Envelope;
 import com.datn.chatp2p.common.protocol.EnvelopeType;
 import com.datn.chatp2p.common.protocol.IdentityPayload;
+import com.datn.chatp2p.common.protocol.MessageAckPayload;
 import com.datn.chatp2p.common.protocol.MessagePayload;
 import com.datn.chatp2p.common.protocol.EnvelopeNamespace;
 import com.datn.chatp2p.p2p.PeerConnection;
@@ -45,12 +46,21 @@ public final class P2pChatSession implements ChatSession {
     private final PeerIdentityService identityService = new PeerIdentityService();
     private final Map<String, SessionPeer> knownPeers = new ConcurrentHashMap<>();
     private final Map<String, String> verifiedRemoteFingerprints = new ConcurrentHashMap<>();
+    /** So lan gui lai 1 tin nhan chua duoc ACK, va khoang cach giua cac lan. */
+    private static final int MESSAGE_MAX_RETRIES = 6;
+    private static final long MESSAGE_RETRY_INTERVAL_MILLIS = 500;
+
     private final ScheduledExecutorService identityRetryExecutor =
             Executors.newSingleThreadScheduledExecutor(runnable -> {
-                Thread thread = new Thread(runnable, "p2p-identity-retry");
+                Thread thread = new Thread(runnable, "p2p-session-retry");
                 thread.setDaemon(true);
                 return thread;
             });
+    private final MessageDeliveryTracker deliveryTracker = new MessageDeliveryTracker(
+            identityRetryExecutor, MESSAGE_MAX_RETRIES, MESSAGE_RETRY_INTERVAL_MILLIS,
+            (peerId, messageId) -> notifyConnectionFailed(peerId, new IOException(
+                    "tin nhắn chưa tới nơi (không nhận được xác nhận sau "
+                            + MESSAGE_MAX_RETRIES + " lần gửi lại)")));
     private final RoomSession roomSession;
 
     private volatile ChatSessionListener listener;
@@ -87,6 +97,7 @@ public final class P2pChatSession implements ChatSession {
         roomSession.onConnectionFailed((peerId, error) ->
                 notifyConnectionFailed(peerId, error));
         roomSession.onEnvelope(EnvelopeType.MESSAGE, this::handleMessage);
+        roomSession.onEnvelope(EnvelopeType.MESSAGE_ACK, this::handleMessageAck);
         roomSession.onEnvelope(EnvelopeType.PEER_IDENTITY, this::handlePeerIdentity);
 
         try {
@@ -122,7 +133,14 @@ public final class P2pChatSession implements ChatSession {
                 message.getAuthorId(),
                 message.getText(),
                 System.currentTimeMillis());
-        roomSession.broadcast(EnvelopeType.MESSAGE, payload);
+        for (String peerId : roomSession.getPeerIds()) {
+            try {
+                sendReliably(peerId, null, payload);
+            } catch (RuntimeException error) {
+                // 1 peer loi khong duoc chan viec gui toi cac peer con lai.
+                notifyConnectionFailed(peerId, error);
+            }
+        }
     }
 
     @Override
@@ -135,7 +153,23 @@ public final class P2pChatSession implements ChatSession {
                 message.getAuthorId(),
                 message.getText(),
                 System.currentTimeMillis());
-        roomSession.sendTo(peerId, EnvelopeType.MESSAGE, EnvelopeNamespace.DIRECT_MESSAGE, payload);
+        sendReliably(peerId, EnvelopeNamespace.DIRECT_MESSAGE, payload);
+    }
+
+    /**
+     * Gui 1 MESSAGE va tu gui lai cho toi khi nhan MESSAGE_ACK (xem
+     * {@link MessageDeliveryTracker}). Dang ky theo doi TRUOC khi gui lan dau de
+     * khong bo lo ACK toi qua nhanh.
+     */
+    private void sendReliably(String peerId, String namespace, MessagePayload payload) {
+        Runnable send = () -> roomSession.sendTo(peerId, EnvelopeType.MESSAGE, namespace, payload);
+        deliveryTracker.track(peerId, payload.id(), send);
+        try {
+            send.run();
+        } catch (RuntimeException error) {
+            deliveryTracker.acknowledge(peerId, payload.id());
+            throw error;
+        }
     }
 
     @Override
@@ -173,6 +207,15 @@ public final class P2pChatSession implements ChatSession {
 
     private void handleMessage(String peerId, Envelope envelope) {
         MessagePayload payload = roomSessionPayload(envelope);
+        // Luon ACK (ca ban trung) - ACK truoc co the da bi mat tren duong truyen.
+        try {
+            roomSession.sendTo(peerId, EnvelopeType.MESSAGE_ACK, new MessageAckPayload(payload.id()));
+        } catch (RuntimeException error) {
+            LOG.fine(() -> "Gui MESSAGE_ACK toi " + peerId + " that bai: " + error.getMessage());
+        }
+        if (!deliveryTracker.markReceived(peerId, payload.id())) {
+            return; // ban gui lai cua tin nhan da hien thi
+        }
         ChatMessage message = new ChatMessage(peerId, payload.text());
         message.markReceived();
 
@@ -186,9 +229,20 @@ public final class P2pChatSession implements ChatSession {
         }
     }
 
-    private void sendIdentity(PeerConnection connection) {
-        IdentityPayload payload = identityService.createPayload(config.roomName(), selfPeerId);
+    private void handleMessageAck(String peerId, Envelope envelope) {
         try {
+            MessageAckPayload ack = OBJECT_MAPPER.readValue(envelope.payload(), MessageAckPayload.class);
+            deliveryTracker.acknowledge(peerId, ack.messageId());
+        } catch (IOException error) {
+            LOG.fine(() -> "Bo qua MESSAGE_ACK hong tu " + peerId);
+        }
+    }
+
+    private void sendIdentity(PeerConnection connection) {
+        try {
+            IdentityPayload payload = identityService.createPayload(
+                    config.roomName(), selfPeerId,
+                    connection.getLocalEcdhPublicKey(), connection.getRemoteEcdhPublicKey());
             connection.send(EnvelopeType.PEER_IDENTITY, payload);
         } catch (RuntimeException error) {
             notifyConnectionFailed(connection.getPeerId(), error);
@@ -198,8 +252,13 @@ public final class P2pChatSession implements ChatSession {
     private void handlePeerIdentity(String peerId, Envelope envelope) {
         try {
             IdentityPayload payload = OBJECT_MAPPER.readValue(envelope.payload(), IdentityPayload.class);
-            PeerIdentityService.Verification verification =
-                    identityService.verify(payload, config.roomName(), peerId);
+            PeerConnection connection = roomSession.getPeerConnection(peerId);
+            if (connection == null || connection.getRemoteEcdhPublicKey() == null) {
+                return; // peer vua roi phong / ket noi da bi thay the
+            }
+            PeerIdentityService.Verification verification = identityService.verify(
+                    payload, config.roomName(), peerId,
+                    connection.getRemoteEcdhPublicKey(), connection.getLocalEcdhPublicKey());
             if (!verification.valid()) {
                 notifyConnectionFailed(peerId, new SecurityException("Identity peer khong hop le"));
                 return;
@@ -240,6 +299,7 @@ public final class P2pChatSession implements ChatSession {
     }
 
     private void notifyPeerLeft(String peerId) {
+        deliveryTracker.forgetPeer(peerId);
         knownPeers.remove(peerId);
         verifiedRemoteFingerprints.remove(peerId);
         ChatSessionListener currentListener = listener;
@@ -291,6 +351,13 @@ public final class P2pChatSession implements ChatSession {
         return APPLICATION_PROPERTIES.getProperty(applicationKey, "").trim();
     }
 
+    /**
+     * Doc cau hinh: {@code application.properties} trong jar (chi gia tri mac dinh,
+     * KHONG chua bi mat), roi ghi de bang file cuc bo
+     * {@code ~/.chat-p2p-java/client.properties} (noi dat TURN credential, khong
+     * nam trong repo/jar). Thu tu uu tien khi doc: -D system property, bien moi
+     * truong, file cuc bo, file trong jar.
+     */
     private static Properties loadApplicationProperties() {
         Properties properties = new Properties();
         try (var input = P2pChatSession.class.getClassLoader()
@@ -300,6 +367,15 @@ public final class P2pChatSession implements ChatSession {
             }
         } catch (IOException error) {
             throw new IllegalStateException("Khong the doc application.properties", error);
+        }
+        java.nio.file.Path localConfig = java.nio.file.Path.of(
+                System.getProperty("user.home"), ".chat-p2p-java", "client.properties");
+        if (java.nio.file.Files.isRegularFile(localConfig)) {
+            try (var reader = java.nio.file.Files.newBufferedReader(localConfig)) {
+                properties.load(reader);
+            } catch (IOException error) {
+                throw new IllegalStateException("Khong the doc " + localConfig, error);
+            }
         }
         return properties;
     }

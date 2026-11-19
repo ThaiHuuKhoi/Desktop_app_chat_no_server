@@ -74,10 +74,12 @@ import java.util.function.BiConsumer;
  * ban tin hop le, KHAC nhau, gui gan nhau van co the toi khong dung thu tu
  * do do tre mang - khong duoc coi nham la replay).
  *
- * <p><b>Chua lam</b> (de bo sung khi co {@code IdentitySignatureService} o
- * module crypto): tu dong gui/xac thuc {@code EnvelopeType.PEER_IDENTITY}
- * ngay sau khi handshake xong - hien tai {@link #verificationState} luon la
- * {@code UNVERIFIED} cho toi khi lop goi no (RoomSession) tu cap nhat.
+ * <p><b>Gan danh tinh voi phien ECDH</b>: goi tin ECDH dau tien KHONG duoc xac
+ * thuc, nen lop nay luu lai public key ECDH cua ca 2 ben
+ * ({@link #getLocalEcdhPublicKey()}, {@link #getRemoteEcdhPublicKey()}). Tang tren
+ * (client) dua 2 khoa nay vao chu ky {@code PEER_IDENTITY}
+ * ({@code IdentitySignatureService.handshakeChallengeFor}) - ke MITM tu thay khoa
+ * ECDH se lam chu ky danh tinh that bai. {@link #verificationState} do tang tren cap nhat.
  */
 public final class PeerConnection {
 
@@ -108,6 +110,8 @@ public final class PeerConnection {
 
     /** null cho toi khi handshake ECDH xong - xem javadoc lop nay. */
     private volatile EnvelopeCodec codec;
+    /** Public key ECDH (X.509) cua doi phuong - null cho toi khi handshake xong. */
+    private volatile byte[] remoteEcdhPublicKey;
     private volatile PeerVerificationState verificationState = PeerVerificationState.UNVERIFIED;
     private volatile String customUsername;
     private volatile ScheduledFuture<?> handshakeRetryTask;
@@ -188,6 +192,17 @@ public final class PeerConnection {
         return peerId;
     }
 
+    /** Public key ECDH (X.509) cua MINH trong phien nay. */
+    public byte[] getLocalEcdhPublicKey() {
+        return ecdhKeyPair.getPublic().getEncoded();
+    }
+
+    /** Public key ECDH (X.509) cua doi phuong trong phien nay, hoac null neu chua handshake xong. */
+    public byte[] getRemoteEcdhPublicKey() {
+        byte[] key = remoteEcdhPublicKey;
+        return key == null ? null : key.clone();
+    }
+
     public String getCustomUsername() {
         return customUsername;
     }
@@ -253,6 +268,7 @@ public final class PeerConnection {
     private void completeHandshake(byte[] peerPublicKeyEncoded) {
         PublicKey peerPublicKey = KeyExchangeService.decodePublicKey(peerPublicKeyEncoded);
         SecretKey sessionKey = KeyExchangeService.deriveSharedSecret(ecdhKeyPair.getPrivate(), peerPublicKey);
+        this.remoteEcdhPublicKey = peerPublicKeyEncoded.clone();
         this.codec = new EnvelopeCodec(sessionKey);
         if (onHandshakeComplete != null) {
             onHandshakeComplete.run();

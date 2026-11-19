@@ -24,8 +24,10 @@ import java.security.spec.ECGenParameterSpec;
  * </ul>
  *
  * <p>Thong diep duoc ky theo quy uoc cua chitchatter: {@code roomId + "_" + userId}
- * (xem {@link #challengeFor}). Co che nay chong <b>mao danh lap lai</b>, KHONG
- * chong tuyet doi MITM o lan gap dau tien (Tai-lieu-ky-thuat.md muc E.5.3).
+ * (xem {@link #challengeFor}). Ban tin {@code PEER_IDENTITY} that dung
+ * {@link #handshakeChallengeFor} - gan them van tay khoa ECDH cua phien de chong
+ * MITM tren buoc trao khoa. Van KHONG chong duoc MITM o lan gap dau tien neu
+ * nguoi dung khong doi chieu fingerprint (Tai-lieu-ky-thuat.md muc E.5.3).
  */
 public final class IdentitySignatureService {
 
@@ -53,6 +55,38 @@ public final class IdentitySignatureService {
      */
     public static String challengeFor(String roomId, String userId) {
         return roomId + "_" + userId;
+    }
+
+    /**
+     * Thong diep thach thuc GAN VOI PHIEN ECDH cu the - dung cho {@code PEER_IDENTITY}
+     * de chong MITM tren buoc trao khoa.
+     *
+     * <p>Neu chi ky {@link #challengeFor} (roomId + userId), ke dung giua (vd
+     * signaling server bi chiem, trao tay ICE candidate) co the tu thiet lap 2
+     * phien ECDH rieng voi moi ben roi chuyen tiep nguyen ban {@code PEER_IDENTITY}
+     * that - chu ky van hop le vi no khong lien quan gi toi khoa ECDH. Ham nay
+     * dua them van tay SHA-256 cua public key ECDH cua CA 2 ben (theo goc nhin
+     * ben ky) vao thong diep: ke MITM buoc phai dung khoa ECDH cua chinh no o
+     * moi phia, nen van tay ben xac thuc thay se khac van tay ben ky da ky -
+     * chu ky that bai.
+     *
+     * @param signerEcdhPublicKey   public key ECDH (X.509) cua BEN KY trong phien nay.
+     * @param receiverEcdhPublicKey public key ECDH (X.509) cua BEN NHAN ma ben ky nhin thay.
+     */
+    public static String handshakeChallengeFor(String roomId, String signerId,
+                                               byte[] signerEcdhPublicKey, byte[] receiverEcdhPublicKey) {
+        return "chat-p2p-identity-v2|" + roomId + "|" + signerId
+                + "|" + sha256Hex(signerEcdhPublicKey)
+                + "|" + sha256Hex(receiverEcdhPublicKey);
+    }
+
+    private static String sha256Hex(byte[] data) {
+        try {
+            return java.util.HexFormat.of().formatHex(
+                    java.security.MessageDigest.getInstance("SHA-256").digest(data));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 khong kha dung", e);
+        }
     }
 
     /** Ky {@code message} (UTF-8) bang private key danh tinh, tra ve chu ky dinh dang DER. */

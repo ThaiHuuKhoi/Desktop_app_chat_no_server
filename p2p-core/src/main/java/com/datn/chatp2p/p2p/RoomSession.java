@@ -286,12 +286,11 @@ public final class RoomSession {
     }
 
     /**
-     * CHI DUNG CHO TEST (package-private, khong phai API cong khai): lay dung
-     * {@link PeerConnection} da ket noi xong voi {@code peerId} - dung de mo
-     * phong loi cuc bo (vd goi {@code close()} truc tiep tren no) ma khong can
-     * dan dong toan bo 1 kich ban mang that (peer roi phong, socket loi that su).
+     * Lay {@link PeerConnection} da ket noi xong voi {@code peerId}, hoac null.
+     * Client dung de lay khoa ECDH cua phien khi xac thuc {@code PEER_IDENTITY};
+     * test dung de mo phong loi cuc bo (vd goi {@code close()} truc tiep).
      */
-    PeerConnection getPeerConnection(String peerId) {
+    public PeerConnection getPeerConnection(String peerId) {
         return peers.get(peerId);
     }
 

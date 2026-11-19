@@ -21,6 +21,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 public class RoomRegistry {
 
+    public static final int MAX_PEERS_PER_ROOM = 8;
     private final Map<String, Map<String, PeerSession>> roomsByRoomId = new ConcurrentHashMap<>();
 
     /**
@@ -36,12 +37,22 @@ public class RoomRegistry {
      * khi 2 RoomSession that join gan nhu dong thoi qua 1 signaling-server that.
      */
     public List<PeerSession> join(PeerSession newPeer) {
+        return tryJoin(newPeer).orElseThrow(() -> new IllegalStateException("Room da day hoac peerId da ton tai"));
+    }
+
+    public Optional<List<PeerSession>> tryJoin(PeerSession newPeer) {
         Map<String, PeerSession> room =
                 roomsByRoomId.computeIfAbsent(newPeer.getRoomId(), roomId -> new ConcurrentHashMap<>());
         synchronized (room) {
+            if (room.containsKey(newPeer.getPeerId()) || room.size() >= MAX_PEERS_PER_ROOM) {
+                if (room.isEmpty()) {
+                    roomsByRoomId.remove(newPeer.getRoomId(), room);
+                }
+                return Optional.empty();
+            }
             List<PeerSession> existingPeers = List.copyOf(room.values());
             room.put(newPeer.getPeerId(), newPeer);
-            return existingPeers;
+            return Optional.of(existingPeers);
         }
     }
 
