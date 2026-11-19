@@ -36,7 +36,7 @@
                         <tooltip><Tooltip text="Sao chép tên phòng để mời người khác"/></tooltip>
                     </Button>
                 </HBox>
-                <Label text="Phòng riêng tư được mã hoá đầu-cuối" styleClass="room-description" wrapText="true"/>
+                <Label fx:id="roomDescriptionLabel" styleClass="room-description" wrapText="true"/>
             </VBox>
 
             <HBox spacing="6" alignment="CENTER_LEFT" styleClass="section-header">

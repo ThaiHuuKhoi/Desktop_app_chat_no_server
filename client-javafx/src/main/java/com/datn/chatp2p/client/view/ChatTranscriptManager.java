@@ -53,6 +53,38 @@ final class ChatTranscriptManager {
         groupTranscript.add(entry);
     }
 
+    /**
+     * Chen lich su vao khung nhom theo thoi gian, bo qua tin da co (cung id).
+     *
+     * @return so tin thuc su duoc them.
+     */
+    int mergeGroupHistory(java.util.List<ChatMessage> messages, String sharedBy) {
+        java.util.Set<String> existing = new java.util.HashSet<>();
+        for (TranscriptEntry entry : groupTranscript) {
+            if (entry instanceof TranscriptEntry.UserMessage user) {
+                existing.add(user.message().getId());
+            }
+        }
+        int added = 0;
+        for (ChatMessage message : messages.stream()
+                .sorted(java.util.Comparator.comparingLong(ChatMessage::getTimeSent)).toList()) {
+            if (!existing.add(message.getId())) {
+                continue;
+            }
+            int index = groupTranscript.size();
+            for (int i = 0; i < groupTranscript.size(); i++) {
+                if (groupTranscript.get(i) instanceof TranscriptEntry.UserMessage user
+                        && user.message().getTimeSent() > message.getTimeSent()) {
+                    index = i;
+                    break;
+                }
+            }
+            groupTranscript.add(index, new TranscriptEntry.UserMessage(message, sharedBy));
+            added++;
+        }
+        return added;
+    }
+
     boolean hasGroupUserMessages() {
         return groupTranscript.stream().anyMatch(entry -> entry instanceof TranscriptEntry.UserMessage);
     }

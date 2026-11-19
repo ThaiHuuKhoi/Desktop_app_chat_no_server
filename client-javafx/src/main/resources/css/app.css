@@ -552,3 +552,20 @@
     -fx-font-size: 11px;
     -fx-text-fill: -color-fg-subtle;
 }
+
+.message-history {
+    -fx-font-size: 10px;
+    -fx-text-fill: -color-warning-fg;
+    -fx-graphic-text-gap: 3;
+}
+
+.message-history .ikonli-font-icon {
+    -fx-icon-size: 10px;
+    -fx-icon-color: -color-warning-fg;
+}
+
+.bubble-mine .message-history,
+.bubble-mine .message-history .ikonli-font-icon {
+    -fx-text-fill: -color-fg-emphasis;
+    -fx-icon-color: -color-fg-emphasis;
+}

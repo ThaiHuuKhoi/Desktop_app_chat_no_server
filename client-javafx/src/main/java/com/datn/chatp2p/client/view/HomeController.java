@@ -8,6 +8,7 @@ import javafx.animation.PauseTransition;
 import javafx.fxml.FXML;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
+import javafx.scene.control.PasswordField;
 import javafx.scene.control.TextField;
 import javafx.scene.control.ListView;
 import javafx.scene.control.Alert;
@@ -41,6 +42,9 @@ public class HomeController {
 
     @FXML
     private TextField roomNameField;
+
+    @FXML
+    private PasswordField roomPasswordField;
 
     @FXML
     private Button copyRoomButton;
@@ -136,6 +140,10 @@ public class HomeController {
             errorLabel.setText("Vui lòng nhập tên hiển thị và tên phòng.");
             return;
         }
+        if (roomName.indexOf(RoomConfig.PRIVATE_ROOM_SEPARATOR) >= 0) {
+            errorLabel.setText("Tên phòng không được chứa ký tự \"" + RoomConfig.PRIVATE_ROOM_SEPARATOR + "\".");
+            return;
+        }
         if (serverUri.isEmpty()) {
             errorLabel.setText("Vui lòng nhập địa chỉ signaling server.");
             return;
@@ -146,8 +154,9 @@ public class HomeController {
         }
 
         try {
+            String roomPassword = roomPasswordField.getText() == null ? "" : roomPasswordField.getText();
             Navigator.showRoom(stage, new RoomConfig(userName, roomName, serverUri,
-                    accountMode ? authToken : ""));
+                    accountMode ? authToken : "", roomPassword));
         } catch (RuntimeException e) {
             errorLabel.setText(e.getMessage() == null ? "Không thể vào phòng." : e.getMessage());
         }
@@ -196,6 +205,8 @@ public class HomeController {
         }
         String normalized = trimmed(query).toLowerCase(java.util.Locale.ROOT);
         roomListView.getItems().setAll(activeRooms.stream()
+                // Phong co mat khau co roomId "ten~the" tren server - khong liet ke.
+                .filter(room -> room.roomId().indexOf(RoomConfig.PRIVATE_ROOM_SEPARATOR) < 0)
                 .filter(room -> room.roomId().toLowerCase(java.util.Locale.ROOT).contains(normalized))
                 .toList());
     }

@@ -59,6 +59,13 @@
                     <Label text="Chia sẻ tên phòng để mời bạn bè tham gia."
                            styleClass="field-hint" wrapText="true"/>
                 </VBox>
+
+                <VBox spacing="6">
+                    <Label text="Mật khẩu phòng (tuỳ chọn)" styleClass="field-label"/>
+                    <PasswordField fx:id="roomPasswordField" promptText="Để trống nếu là phòng công khai"/>
+                    <Label text="Chỉ người nhập đúng mật khẩu mới thấy nhau. Mật khẩu không được gửi lên server."
+                           styleClass="field-hint" wrapText="true"/>
+                </VBox>
             </VBox>
 
             <VBox fx:id="roomBrowserBox" spacing="10" styleClass="room-browser-column" HBox.hgrow="ALWAYS">

@@ -21,6 +21,16 @@ public interface ChatSessionListener {
     }
 
     /**
+     * Nhan lich su chat nhom do {@code fromPeerId} chia se (khi minh moi vao phong). Chi gom cac
+     * tin CHUA co; KHONG xac minh duoc nguoi viet tung tin - giao dien phai danh dau la lich su.
+     *
+     * @param authorNames ten hien thi theo authorId (ke ca nguoi da roi phong).
+     */
+    default void onHistoryReceived(String fromPeerId, java.util.List<ChatMessage> messages,
+                                   java.util.Map<String, String> authorNames) {
+    }
+
+    /**
      * 1 peer bat dau / ngung go.
      *
      * @param direct {@code true} neu peer dang go trong tab tin nhan rieng voi minh.

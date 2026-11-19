@@ -44,6 +44,15 @@ Maven multi-module, chia theo tang ky thuat dung nhu
 5. Tin nhan (`MESSAGE`) duoc ben nhan tra `MESSAGE_ACK`; ben gui tu gui lai
    (toi da 6 lan, cach 500ms) neu chua co ACK, ben nhan loai ban trung theo id.
    Het luot thi UI hien canh bao. Thu tu tin nhan van khong duoc dam bao tuyet doi.
+6. **Phong co mat khau**: tu (ten phong, mat khau) sinh khoa bang PBKDF2. Server
+   chi thay `ten~the` (the suy ra tu khoa), nen nguoi khac mat khau roi vao phong
+   khac tren server. Sau ECDH, 2 ben con gui `ROOM_PROOF` (HMAC gan voi khoa ECDH
+   cua phien) - peer khong co bang chung hop le bi bo qua. Mat khau khong bao gio
+   roi khoi may.
+7. **Lich su cho nguoi moi vao**: khi xac thuc xong danh tinh 1 peer, moi ben gui
+   lich su chat nhom (toi da 200 tin, khong gom tin nhan rieng) qua
+   `MESSAGE_TRANSCRIPT`, chia goi vua UDP + ACK/gui lai. Giao dien danh dau
+   "lich su do X chia se" vi khong xac minh duoc nguoi viet tung tin.
 
 Interface chung giua hai phan viec (da chot trong Phan-cong-cong-viec.md):
 
@@ -161,8 +170,10 @@ P2P that; danh sach peer hien trang thai xac thuc va fingerprint.
 
 Da co: ket noi P2P that qua ice4j (STUN, TURN fallback), signaling + tai
 khoan, ma hoa dau-cuoi, xac thuc danh tinh gan voi phien ECDH, tin nhan nhom
-va tin nhan rieng co ACK/gui lai.
+va tin nhan rieng co ACK/gui lai, trang thai dang go, Markdown, am bao va thong
+bao man hinh, chon theme, phong co mat khau, lich su chat cho nguoi moi vao.
 
-Chua co (theo De-cuong): trang thai dang go, backfill lich su chat, truyen
-file (chia chunk, ma hoa tung chunk), audio/video/screen share - cac
-`EnvelopeType` tuong ung moi chi khai bao.
+Dang lam: truyen file (phia gui tin cay da xong; phia nhan + giao dien do B lam).
+
+Chua co (theo De-cuong): audio/video/screen share - cac `EnvelopeType` tuong
+ung moi chi khai bao.

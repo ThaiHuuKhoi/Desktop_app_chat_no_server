@@ -63,6 +63,9 @@ public class RoomController implements ChatSessionListener {
     private Label roomSubtitleLabel;
 
     @FXML
+    private Label roomDescriptionLabel;
+
+    @FXML
     private Label peerSectionLabel;
 
     @FXML
@@ -126,6 +129,9 @@ public class RoomController implements ChatSessionListener {
 
         displayNames.put(session.selfPeerId(), config.userName());
         roomNameLabel.setText(config.roomName());
+        roomDescriptionLabel.setText(config.isPasswordProtected()
+                ? "Phòng có mật khẩu · chỉ người nhập đúng mật khẩu mới thấy nhau"
+                : "Phòng công khai · ai biết tên phòng đều vào được");
         emptyStateRoomLabel.setText(config.roomName());
         selfNameLabel.setText(config.userName());
         selfAvatarHolder.getChildren().setAll(Avatars.create(config.userName(), 16));
@@ -238,6 +244,20 @@ public class RoomController implements ChatSessionListener {
     }
 
     @Override
+    public void onHistoryReceived(String fromPeerId, List<ChatMessage> messages, Map<String, String> authorNames) {
+        Platform.runLater(() -> {
+            authorNames.forEach(displayNames::putIfAbsent);
+            String sharedBy = displayNames.getOrDefault(fromPeerId, "Một người");
+            int added = transcriptManager.mergeGroupHistory(messages, sharedBy);
+            if (added > 0) {
+                notice(NoticeKind.INFO, "Đã nhận " + added + " tin nhắn trước đó do " + sharedBy
+                        + " chia sẻ (không xác minh được người viết từng tin)");
+                refreshRoomState();
+            }
+        });
+    }
+
+    @Override
     public void onPeerTyping(String peerId, boolean direct, boolean typing) {
         Platform.runLater(() -> {
             typingTracker.update(peerId, direct, typing);
@@ -306,7 +326,9 @@ public class RoomController implements ChatSessionListener {
         ClipboardContent content = new ClipboardContent();
         content.putString(config.roomName());
         Clipboard.getSystemClipboard().setContent(content);
-        notice(NoticeKind.INFO, "Đã sao chép tên phòng — gửi cho người bạn muốn chat cùng");
+        notice(NoticeKind.INFO, config.isPasswordProtected()
+                ? "Đã sao chép tên phòng — gửi kèm mật khẩu qua một kênh khác cho người bạn muốn chat cùng"
+                : "Đã sao chép tên phòng — gửi cho người bạn muốn chat cùng");
     }
 
     @FXML

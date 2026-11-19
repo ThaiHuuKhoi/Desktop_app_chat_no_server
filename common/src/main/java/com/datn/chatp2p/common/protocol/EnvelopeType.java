@@ -39,5 +39,7 @@ public enum EnvelopeType {
      * Xac nhan da nhan 1 {@link #MESSAGE} (payload {@link MessageAckPayload}) - UDP
      * khong co ACK o tang duoi, nen ben gui tu gui lai cho toi khi nhan duoc ACK.
      */
-    MESSAGE_ACK
+    MESSAGE_ACK,
+    /** Bang chung biet mat khau phong co mat khau (payload {@link RoomProofPayload}). */
+    ROOM_PROOF
 }
