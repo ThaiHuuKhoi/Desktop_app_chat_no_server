@@ -43,6 +43,12 @@
       <groupId>com.fasterxml.jackson.core</groupId>
       <artifactId>jackson-databind</artifactId>
     </dependency>
+    <!-- DPAPI cua Windows de ma hoa khoa danh tinh khi luu xuong dia (DpapiKeyProtector). -->
+    <dependency>
+      <groupId>net.java.dev.jna</groupId>
+      <artifactId>jna-platform</artifactId>
+      <version>5.13.0</version>
+    </dependency>
 
     <dependency>
       <groupId>org.openjfx</groupId>

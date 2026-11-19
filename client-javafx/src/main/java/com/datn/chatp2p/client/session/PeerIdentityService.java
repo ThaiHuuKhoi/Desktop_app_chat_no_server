@@ -16,8 +16,10 @@ public final class PeerIdentityService {
     public PeerIdentityService() {
     }
 
+    // Windows: private key duoc ma hoa bang DPAPI (gan voi tai khoan Windows); file cu tu chuyen sang.
     private final KeyPair keyPair = IdentityKeyStore.loadOrCreate(
-            Path.of(System.getProperty("user.home"), ".chat-p2p-java", "identity.properties"));
+            Path.of(System.getProperty("user.home"), ".chat-p2p-java", "identity.properties"),
+            com.datn.chatp2p.client.util.DpapiKeyProtector.forCurrentPlatform());
     private final String localFingerprint = Fingerprint.of(keyPair.getPublic());
 
     String localFingerprint() {
