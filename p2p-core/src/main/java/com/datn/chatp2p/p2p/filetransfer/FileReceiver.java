@@ -86,8 +86,13 @@ public final class FileReceiver implements AutoCloseable {
         }
     }
 
-    /** Kiem tra FILE_OFFER tu peer - du lieu khong tin cay (D3, D10). */
-    static void validateOffer(FileOfferPayload offer, FileTransferLimits limits) {
+    /**
+     * Kiem tra FILE_OFFER tu peer - du lieu khong tin cay (D3, D10). Ben nhan goi
+     * ngay khi nhan offer de tu choi som, truoc khi hoi nguoi dung.
+     *
+     * @throws FileTransferException {@code INVALID_OFFER} hoac {@code FILE_TOO_LARGE}
+     */
+    public static void validateOffer(FileOfferPayload offer, FileTransferLimits limits) {
         if (offer == null) {
             throw invalidOffer("offer null");
         }

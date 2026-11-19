@@ -1,5 +1,6 @@
 package com.datn.chatp2p.client.view;
 
+import com.datn.chatp2p.client.session.FileTransferStatus;
 import com.datn.chatp2p.common.model.ChatMessage;
 
 /**
@@ -13,6 +14,10 @@ sealed interface TranscriptEntry {
     }
 
     record SystemNotice(NoticeKind kind, String text) implements TranscriptEntry {
+    }
+
+    /** The file dang gui / nhan - duoc thay bang ban moi moi khi trang thai doi. */
+    record FileTransfer(FileTransferStatus status) implements TranscriptEntry {
     }
 
     enum NoticeKind {
