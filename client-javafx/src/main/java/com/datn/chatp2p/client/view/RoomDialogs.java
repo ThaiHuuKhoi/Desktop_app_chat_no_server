@@ -83,6 +83,9 @@ final class RoomDialogs {
 
         ButtonType create = new ButtonType("Tạo phòng", ButtonBar.ButtonData.OK_DONE);
         Dialog<RoomChoice> dialog = dialog(owner, "Tạo phòng", "Thông tin phòng", content, create);
+        // Tich "Dat mat khau" lam hien them 2 o nhap -> phai gian cua so, neu khong hang nut bi day ra ngoai.
+        usePassword.selectedProperty().addListener((o, a, b) -> fitWindow(dialog));
+        info.textProperty().addListener((o, a, b) -> fitWindow(dialog));
         validateOnOk(dialog, create, error, () -> LobbyRules.validateCreate(
                 LobbyRules.normalizeName(nameField.getText()), usePassword.isSelected(),
                 LobbyRules.normalizePassword(password.getText()), LobbyRules.normalizePassword(confirm.getText())));
@@ -176,6 +179,20 @@ final class RoomDialogs {
             if (message != null) {
                 error.setText(message);
                 event.consume();
+                fitWindow(dialog); // dong loi vua hien them -> gian cua so cho van thay hang nut
+            }
+        });
+    }
+
+    /**
+     * Tinh lai kich thuoc cua so hop thoai theo noi dung hien tai. Dialog cua JavaFX chi tu do kich
+     * thuoc 1 lan luc mo; noi dung cao them sau do (o mat khau, dong loi) se bi cat mat hang nut.
+     * Chay sau lan layout ke tiep de do dung chieu cao moi.
+     */
+    private static void fitWindow(Dialog<?> dialog) {
+        Platform.runLater(() -> {
+            if (dialog.getDialogPane().getScene() != null && dialog.getDialogPane().getScene().getWindow() != null) {
+                dialog.getDialogPane().getScene().getWindow().sizeToScene();
             }
         });
     }
@@ -195,14 +212,21 @@ final class RoomDialogs {
 
     private static Label hint(String text) {
         Label label = new Label(text);
-        label.setWrapText(true);
+        wrapFully(label);
         label.getStyleClass().add("field-hint");
         return label;
     }
 
+    /** Xuong dong day du thay vi bi cat thanh "..." (Label mac dinh khong cao them cho nhieu dong). */
+    private static void wrapFully(Label label) {
+        label.setWrapText(true);
+        label.setMaxWidth(Double.MAX_VALUE);
+        label.setMinHeight(javafx.scene.layout.Region.USE_PREF_SIZE);
+    }
+
     private static Label errorLabel() {
         Label label = new Label();
-        label.setWrapText(true);
+        wrapFully(label);
         label.getStyleClass().add("error-label");
         label.managedProperty().bind(label.textProperty().isNotEmpty());
         label.visibleProperty().bind(label.managedProperty());
