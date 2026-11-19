@@ -26,6 +26,101 @@ final class SettingsDialog {
     private SettingsDialog() {
     }
 
+    /** Xuat khoa danh tinh ra file, ma hoa bang mat khau nguoi dung dat (nhap 2 lan). */
+    private static void exportIdentity(Window owner) {
+        java.util.Optional<char[]> password = askPassword(owner, "Đặt mật khẩu cho file khoá", true);
+        if (password.isEmpty()) {
+            return;
+        }
+        javafx.stage.FileChooser chooser = new javafx.stage.FileChooser();
+        chooser.setTitle("Lưu file khoá danh tính");
+        chooser.setInitialFileName("chatp2p-identity.backup");
+        java.io.File target = chooser.showSaveDialog(owner);
+        if (target == null) {
+            com.datn.chatp2p.crypto.IdentityBackup.wipe(password.get());
+            return;
+        }
+        try {
+            byte[] backup = com.datn.chatp2p.crypto.IdentityBackup.export(
+                    com.datn.chatp2p.client.session.PeerIdentityService.loadIdentity(), password.get());
+            java.nio.file.Files.write(target.toPath(), backup);
+            info(owner, "Đã xuất khoá", "Đã lưu vào " + target + ".\nGiữ file và mật khẩu cẩn thận: ai có cả hai "
+                    + "có thể mạo danh bạn.");
+        } catch (RuntimeException | java.io.IOException e) {
+            info(owner, "Không xuất được khoá", e.getMessage());
+        } finally {
+            com.datn.chatp2p.crypto.IdentityBackup.wipe(password.get());
+        }
+    }
+
+    /** Nhap khoa tu file sao luu, thay danh tinh tren may nay (giu ban cu), can khoi dong lai app. */
+    private static void importIdentity(Window owner) {
+        javafx.stage.FileChooser chooser = new javafx.stage.FileChooser();
+        chooser.setTitle("Chọn file khoá danh tính");
+        java.io.File source = chooser.showOpenDialog(owner);
+        if (source == null) {
+            return;
+        }
+        java.util.Optional<char[]> password = askPassword(owner, "Mật khẩu của file khoá", false);
+        if (password.isEmpty()) {
+            return;
+        }
+        try {
+            java.security.KeyPair imported = com.datn.chatp2p.crypto.IdentityBackup.importBackup(
+                    java.nio.file.Files.readAllBytes(source.toPath()), password.get());
+            java.nio.file.Path old = com.datn.chatp2p.client.session.PeerIdentityService.replaceIdentity(imported);
+            info(owner, "Đã nhập khoá", "Danh tính đã được thay. Hãy THOÁT và mở lại ứng dụng để dùng danh tính mới."
+                    + (old == null ? "" : "\nDanh tính cũ được giữ lại ở " + old + "."));
+        } catch (RuntimeException | java.io.IOException e) {
+            info(owner, "Không nhập được khoá", e.getMessage());
+        } finally {
+            com.datn.chatp2p.crypto.IdentityBackup.wipe(password.get());
+        }
+    }
+
+    private static java.util.Optional<char[]> askPassword(Window owner, String header, boolean confirm) {
+        javafx.scene.control.PasswordField first = new javafx.scene.control.PasswordField();
+        first.setPromptText("Mật khẩu (ít nhất " + com.datn.chatp2p.crypto.IdentityBackup.MIN_PASSWORD_LENGTH + " ký tự)");
+        javafx.scene.control.PasswordField second = new javafx.scene.control.PasswordField();
+        second.setPromptText("Nhập lại mật khẩu");
+        Label error = new Label();
+        error.getStyleClass().add("error-label");
+        VBox box = new VBox(8, first);
+        if (confirm) {
+            box.getChildren().add(second);
+        }
+        box.getChildren().add(error);
+        box.setPrefWidth(340);
+        ButtonType ok = new ButtonType("Tiếp tục", javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
+        Dialog<char[]> dialog = new Dialog<>();
+        dialog.initOwner(owner);
+        dialog.setTitle("Mật khẩu");
+        dialog.setHeaderText(header);
+        dialog.getDialogPane().setContent(box);
+        dialog.getDialogPane().getButtonTypes().addAll(ok, ButtonType.CANCEL);
+        dialog.getDialogPane().lookupButton(ok).addEventFilter(javafx.event.ActionEvent.ACTION, event -> {
+            String message = first.getText().length() < com.datn.chatp2p.crypto.IdentityBackup.MIN_PASSWORD_LENGTH
+                    ? "Mật khẩu cần ít nhất " + com.datn.chatp2p.crypto.IdentityBackup.MIN_PASSWORD_LENGTH + " ký tự"
+                    : confirm && !first.getText().equals(second.getText()) ? "Hai lần nhập không khớp" : null;
+            if (message != null) {
+                error.setText(message);
+                event.consume();
+            }
+        });
+        dialog.setResultConverter(button -> button == ok ? first.getText().toCharArray() : null);
+        Navigator.style(dialog.getDialogPane());
+        javafx.application.Platform.runLater(first::requestFocus);
+        return dialog.showAndWait();
+    }
+
+    private static void info(Window owner, String header, String text) {
+        javafx.scene.control.Alert alert = new javafx.scene.control.Alert(javafx.scene.control.Alert.AlertType.INFORMATION, text);
+        alert.initOwner(owner);
+        alert.setHeaderText(header);
+        Navigator.style(alert.getDialogPane());
+        alert.showAndWait();
+    }
+
     /** {@code onThemeChanged} chay sau khi doi theme (vd cap nhat icon nut sang/toi). */
     static void show(Window owner, Runnable onThemeChanged) {
         UserSettings settings = UserSettings.get();
@@ -84,8 +179,20 @@ final class SettingsDialog {
             clearHistory.setDisable(true);
         });
 
+        Label identityTitle = new Label("Danh tính (chuyển sang máy khác)");
+        identityTitle.getStyleClass().add("settings-section");
+        Label identityHint = new Label("Khoá danh tính chỉ mở được trên máy này. Muốn dùng tài khoản trên máy mới, "
+                + "xuất khoá ra file (bảo vệ bằng mật khẩu) rồi nhập ở máy mới.");
+        identityHint.setWrapText(true);
+        identityHint.getStyleClass().add("settings-hint");
+        Button exportIdentity = new Button("Xuất khoá…", new FontIcon(Feather.UPLOAD));
+        exportIdentity.setOnAction(event -> exportIdentity(owner));
+        Button importIdentity = new Button("Nhập khoá…", new FontIcon(Feather.DOWNLOAD));
+        importIdentity.setOnAction(event -> importIdentity(owner));
+        HBox identityRow = new HBox(8, exportIdentity, importIdentity);
+
         VBox content = new VBox(10, themeTitle, themeBox, alertTitle, soundRow, notifications, privacy,
-                historyTitle, saveHistory, historyHint, clearHistory);
+                historyTitle, saveHistory, historyHint, clearHistory, identityTitle, identityHint, identityRow);
         content.setPadding(new Insets(4, 4, 4, 4));
         content.setPrefWidth(380);
 

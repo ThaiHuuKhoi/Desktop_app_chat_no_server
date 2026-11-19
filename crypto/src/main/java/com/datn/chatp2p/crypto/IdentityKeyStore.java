@@ -95,6 +95,38 @@ public final class IdentityKeyStore {
     private record Loaded(KeyPair keyPair, boolean plaintext) {
     }
 
+    /**
+     * Thay danh tinh tren may nay bang {@code keyPair} (vd nhap tu {@link IdentityBackup}). File cu
+     * duoc giu lai thanh {@code <ten>.old-<thoi diem>} de khong mat han danh tinh cu.
+     *
+     * @return duong dan ban luu danh tinh cu, hoac null neu truoc do chua co.
+     */
+    public static Path replace(Path file, KeyPair keyPair, KeyProtector protector) {
+        if (!isMatchingPair(keyPair)) {
+            throw new IllegalArgumentException("Cap khoa khong khop nhau");
+        }
+        Path directory = file.toAbsolutePath().getParent();
+        try {
+            Files.createDirectories(directory);
+            Path backup = null;
+            if (Files.exists(file)) {
+                backup = directory.resolve(file.getFileName() + ".old-" + System.currentTimeMillis());
+                Files.copy(file, backup);
+            }
+            Path tempFile = Files.createTempFile(directory, file.getFileName().toString(), ".tmp");
+            try {
+                write(tempFile, keyPair, protector);
+                Files.move(tempFile, file, java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                        java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+            } finally {
+                Files.deleteIfExists(tempFile);
+            }
+            return backup;
+        } catch (IOException e) {
+            throw new UncheckedIOException("Khong thay duoc khoa danh tinh " + file, e);
+        }
+    }
+
     private static Loaded load(Path file, KeyProtector protector) {
         Properties properties = new Properties();
         try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
