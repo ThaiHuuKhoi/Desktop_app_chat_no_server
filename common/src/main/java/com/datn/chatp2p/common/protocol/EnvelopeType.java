@@ -48,5 +48,9 @@ public enum EnvelopeType {
     /** Nguoi nhan xac nhan cac chunk da nhan - payload {@link FileAckPayload}. */
     FILE_ACK,
     /** Huy hoac bao loi 1 lan truyen file, gui 2 chieu - payload {@link FileCancelPayload}. */
-    FILE_CANCEL
+    FILE_CANCEL,
+    /** Nguoi nhan da XEM cac tin (best-effort) - payload {@link MessageReadPayload}. */
+    MESSAGE_READ,
+    /** Them / bo 1 cam xuc tren 1 tin (best-effort) - payload {@link ReactionPayload}. */
+    MESSAGE_REACTION
 }

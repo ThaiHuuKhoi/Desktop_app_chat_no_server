@@ -13,13 +13,23 @@ import java.util.Set;
 final class DeliveryStatuses {
 
     /** Trang thai hien duoi bong bong tin. */
-    record Status(int recipients, int delivered, int failed) {
+    record Status(int recipients, int delivered, int failed, int read) {
 
-        enum Kind { NO_RECIPIENT, SENDING, PARTIAL, DELIVERED, FAILED }
+        Status(int recipients, int delivered, int failed) {
+            this(recipients, delivered, failed, 0);
+        }
+
+        enum Kind { NO_RECIPIENT, SENDING, PARTIAL, DELIVERED, FAILED, PARTIALLY_READ, READ }
 
         Kind kind() {
             if (recipients == 0) {
                 return Kind.NO_RECIPIENT;
+            }
+            if (read == recipients) {
+                return Kind.READ;
+            }
+            if (read > 0) {
+                return Kind.PARTIALLY_READ;
             }
             if (delivered == recipients) {
                 return Kind.DELIVERED;
@@ -38,6 +48,8 @@ final class DeliveryStatuses {
                 case DELIVERED -> recipients == 1 ? "Đã nhận" : "Tất cả đã nhận";
                 case PARTIAL -> "Đã nhận " + delivered + "/" + recipients;
                 case FAILED -> "Chưa tới nơi";
+                case PARTIALLY_READ -> "Đã xem " + read + "/" + recipients;
+                case READ -> recipients == 1 ? "Đã xem" : "Tất cả đã xem";
             };
         }
     }
@@ -46,14 +58,26 @@ final class DeliveryStatuses {
         final Set<String> recipients;
         final Set<String> delivered = new HashSet<>();
         final Set<String> failed = new HashSet<>();
+        final Set<String> read = new HashSet<>();
 
         Entry(List<String> recipients) {
             this.recipients = new HashSet<>(recipients);
         }
 
         Status status() {
-            return new Status(recipients.size(), delivered.size(), failed.size());
+            return new Status(recipients.size(), delivered.size(), failed.size(), read.size());
         }
+    }
+
+    /** Nguoi nhan da xem (da xem thi chac chan da nhan). @return {@code true} neu trang thai thay doi. */
+    boolean read(String messageId, String peerId) {
+        Entry entry = entries.get(messageId);
+        if (entry == null || !entry.recipients.contains(peerId)) {
+            return false;
+        }
+        entry.failed.remove(peerId);
+        entry.delivered.add(peerId);
+        return entry.read.add(peerId);
     }
 
     private final Map<String, Entry> entries = new HashMap<>();

@@ -9,6 +9,8 @@ import com.datn.chatp2p.common.protocol.EnvelopeType;
 import com.datn.chatp2p.common.protocol.IdentityPayload;
 import com.datn.chatp2p.common.protocol.MessageAckPayload;
 import com.datn.chatp2p.common.protocol.MessagePayload;
+import com.datn.chatp2p.common.protocol.MessageReadPayload;
+import com.datn.chatp2p.common.protocol.ReactionPayload;
 import com.datn.chatp2p.common.protocol.MessageTranscriptPayload;
 import com.datn.chatp2p.common.protocol.MessageTranscriptPayload.HistoryMessage;
 import com.datn.chatp2p.common.protocol.RoomProofPayload;
@@ -161,6 +163,8 @@ public final class P2pChatSession implements ChatSession {
         roomSession.onEnvelope(EnvelopeType.MESSAGE_TRANSCRIPT, admittedOnly(this::handleTranscript));
         roomSession.onEnvelope(EnvelopeType.TYPING_STATUS_CHANGE, admittedOnly(this::handleTypingStatus));
         roomSession.onEnvelope(EnvelopeType.PEER_IDENTITY, admittedOnly(this::handlePeerIdentity));
+        roomSession.onEnvelope(EnvelopeType.MESSAGE_READ, admittedOnly(this::handleMessageRead));
+        roomSession.onEnvelope(EnvelopeType.MESSAGE_REACTION, admittedOnly(this::handleReaction));
         // Truyen file cung chi nhan tu peer da qua cong mat khau.
         for (EnvelopeType type : List.of(EnvelopeType.FILE_OFFER, EnvelopeType.FILE_ANSWER,
                 EnvelopeType.FILE_CHUNK, EnvelopeType.FILE_ACK, EnvelopeType.FILE_CANCEL)) {
@@ -184,7 +188,7 @@ public final class P2pChatSession implements ChatSession {
         }
         // Dung id/thoi gian cua chinh ChatMessage: lich su chia se giua cac peer loai trung theo id.
         MessagePayload payload = new MessagePayload(
-                message.getId(), message.getAuthorId(), message.getText(), message.getTimeSent());
+                message.getId(), message.getAuthorId(), message.getText(), message.getTimeSent(), message.getReplyToId());
         history.add(new HistoryMessage(message.getId(), selfPeerId, config.userName(),
                 message.getText(), message.getTimeSent()));
         List<String> recipients = admittedPeerIds();
@@ -212,7 +216,7 @@ public final class P2pChatSession implements ChatSession {
             throw new IllegalArgumentException("Người này chưa vào phòng hoặc đã rời phòng");
         }
         MessagePayload payload = new MessagePayload(
-                message.getId(), message.getAuthorId(), message.getText(), message.getTimeSent());
+                message.getId(), message.getAuthorId(), message.getText(), message.getTimeSent(), message.getReplyToId());
         LOG.info(() -> "Gui tin RIENG id=" + shortId(message.getId()) + " " + SecretLogging.text(message.getText())
                 + " toi " + who(peerId));
         notifyMessageSent(message.getId(), List.of(peerId));
@@ -469,7 +473,7 @@ public final class P2pChatSession implements ChatSession {
         // Tac gia LUON la peer gui ket noi nay (khong tin authorId trong payload); dong ho cua
         // peer co the lech - khong cho thoi gian o tuong lai.
         long timeSent = Math.min(payload.timeSent(), now);
-        ChatMessage message = new ChatMessage(payload.id(), peerId, payload.text(), timeSent, now);
+        ChatMessage message = new ChatMessage(payload.id(), peerId, payload.text(), timeSent, now, payload.replyToId());
 
         boolean direct = EnvelopeNamespace.DIRECT_MESSAGE.equals(envelope.namespace());
         if (!direct) {
@@ -497,6 +501,81 @@ public final class P2pChatSession implements ChatSession {
             }
         } catch (IOException error) {
             LOG.fine(() -> "Bo qua MESSAGE_ACK hong tu " + peerId);
+        }
+    }
+
+    /** Toi da so id trong 1 ban tin MESSAGE_READ (goi UDP nho, va chong ban tin rac qua lon). */
+    private static final int MAX_READ_IDS_PER_PACKET = 20;
+
+    @Override
+    public void sendReadReceipt(String authorPeerId, List<String> messageIds, boolean direct) {
+        if (left || messageIds.isEmpty() || !admittedPeers.contains(authorPeerId)) {
+            return;
+        }
+        LOG.fine(() -> "Bao da xem " + messageIds.size() + " tin cho " + who(authorPeerId));
+        // Best-effort: mat thi tin chi hien "Da nhan" thay vi "Da xem" - khong gui lai.
+        for (int from = 0; from < messageIds.size(); from += MAX_READ_IDS_PER_PACKET) {
+            List<String> chunk = List.copyOf(messageIds.subList(from, Math.min(messageIds.size(), from + MAX_READ_IDS_PER_PACKET)));
+            sendQuietly(authorPeerId, EnvelopeType.MESSAGE_READ,
+                    direct ? EnvelopeNamespace.DIRECT_MESSAGE : null, new MessageReadPayload(chunk));
+        }
+    }
+
+    @Override
+    public void sendReaction(String directPeerId, String messageId, String emoji, boolean added) {
+        if (left || messageId == null || !ReactionPayload.ALLOWED.contains(emoji)) {
+            return;
+        }
+        ReactionPayload payload = new ReactionPayload(messageId, emoji, added);
+        LOG.info(() -> (added ? "Them" : "Bo") + " cam xuc tren tin id=" + shortId(messageId)
+                + (directPeerId == null ? " (nhom)" : " (rieng voi " + who(directPeerId) + ")"));
+        if (directPeerId != null) {
+            if (admittedPeers.contains(directPeerId)) {
+                sendQuietly(directPeerId, EnvelopeType.MESSAGE_REACTION, EnvelopeNamespace.DIRECT_MESSAGE, payload);
+            }
+            return;
+        }
+        for (String peerId : admittedPeerIds()) {
+            sendQuietly(peerId, EnvelopeType.MESSAGE_REACTION, null, payload);
+        }
+    }
+
+    private void handleMessageRead(String peerId, Envelope envelope) {
+        MessageReadPayload payload;
+        try {
+            payload = OBJECT_MAPPER.readValue(envelope.payload(), MessageReadPayload.class);
+        } catch (IOException error) {
+            LOG.fine(() -> "Bo qua MESSAGE_READ hong tu " + peerId);
+            return;
+        }
+        if (payload.messageIds() == null) {
+            return;
+        }
+        ChatSessionListener currentListener = listener;
+        if (currentListener == null || left) {
+            return;
+        }
+        payload.messageIds().stream()
+                .filter(java.util.Objects::nonNull)
+                .limit(MAX_READ_IDS_PER_PACKET)
+                .forEach(id -> currentListener.onMessageRead(id, peerId));
+    }
+
+    private void handleReaction(String peerId, Envelope envelope) {
+        ReactionPayload payload;
+        try {
+            payload = OBJECT_MAPPER.readValue(envelope.payload(), ReactionPayload.class);
+        } catch (IOException error) {
+            LOG.fine(() -> "Bo qua MESSAGE_REACTION hong tu " + peerId);
+            return;
+        }
+        // Chi nhan cam xuc trong bo co dinh - khong de nguoi khac chen chu tuy y vao giao dien.
+        if (payload.messageId() == null || !ReactionPayload.ALLOWED.contains(payload.emoji())) {
+            return;
+        }
+        ChatSessionListener currentListener = listener;
+        if (currentListener != null && !left) {
+            currentListener.onReaction(payload.messageId(), peerId, payload.emoji(), payload.added());
         }
     }
 

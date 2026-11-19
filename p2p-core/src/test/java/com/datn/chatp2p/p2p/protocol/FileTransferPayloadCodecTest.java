@@ -122,7 +122,8 @@ class FileTransferPayloadCodecTest {
                 EnvelopeType.AUDIO_CHANGE, EnvelopeType.VIDEO_CHANGE, EnvelopeType.SCREEN_SHARE_CHANGE,
                 EnvelopeType.MEDIA_FRAME,
                 EnvelopeType.MESSAGE_ACK, EnvelopeType.ROOM_PROOF,
-                EnvelopeType.FILE_ANSWER, EnvelopeType.FILE_ACK, EnvelopeType.FILE_CANCEL);
+                EnvelopeType.FILE_ANSWER, EnvelopeType.FILE_ACK, EnvelopeType.FILE_CANCEL,
+                EnvelopeType.MESSAGE_READ, EnvelopeType.MESSAGE_REACTION);
 
         assertEquals(expected, List.of(EnvelopeType.values()));
     }

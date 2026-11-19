@@ -21,7 +21,7 @@ final class ChatTranscriptManager {
     private final String selfPeerId;
     private final Function<String, String> displayNameResolver;
     private final FileTransferActions fileActions;
-    private final Function<String, DeliveryStatuses.Status> deliveryResolver;
+    private final MessageContext messageContext;
     private ListView<TranscriptEntry> groupView;
     private final ObservableList<TranscriptEntry> groupTranscript = FXCollections.observableArrayList();
     private final Map<String, ObservableList<TranscriptEntry>> directTranscripts = new HashMap<>();
@@ -30,11 +30,21 @@ final class ChatTranscriptManager {
     private TabPane tabs;
 
     ChatTranscriptManager(String selfPeerId, Function<String, String> displayNameResolver,
-                          FileTransferActions fileActions, Function<String, DeliveryStatuses.Status> deliveryResolver) {
+                          FileTransferActions fileActions, MessageContext messageContext) {
         this.selfPeerId = selfPeerId;
         this.displayNameResolver = displayNameResolver;
         this.fileActions = fileActions;
-        this.deliveryResolver = deliveryResolver;
+        this.messageContext = messageContext;
+    }
+
+    /** Tim tin theo id trong khung nhom va cac tab rieng (de hien trich dan khi tra loi), hoac null. */
+    ChatMessage findMessage(String messageId) {
+        java.util.stream.Stream<TranscriptEntry> all = java.util.stream.Stream.concat(
+                groupTranscript.stream(), directTranscripts.values().stream().flatMap(java.util.List::stream));
+        return all.filter(entry -> entry instanceof TranscriptEntry.UserMessage user
+                        && user.message().getId().equals(messageId))
+                .map(entry -> ((TranscriptEntry.UserMessage) entry).message())
+                .findFirst().orElse(null);
     }
 
     /** Ve lai moi khung chat (vd khi trang thai "da nhan" cua 1 tin thay doi). */
@@ -184,7 +194,7 @@ final class ChatTranscriptManager {
     }
 
     private TranscriptCell newCell() {
-        return new TranscriptCell(selfPeerId, displayNameResolver, fileActions, deliveryResolver);
+        return new TranscriptCell(selfPeerId, displayNameResolver, fileActions, messageContext);
     }
 
     String selectedDirectPeerId() {

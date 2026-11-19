@@ -162,7 +162,7 @@ final class FileTransferManager implements AutoCloseable {
         FileOfferPayload offer = source.offer();
         Outgoing out = new Outgoing(peerId, source, new FileTransferStatus(
                 offer.fileId(), peerId, Direction.OUTGOING, direct, offer.fileName(), offer.fileSize(),
-                State.WAITING_ANSWER, 0, null, null));
+                State.WAITING_ANSWER, 0, file, null)); // ben gui: savedFile = file goc (de xem truoc anh)
         try {
             out.sender = new ReliableChunkSender(source,
                     // namespace chi gan vao OFFER de ben nhan biet hien the o tab Nhom hay DM
@@ -190,7 +190,7 @@ final class FileTransferManager implements AutoCloseable {
         synchronized (out) {
             if (out.status.state() == State.WAITING_ANSWER) {
                 if (answer.accepted()) {
-                    out.status = out.status.with(State.IN_PROGRESS, 0, null, null);
+                    out.status = out.status.with(State.IN_PROGRESS, 0, out.status.savedFile(), null);
                     accepted = out.status;
                 } else {
                     out.rejected = true;
@@ -226,7 +226,7 @@ final class FileTransferManager implements AutoCloseable {
                     return;
                 }
                 long bytes = Math.min((long) ackedChunks * out.source.offer().chunkSize(), out.status.fileSize());
-                out.status = out.status.with(State.IN_PROGRESS, bytes, null, null);
+                out.status = out.status.with(State.IN_PROGRESS, bytes, out.status.savedFile(), null);
                 long now = System.currentTimeMillis();
                 if (now - out.lastEmitAt < PROGRESS_INTERVAL_MS && ackedChunks < totalChunks) {
                     return;
@@ -278,7 +278,7 @@ final class FileTransferManager implements AutoCloseable {
                 return;
             }
             long bytes = state == State.COMPLETED ? out.status.fileSize() : out.status.bytesTransferred();
-            out.status = out.status.with(state, bytes, null, reason);
+            out.status = out.status.with(state, bytes, out.status.savedFile(), reason);
             status = out.status;
         }
         outgoing.remove(status.fileId(), out);

@@ -42,6 +42,22 @@ public interface ChatSession {
     default void sendTypingStatus(String directPeerId, boolean typing) {
     }
 
+    /**
+     * Bao {@code authorPeerId} la minh da xem cac tin {@code messageIds} cua ho (best-effort).
+     *
+     * @param direct {@code true} neu la tin trong tab tin nhan rieng
+     */
+    default void sendReadReceipt(String authorPeerId, java.util.List<String> messageIds, boolean direct) {
+    }
+
+    /**
+     * Them / bo 1 cam xuc tren tin {@code messageId} (best-effort).
+     *
+     * @param directPeerId null = tin trong khung nhom (gui toi ca phong); khac null = tin rieng voi nguoi do.
+     */
+    default void sendReaction(String directPeerId, String messageId, String emoji, boolean added) {
+    }
+
     /** Dung luong file toi da duoc gui / nhan (byte). */
     default long maxFileSize() {
         return 0;

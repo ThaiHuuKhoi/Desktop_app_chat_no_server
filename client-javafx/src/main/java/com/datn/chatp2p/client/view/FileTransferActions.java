@@ -13,4 +13,8 @@ interface FileTransferActions {
 
     /** Mo thu muc chua file da nhan (chon san file do neu duoc). */
     void showInFolder(FileTransferStatus status);
+
+    /** Nguoi dung bam vao anh xem truoc -&gt; mo bang trinh xem anh (chi file anh, khong bao gio tu mo). */
+    default void open(FileTransferStatus status) {
+    }
 }

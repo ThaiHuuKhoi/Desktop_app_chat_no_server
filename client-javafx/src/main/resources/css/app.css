@@ -699,3 +699,61 @@
     -fx-text-fill: -color-fg-muted;
     -fx-graphic-text-gap: 4;
 }
+
+/* ---------- Tra loi / cam xuc / xem truoc anh ---------- */
+.reply-quote {
+    -fx-padding: 4 8 4 8;
+    -fx-background-color: -color-bg-subtle;
+    -fx-background-radius: 6;
+    -fx-border-color: transparent transparent transparent -color-accent-emphasis;
+    -fx-border-width: 0 0 0 3;
+}
+
+.reply-quote-author {
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -color-accent-fg;
+}
+
+.reply-quote-author .ikonli-font-icon {
+    -fx-icon-size: 12px;
+    -fx-icon-color: -color-accent-fg;
+}
+
+.reply-quote-text {
+    -fx-font-size: 11px;
+    -fx-text-fill: -color-fg-muted;
+}
+
+.reaction-chip {
+    -fx-padding: 1 7 1 7;
+    -fx-font-size: 12px;
+    -fx-background-color: -color-bg-subtle;
+    -fx-background-radius: 10;
+    -fx-border-color: -color-border-default;
+    -fx-border-radius: 10;
+}
+
+.reaction-chip-mine {
+    -fx-border-color: -color-accent-emphasis;
+    -fx-background-color: -color-accent-subtle;
+}
+
+.reply-bar {
+    -fx-padding: 4 8 4 8;
+    -fx-background-color: -color-bg-subtle;
+    -fx-background-radius: 6;
+}
+
+.reply-bar .ikonli-font-icon {
+    -fx-icon-color: -color-accent-fg;
+}
+
+.reply-bar-text {
+    -fx-font-size: 12px;
+    -fx-text-fill: -color-fg-muted;
+}
+
+.file-preview {
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.15), 4, 0, 0, 1);
+}

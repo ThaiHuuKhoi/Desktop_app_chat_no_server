@@ -16,6 +16,7 @@ public final class ChatMessage {
     private final String authorId;
     private final String text;
     private final long timeSent;
+    private final String replyToId;
     private Long timeReceived;
 
     public ChatMessage(String authorId, String text) {
@@ -23,11 +24,27 @@ public final class ChatMessage {
     }
 
     public ChatMessage(String id, String authorId, String text, long timeSent, Long timeReceived) {
+        this(id, authorId, text, timeSent, timeReceived, null);
+    }
+
+    /** @param replyToId id cua tin dang duoc tra loi, hoac null. */
+    public ChatMessage(String id, String authorId, String text, long timeSent, Long timeReceived, String replyToId) {
         this.id = Objects.requireNonNull(id, "id");
         this.authorId = Objects.requireNonNull(authorId, "authorId");
         this.text = Objects.requireNonNull(text, "text");
         this.timeSent = timeSent;
         this.timeReceived = timeReceived;
+        this.replyToId = replyToId;
+    }
+
+    /** Tin moi cua minh tra loi tin {@code replyToId}. */
+    public static ChatMessage reply(String authorId, String text, String replyToId) {
+        return new ChatMessage(UUID.randomUUID().toString(), authorId, text, System.currentTimeMillis(), null, replyToId);
+    }
+
+    /** Id cua tin dang duoc tra loi, hoac null neu la tin thuong. */
+    public String getReplyToId() {
+        return replyToId;
     }
 
     public String getId() {

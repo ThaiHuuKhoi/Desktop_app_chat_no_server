@@ -56,6 +56,14 @@ public interface ChatSessionListener {
     default void onMessageDelivered(String messageId, String peerId) {
     }
 
+    /** {@code peerId} da xem tin {@code messageId} cua minh. */
+    default void onMessageRead(String messageId, String peerId) {
+    }
+
+    /** {@code peerId} them ({@code added}) hoac bo cam xuc {@code emoji} tren tin {@code messageId}. */
+    default void onReaction(String messageId, String peerId, String emoji, boolean added) {
+    }
+
     /** Het luot gui lai ma {@code peerId} van chua xac nhan tin {@code messageId}. */
     default void onMessageDeliveryFailed(String messageId, String peerId) {
     }

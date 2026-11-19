@@ -126,6 +126,13 @@ public class RoomController implements ChatSessionListener {
     private final java.util.Set<String> keyChangeWarned = new java.util.HashSet<>();
     /** Trang thai "dang gui / da nhan" cua cac tin minh gui. */
     private final DeliveryStatuses deliveryStatuses = new DeliveryStatuses();
+    private final ReactionStore reactions = new ReactionStore();
+    /** Tin nguoi khac gui ma minh chua "xem": khoa = null (khung nhom) hoac peerId (tab rieng). */
+    private final Map<String, List<ChatMessage>> unreadByTab = new HashMap<>();
+    /** Tin dang duoc tra loi (hien thanh "Dang tra loi ..." tren o nhap), hoac null. */
+    private ChatMessage replyingTo;
+    private final Label replyBarLabel = new Label();
+    private final HBox replyBar = new HBox(8);
     private final javafx.animation.PauseTransition aloneHintTimer =
             new javafx.animation.PauseTransition(Duration.seconds(ALONE_HINT_SECONDS));
     private final Map<String, String> displayNames = new HashMap<>();
@@ -167,7 +174,7 @@ public class RoomController implements ChatSessionListener {
                 session.selfPeerId(),
                 peerId -> displayNames.getOrDefault(peerId, "Người lạ"),
                 new FileCardActions(),
-                deliveryStatuses::status);
+                new RoomMessageContext());
         transcriptManager.configure(chatTabs, transcriptListView);
         installFileDrop();
 
@@ -177,7 +184,15 @@ public class RoomController implements ChatSessionListener {
         chatTabs.getSelectionModel().selectedItemProperty().addListener((obs, old, tab) -> {
             typingNotifier.stop(); // dang go o tab cu -> bao ngung truoc khi sang tab moi
             refreshTypingLabel();
+            flushReadReceipts(); // vua mo tab -> nhung tin trong tab nay coi nhu da xem
         });
+        // Quay lai cua so app -> bao da xem cac tin dang hien
+        stage.focusedProperty().addListener((obs, was, focused) -> {
+            if (focused) {
+                flushReadReceipts();
+            }
+        });
+        installReplyBar();
         typingTicker.setCycleCount(Animation.INDEFINITE);
         typingTicker.play();
         // Sai mat khau / sai ten phong trong y het "chua ai vao" -> sau 1 luc van mot minh thi goi y kiem tra lai.
@@ -307,7 +322,8 @@ public class RoomController implements ChatSessionListener {
     @Override
     public void onPeerLeft(String peerId) {
         Platform.runLater(() -> {
-            if (deliveryStatuses.peerLeft(peerId)) {
+            unreadByTab.remove(peerId);
+            if (deliveryStatuses.peerLeft(peerId) | reactions.peerLeft(peerId)) {
                 transcriptManager.refreshAll();
             }
             peers.removeIf(item -> item.peer.peerId().equals(peerId));
@@ -323,6 +339,7 @@ public class RoomController implements ChatSessionListener {
     public void onMessageReceived(ChatMessage message) {
         Platform.runLater(() -> {
             transcriptManager.addGroup(new UserMessage(message));
+            queueReadReceipt(null, message);
             typingTracker.clear(message.getAuthorId(), false);
             refreshTypingLabel();
             refreshRoomState();
@@ -339,6 +356,7 @@ public class RoomController implements ChatSessionListener {
                     displayNames.getOrDefault(peerId, "Người lạ"),
                     message,
                     messageArea.getText().isBlank());
+            queueReadReceipt(peerId, message);
             typingTracker.clear(peerId, true);
             refreshTypingLabel();
             alertIncoming(peerId, true);
@@ -408,18 +426,142 @@ public class RoomController implements ChatSessionListener {
         }
     }
 
+    // ---------- Da xem / tra loi / cam xuc ----------
+
+    @Override
+    public void onMessageRead(String messageId, String peerId) {
+        Platform.runLater(() -> {
+            if (deliveryStatuses.read(messageId, peerId)) {
+                transcriptManager.refreshAll();
+            }
+        });
+    }
+
+    @Override
+    public void onReaction(String messageId, String peerId, String emoji, boolean added) {
+        Platform.runLater(() -> {
+            if (reactions.apply(messageId, peerId, emoji, added)) {
+                transcriptManager.refreshAll();
+            }
+        });
+    }
+
+    /** Tin nguoi khac vua toi: ghi nho la chua xem, roi bao "da xem" ngay neu dang mo dung tab do. */
+    private void queueReadReceipt(String directPeerId, ChatMessage message) {
+        unreadByTab.computeIfAbsent(directPeerId, key -> new java.util.ArrayList<>()).add(message);
+        flushReadReceipts();
+    }
+
+    /**
+     * Chi coi la "da xem" khi cua so app dang duoc chon VA dang mo dung tab chua tin - tin den luc
+     * app bi thu nho / dang o tab khac se doi toi khi nguoi dung quay lai.
+     */
+    private void flushReadReceipts() {
+        if (!stage.isFocused() || transcriptManager == null) {
+            return;
+        }
+        String visibleTab = transcriptManager.selectedDirectPeerId();
+        List<ChatMessage> unread = unreadByTab.remove(visibleTab);
+        if (unread == null || unread.isEmpty()) {
+            return;
+        }
+        Map<String, List<String>> idsByAuthor = new HashMap<>();
+        for (ChatMessage message : unread) {
+            idsByAuthor.computeIfAbsent(message.getAuthorId(), key -> new java.util.ArrayList<>()).add(message.getId());
+        }
+        idsByAuthor.forEach((author, ids) -> session.sendReadReceipt(author, ids, visibleTab != null));
+    }
+
+    /** Thanh "Dang tra loi X: ..." ngay tren o nhap tin, an khi khong tra loi tin nao. */
+    private void installReplyBar() {
+        Button cancel = new Button(null, new FontIcon(Feather.X));
+        cancel.getStyleClass().addAll(Styles.BUTTON_ICON, Styles.FLAT);
+        cancel.setOnAction(event -> clearReply());
+        replyBarLabel.getStyleClass().add("reply-bar-text");
+        replyBarLabel.setMaxWidth(Double.MAX_VALUE);
+        HBox.setHgrow(replyBarLabel, javafx.scene.layout.Priority.ALWAYS);
+        replyBar.getChildren().setAll(new FontIcon(Feather.CORNER_UP_LEFT), replyBarLabel, cancel);
+        replyBar.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+        replyBar.getStyleClass().add("reply-bar");
+        replyBar.setVisible(false);
+        replyBar.setManaged(false);
+        if (messageArea.getParent() != null && messageArea.getParent().getParent() instanceof VBox inputBar) {
+            inputBar.getChildren().add(0, replyBar);
+        }
+    }
+
+    private void startReply(ChatMessage message) {
+        replyingTo = message;
+        String author = session.selfPeerId().equals(message.getAuthorId())
+                ? "chính bạn"
+                : displayNames.getOrDefault(message.getAuthorId(), "Người lạ");
+        replyBarLabel.setText("Đang trả lời " + author + ": " + MessageTexts.snippet(message.getText()));
+        replyBar.setVisible(true);
+        replyBar.setManaged(true);
+        messageArea.requestFocus();
+    }
+
+    private void clearReply() {
+        replyingTo = null;
+        replyBar.setVisible(false);
+        replyBar.setManaged(false);
+    }
+
+    /** Cau noi giua o tin nhan (TranscriptCell) va trang thai cua phong. */
+    private final class RoomMessageContext implements MessageContext {
+        @Override
+        public DeliveryStatuses.Status delivery(String messageId) {
+            return deliveryStatuses.status(messageId);
+        }
+
+        @Override
+        public Map<String, Integer> reactions(String messageId) {
+            return reactions.counts(messageId);
+        }
+
+        @Override
+        public boolean reactedBySelf(String messageId, String emoji) {
+            return reactions.hasReacted(messageId, session.selfPeerId(), emoji);
+        }
+
+        @Override
+        public ChatMessage findMessage(String messageId) {
+            return transcriptManager.findMessage(messageId);
+        }
+
+        @Override
+        public void reply(ChatMessage message) {
+            startReply(message);
+        }
+
+        @Override
+        public void toggleReaction(ChatMessage message, String emoji) {
+            boolean add = !reactions.hasReacted(message.getId(), session.selfPeerId(), emoji);
+            reactions.apply(message.getId(), session.selfPeerId(), emoji, add);
+            transcriptManager.refreshAll();
+            try {
+                session.sendReaction(transcriptManager.selectedDirectPeerId(), message.getId(), emoji, add);
+            } catch (RuntimeException e) {
+                notice(NoticeKind.WARNING, "Không gửi được cảm xúc: " + e.getMessage());
+            }
+        }
+    }
+
     @FXML
     private void onSendMessage() {
         String text = messageArea.getText() == null ? "" : messageArea.getText().strip();
         if (text.isEmpty()) {
             return;
         }
-        ChatMessage message = new ChatMessage(session.selfPeerId(), text);
+        ChatMessage message = replyingTo == null
+                ? new ChatMessage(session.selfPeerId(), text)
+                : ChatMessage.reply(session.selfPeerId(), text, replyingTo.getId());
         String directPeerId = transcriptManager.selectedDirectPeerId();
         if (directPeerId == null) {
             transcriptManager.addGroup(new UserMessage(message));
         }
         messageArea.clear();
+        clearReply();
         refreshRoomState();
 
         try {
@@ -547,6 +689,21 @@ public class RoomController implements ChatSessionListener {
                 } catch (IOException | RuntimeException e) {
                     Platform.runLater(() -> notice(NoticeKind.WARNING,
                             "Không mở được thư mục: " + saved.getParent()));
+                }
+            });
+        }
+
+        @Override
+        public void open(FileTransferStatus status) {
+            Path file = status.savedFile();
+            if (file == null || !MessageTexts.isImage(status.fileName())) {
+                return; // chi mo anh, va chi khi nguoi dung bam - khong tu chay file nhan duoc
+            }
+            CompletableFuture.runAsync(() -> {
+                try {
+                    Desktop.getDesktop().open(file.toFile());
+                } catch (IOException | RuntimeException e) {
+                    Platform.runLater(() -> notice(NoticeKind.WARNING, "Không mở được ảnh: " + file.getFileName()));
                 }
             });
         }

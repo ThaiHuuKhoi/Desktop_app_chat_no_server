@@ -5,5 +5,10 @@ package com.datn.chatp2p.common.protocol;
  * message (phan biet qua {@link Envelope#namespace()}) - Tai-lieu-ky-thuat.md
  * Phan E.3.3.
  */
-public record MessagePayload(String id, String authorId, String text, long timeSent) {
+public record MessagePayload(String id, String authorId, String text, long timeSent, String replyToId) {
+
+    /** Tin thuong (khong tra loi tin nao). */
+    public MessagePayload(String id, String authorId, String text, long timeSent) {
+        this(id, authorId, text, timeSent, null);
+    }
 }

@@ -50,14 +50,14 @@ class TranscriptCell extends ListCell<TranscriptEntry> {
     private final String selfPeerId;
     private final Function<String, String> displayNameResolver;
     private final FileTransferActions fileActions;
-    private final Function<String, DeliveryStatuses.Status> deliveryResolver;
+    private final MessageContext messageContext;
 
     TranscriptCell(String selfPeerId, Function<String, String> displayNameResolver,
-                   FileTransferActions fileActions, Function<String, DeliveryStatuses.Status> deliveryResolver) {
+                   FileTransferActions fileActions, MessageContext messageContext) {
         this.selfPeerId = selfPeerId;
         this.displayNameResolver = displayNameResolver;
         this.fileActions = fileActions;
-        this.deliveryResolver = deliveryResolver;
+        this.messageContext = messageContext;
         // De ListView tu co theo chieu rong, khong hien thanh cuon ngang khi tin dai
         setPrefWidth(0);
     }
@@ -108,6 +108,10 @@ class TranscriptCell extends ListCell<TranscriptEntry> {
         statusLabel.getStyleClass().addAll("file-status", "file-status-" + tone(status));
 
         VBox card = new VBox(8, header);
+        Node preview = imagePreview(status);
+        if (preview != null) {
+            card.getChildren().add(preview);
+        }
         card.getStyleClass().add("file-card");
         card.setMaxWidth(MAX_BUBBLE_WIDTH - 80);
         card.setPrefWidth(340);
@@ -139,6 +143,44 @@ class TranscriptCell extends ListCell<TranscriptEntry> {
         row.setAlignment(Pos.TOP_LEFT);
         row.getChildren().addAll(Avatars.create(who, AVATAR_RADIUS), column);
         return row;
+    }
+
+    private static final double PREVIEW_WIDTH = 300;
+    private static final double PREVIEW_HEIGHT = 220;
+    /** Anh thu nho da nap (o duoc ve lai rat thuong xuyen - khong doc lai file moi lan). */
+    private static final java.util.Map<java.nio.file.Path, javafx.scene.image.Image> PREVIEW_CACHE =
+            new java.util.LinkedHashMap<>(16, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(java.util.Map.Entry<java.nio.file.Path, javafx.scene.image.Image> eldest) {
+                    return size() > 40;
+                }
+            };
+
+    /**
+     * Anh thu nho cho file anh: ben nhan khi da nhan xong (file da kiem SHA-256), ben gui tu file goc.
+     * Nap nen (khong lam dung giao dien); bam vao anh -&gt; mo bang trinh xem anh cua he dieu hanh.
+     */
+    private Node imagePreview(FileTransferStatus status) {
+        java.nio.file.Path file = status.savedFile();
+        boolean ready = status.direction() == Direction.OUTGOING || status.state() == State.COMPLETED;
+        if (file == null || !ready || !MessageTexts.isImage(status.fileName()) || !java.nio.file.Files.isRegularFile(file)) {
+            return null;
+        }
+        javafx.scene.image.Image image = PREVIEW_CACHE.computeIfAbsent(file, path -> new javafx.scene.image.Image(
+                path.toUri().toString(), PREVIEW_WIDTH, PREVIEW_HEIGHT, true, true, true));
+        if (image.isError()) {
+            PREVIEW_CACHE.remove(file);
+            return null;
+        }
+        javafx.scene.image.ImageView view = new javafx.scene.image.ImageView(image);
+        view.setPreserveRatio(true);
+        view.setFitWidth(PREVIEW_WIDTH);
+        view.setFitHeight(PREVIEW_HEIGHT);
+        view.getStyleClass().add("file-preview");
+        view.setStyle("-fx-cursor: hand;");
+        Tooltip.install(view, new Tooltip("Bấm để mở ảnh"));
+        view.setOnMouseClicked(event -> fileActions.open(status));
+        return view;
     }
 
     private HBox fileButtons(FileTransferStatus status) {
@@ -214,7 +256,7 @@ class TranscriptCell extends ListCell<TranscriptEntry> {
         Label timeLabel = new Label(TIME_FORMATTER.format(Instant.ofEpochMilli(message.getTimeSent())));
         timeLabel.getStyleClass().add("message-time");
         if (mine) {
-            DeliveryStatuses.Status delivery = deliveryResolver.apply(message.getId());
+            DeliveryStatuses.Status delivery = messageContext.delivery(message.getId());
             Feather icon = Feather.CHECK;
             String tooltip = null;
             if (delivery != null) {
@@ -236,6 +278,10 @@ class TranscriptCell extends ListCell<TranscriptEntry> {
                         tooltip = "Không nhận được xác nhận (người nhận rời phòng hoặc mất kết nối)";
                     }
                     case NO_RECIPIENT -> tooltip = "Phòng chưa có ai, tin chỉ lưu vào lịch sử";
+                    case READ, PARTIALLY_READ -> {
+                        icon = Feather.EYE;
+                        tooltip = delivery.read() + " trên " + delivery.recipients() + " người đã xem";
+                    }
                 }
                 String label = delivery.label();
                 if (!label.isEmpty()) {
@@ -262,14 +308,26 @@ class TranscriptCell extends ListCell<TranscriptEntry> {
         }
 
         VBox bubble = new VBox(2, textLabel, timeRow);
+        Node quote = replyQuote(message);
+        if (quote != null) {
+            bubble.getChildren().add(0, quote);
+        }
         bubble.setMaxWidth(MAX_BUBBLE_WIDTH);
         bubble.getStyleClass().add(mine ? "bubble-mine" : "bubble-other");
+        installMessageMenu(bubble, message);
+        Node reactions = reactionRow(message, mine);
 
         HBox row = new HBox(8);
         row.setPadding(new Insets(continuation ? 1 : 8, 0, 1, 0));
         if (mine) {
             row.setAlignment(Pos.CENTER_RIGHT);
-            row.getChildren().add(bubble);
+            if (reactions == null) {
+                row.getChildren().add(bubble);
+            } else {
+                VBox stack = new VBox(2, bubble, reactions);
+                stack.setAlignment(Pos.CENTER_RIGHT);
+                row.getChildren().add(stack);
+            }
             return row;
         }
 
@@ -283,9 +341,74 @@ class TranscriptCell extends ListCell<TranscriptEntry> {
             column.getChildren().add(nameLabel);
         }
         column.getChildren().add(bubble);
+        if (reactions != null) {
+            column.getChildren().add(reactions);
+        }
         row.setAlignment(Pos.TOP_LEFT);
         row.getChildren().addAll(avatarOrSpacer, column);
         return row;
+    }
+
+    /** Khung trich dan tin dang duoc tra loi (ten + doan dau noi dung), hoac null. */
+    private Node replyQuote(ChatMessage message) {
+        if (message.getReplyToId() == null) {
+            return null;
+        }
+        ChatMessage original = messageContext.findMessage(message.getReplyToId());
+        String author = original == null ? "" : displayNameResolver.apply(original.getAuthorId());
+        String snippet = original == null ? "(tin nhắn không còn trong phiên này)" : MessageTexts.snippet(original.getText());
+        Label who = new Label(author.isEmpty() ? "Trả lời" : "Trả lời " + author, new FontIcon(Feather.CORNER_UP_LEFT));
+        who.getStyleClass().add("reply-quote-author");
+        Label text = new Label(snippet);
+        text.getStyleClass().add("reply-quote-text");
+        text.setWrapText(true);
+        VBox box = new VBox(1, who, text);
+        box.getStyleClass().add("reply-quote");
+        return box;
+    }
+
+
+    /** Cac "chip" cam xuc duoi bong bong ("👍 2"), bam de bat / tat cam xuc cua minh. */
+    private Node reactionRow(ChatMessage message, boolean mine) {
+        java.util.Map<String, Integer> counts = messageContext.reactions(message.getId());
+        if (counts.isEmpty()) {
+            return null;
+        }
+        HBox chips = new HBox(4);
+        chips.setAlignment(mine ? Pos.CENTER_RIGHT : Pos.CENTER_LEFT);
+        counts.forEach((emoji, count) -> {
+            Label chip = new Label(emoji + " " + count);
+            chip.getStyleClass().add("reaction-chip");
+            if (messageContext.reactedBySelf(message.getId(), emoji)) {
+                chip.getStyleClass().add("reaction-chip-mine");
+            }
+            chip.setStyle("-fx-cursor: hand;");
+            chip.setOnMouseClicked(event -> messageContext.toggleReaction(message, emoji));
+            chips.getChildren().add(chip);
+        });
+        return chips;
+    }
+
+    /** Chuot phai vao bong bong: Tra loi, tha cam xuc, sao chep. */
+    private void installMessageMenu(Node bubble, ChatMessage message) {
+        javafx.scene.control.ContextMenu menu = new javafx.scene.control.ContextMenu();
+        javafx.scene.control.MenuItem reply = new javafx.scene.control.MenuItem("Trả lời", new FontIcon(Feather.CORNER_UP_LEFT));
+        reply.setOnAction(event -> messageContext.reply(message));
+        javafx.scene.control.MenuItem copy = new javafx.scene.control.MenuItem("Sao chép", new FontIcon(Feather.COPY));
+        copy.setOnAction(event -> {
+            javafx.scene.input.ClipboardContent content = new javafx.scene.input.ClipboardContent();
+            content.putString(message.getText());
+            javafx.scene.input.Clipboard.getSystemClipboard().setContent(content);
+        });
+        menu.getItems().addAll(reply, copy, new javafx.scene.control.SeparatorMenuItem());
+        for (String emoji : com.datn.chatp2p.common.protocol.ReactionPayload.ALLOWED) {
+            boolean already = messageContext.reactedBySelf(message.getId(), emoji);
+            javafx.scene.control.MenuItem item = new javafx.scene.control.MenuItem(
+                    (already ? "Bỏ " : "") + emoji);
+            item.setOnAction(event -> messageContext.toggleReaction(message, emoji));
+            menu.getItems().add(item);
+        }
+        bubble.setOnContextMenuRequested(event -> menu.show(bubble, event.getScreenX(), event.getScreenY()));
     }
 
     /** Tin nay noi tiep tin ngay truoc cua cung 1 nguoi, trong vai phut -> gop lai. */
