@@ -109,6 +109,7 @@ public final class RoomSession {
     private volatile Consumer<PeerConnection> onPeerJoinedHandler;
     private volatile Consumer<String> onPeerLeftHandler;
     private volatile BiConsumer<String, Throwable> onConnectionFailedHandler;
+    private volatile Consumer<String> onJoinRejectedHandler;
 
     /**
      * @param roomId        ten phong (hoac {@code effectiveRoomId} da bam neu phong rieng tu -
@@ -155,6 +156,20 @@ public final class RoomSession {
         signalingClient.onPeerLeft(this::handlePeerLeftNotice);
         signalingClient.onOffer(this::handleOffer);
         signalingClient.onAnswer(this::handleAnswer);
+        signalingClient.onJoinRejected(message -> {
+            Consumer<String> handler = onJoinRejectedHandler;
+            if (handler != null && !left) {
+                handler.accept(message.getPayload());
+            }
+        });
+    }
+
+    /**
+     * Goi khi signaling server tu choi JOIN (sai mat khau, phong day, token het han...), kem ma ly do
+     * {@link com.datn.chatp2p.common.signal.JoinRejectReason}. Nguoi goi nen {@link #leave()}.
+     */
+    public void onJoinRejected(Consumer<String> handler) {
+        this.onJoinRejectedHandler = handler;
     }
 
     /** Ket noi toi signaling server va gui JOIN - bat dau toan bo vong doi cua phong. */

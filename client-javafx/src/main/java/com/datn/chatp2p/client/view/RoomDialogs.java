@@ -114,9 +114,15 @@ final class RoomDialogs {
 
     /** Hop nhap mat khau cho phong co mat khau. */
     static Optional<String> askPassword(Window owner, String roomName) {
+        return askPassword(owner, roomName, "");
+    }
+
+    /** Nhu {@link #askPassword(Window, String)} nhung hien san 1 dong loi (vd. "Sai mat khau" do server bao). */
+    static Optional<String> askPassword(Window owner, String roomName, String initialError) {
         PasswordField password = new PasswordField();
         password.setPromptText("Mật khẩu phòng");
         Label error = errorLabel();
+        error.setText(initialError == null ? "" : initialError);
         VBox content = new VBox(10,
                 hint("Nhập mật khẩu mà người tạo phòng đã gửi cho bạn (phân biệt hoa thường)."),
                 password, error);

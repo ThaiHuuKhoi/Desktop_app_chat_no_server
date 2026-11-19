@@ -146,6 +146,7 @@ public final class P2pChatSession implements ChatSession {
         roomSession.onPeerJoined(this::handleConnectionReady);
         roomSession.onPeerLeft(this::notifyPeerLeft);
         roomSession.onConnectionFailed(this::notifyConnectionFailed);
+        roomSession.onJoinRejected(this::notifyJoinRejected);
         roomSession.onEnvelope(EnvelopeType.ROOM_PROOF, this::handleRoomProof);
         roomSession.onEnvelope(EnvelopeType.MESSAGE, admittedOnly(this::handleMessage));
         roomSession.onEnvelope(EnvelopeType.MESSAGE_ACK, admittedOnly(this::handleMessageAck));
@@ -647,6 +648,14 @@ public final class P2pChatSession implements ChatSession {
         ChatSessionListener currentListener = listener;
         if (wasAdmitted && currentListener != null && !left) {
             currentListener.onPeerLeft(peerId);
+        }
+    }
+
+    private void notifyJoinRejected(String reason) {
+        LOG.warning(() -> "Server tu choi cho vao phong " + config.roomName() + ": " + reason);
+        ChatSessionListener currentListener = listener;
+        if (currentListener != null && !left) {
+            currentListener.onJoinRejected(reason);
         }
     }
 

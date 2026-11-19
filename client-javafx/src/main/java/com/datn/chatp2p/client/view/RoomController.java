@@ -118,6 +118,8 @@ public class RoomController implements ChatSessionListener {
     /** Moi giay: het han "dang go" cua nguoi khac + bao "ngung go" cua minh khi dung tay. */
     private final Timeline typingTicker = new Timeline(new KeyFrame(Duration.seconds(1), event -> onTypingTick()));
     private static final int ALONE_HINT_SECONDS = 20;
+    /** Da nhan JOIN_REJECTED va dang quay ve sanh (server co the gui lai khi tu ket noi lai). */
+    private boolean joinRejected;
     private final javafx.animation.PauseTransition aloneHintTimer =
             new javafx.animation.PauseTransition(Duration.seconds(ALONE_HINT_SECONDS));
     private final Map<String, String> displayNames = new HashMap<>();
@@ -294,6 +296,19 @@ public class RoomController implements ChatSessionListener {
         Platform.runLater(() -> {
             transcriptManager.upsertFile(status, displayNames.getOrDefault(status.peerId(), "Người lạ"));
             refreshRoomState();
+        });
+    }
+
+    @Override
+    public void onJoinRejected(String reason) {
+        Platform.runLater(() -> {
+            if (joinRejected) {
+                return;
+            }
+            joinRejected = true;
+            LOG.info("Server tu choi cho vao phong " + config.roomName() + ": " + reason + " - quay ve sanh");
+            leaveSession();
+            Navigator.showHomeAfterJoinRejected(stage, config, reason);
         });
     }
 

@@ -5,6 +5,7 @@ import com.datn.chatp2p.client.session.AuthClient.RoomSummary;
 import com.datn.chatp2p.client.session.ChatSession;
 import com.datn.chatp2p.client.session.ChatSessions;
 import com.datn.chatp2p.client.session.RoomConfig;
+import com.datn.chatp2p.common.signal.JoinRejectReason;
 import com.datn.chatp2p.client.util.ThemeManager;
 import com.datn.chatp2p.common.log.SecretLogging;
 import javafx.application.Platform;
@@ -234,6 +235,24 @@ public class HomeController {
         }, "join-room");
         worker.setDaemon(true);
         worker.start();
+    }
+
+    /**
+     * Server tu choi cho vao phong (goi ngay sau khi quay ve Home). Hien ly do; sai mat khau thi mo lai
+     * hop nhap mat khau cua dung phong do de nguoi dung nhap lai.
+     */
+    void showJoinRejected(RoomConfig config, String reason) {
+        String message = LobbyRules.joinRejectedMessage(reason, config.roomName());
+        errorLabel.setText(message);
+        if (JoinRejectReason.WRONG_PASSWORD.equals(reason)) {
+            Platform.runLater(() -> RoomDialogs.askPassword(stage, config.roomName(),
+                            "Sai mật khẩu. Vui lòng nhập lại (phân biệt hoa thường).")
+                    .ifPresent(password -> {
+                        if (checkCanJoin()) {
+                            enterRoom(config.roomName(), password);
+                        }
+                    }));
+        }
     }
 
     private void joinFailed(String roomName, Throwable e) {

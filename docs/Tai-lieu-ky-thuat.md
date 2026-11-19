@@ -1049,7 +1049,7 @@ ECDH hoàn tất và được kiểm tra bằng challenge `roomId + "_" + peerId
 | 10 | Lịch sử chat cho người mới vào (`MESSAGE_TRANSCRIPT`) không xác minh được người viết từng tin | Trung bình | Chỉ nhận lịch sử từ peer đã xác thực danh tính, tối đa 200 tin/peer; giao diện gắn nhãn "lịch sử · X chia sẻ". Muốn xác minh tuyệt đối phải ký từng tin bằng khoá danh tính của người viết (hướng phát triển) |
 | 11 | Phòng có mật khẩu: peer gửi bằng chứng sai chỉ bị **bỏ qua**, kết nối P2P với họ vẫn mở tới khi họ rời phòng | Thấp | Họ không thấy/không gửi được gì (mọi bản tin bị lọc). Nên bổ sung API chủ động ngắt 1 peer trong `RoomSession` |
 | 12 | Mật khẩu TURN cũ từng nằm trong lịch sử git (commit `fa173d1`) | Cao cho đến khi đổi mật khẩu | Đã chuyển credential ra khỏi jar (biến môi trường / `~/.chat-p2p-java/client.properties`); **bắt buộc đổi mật khẩu TURN trên VPS** |
-| 13 | **Nhập sai mật khẩu phòng không được báo ngay**: client JOIN vào `tên~thẻ-khác`, tức một phòng trống khác; chỉ có gợi ý sau 20 s ở một mình. Server cũng chưa báo lý do khi từ chối JOIN (token hết hạn, phòng đầy) | Trung bình (trải nghiệm, không phải lỗ hổng: mật khẩu sai không lọt vào phòng thật) | Server cố ý không gửi thẻ phòng cho client, để tránh dò mật khẩu offline. **Chưa triển khai — kế hoạch ở mục J.2** |
+| 13 | **Nhập sai mật khẩu phòng không được báo ngay**: client JOIN vào `tên~thẻ-khác`, tức một phòng trống khác; chỉ có gợi ý sau 20 s ở một mình. Server cũng chưa báo lý do khi từ chối JOIN (token hết hạn, phòng đầy) | Trung bình (trải nghiệm, không phải lỗ hổng: mật khẩu sai không lọt vào phòng thật) | **Đã giảm thiểu (2026-11-20):** server kiểm tra lúc JOIN và gửi `JOIN_REJECTED` kèm lý do, giới hạn 5 lần sai/phút/IP; thẻ phòng vẫn không bao giờ gửi về client (mục J.2) |
 
 ## J.1 Kế hoạch chuyển signaling sang `wss://` (chưa triển khai)
 
@@ -1063,9 +1063,11 @@ ECDH hoàn tất và được kiểm tra bằng challenge `roomId + "_" + peerId
 
 Ảnh hưởng: không đổi gì ở kênh P2P (ICE/UDP, mã hoá đầu-cuối), không ảnh hưởng TURN.
 
-## J.2 Kế hoạch báo "sai mật khẩu" ngay và bản tin `JOIN_REJECTED` (chưa triển khai)
+## J.2 Báo "sai mật khẩu" ngay và bản tin `JOIN_REJECTED` (đã triển khai 2026-11-20)
 
-*Ghi nhận ngày 2026-11-19, triển khai ở giai đoạn sau. Giải quyết rủi ro 13; cần sửa cả server lẫn client và deploy lại server.*
+*Ghi nhận ngày 2026-11-19, triển khai ngày 2026-11-20. Giải quyết rủi ro 13; cần deploy lại server cùng lúc với client mới.*
+
+**Đã triển khai:** `SignalType.JOIN_REJECTED` + `JoinRejectReason` (module `common`); `RoomRegistry.tryJoin` trả về lý do, kiểm tra cùng tên khác thẻ dưới một khoá riêng để hai nhóm tạo phòng cùng lúc không cùng được tạo; `WrongPasswordLimiter` (5 lần sai/phút/IP); `SignalingWebSocketHandler` gửi `JOIN_REJECTED` cho mọi trường hợp từ chối. Client: `RoomSession.onJoinRejected` → `ChatSessionListener.onJoinRejected` → quay về sảnh, hiện lý do; sai mật khẩu thì mở lại hộp nhập mật khẩu; token hết hạn ở chế độ tài khoản thì chuyển sang màn hình đăng nhập. Test: `JoinRejectedTest` (server), `LobbyRulesTest` (thông báo phía client).
 
 **Hiện trạng:** phòng có mật khẩu có `roomId = tên~thẻ`, trong đó thẻ suy ra từ (tên phòng, mật khẩu) bằng PBKDF2. Nhập sai mật khẩu sinh ra thẻ khác, nên client vào một phòng trống khác mà không được báo. Server từ chối JOIN (token hết hạn, phòng đầy) cũng chỉ ghi log.
 
@@ -1127,5 +1129,6 @@ Sau khi xong, cập nhật rủi ro 13 thành "đã giảm thiểu", và bỏ g�
 | 2026-08-21 | Tạo `Tai-lieu-ky-thuat-Chitchatter.md` (phân tích bản gốc) và `Thiet-ke-ky-thuat-chat-p2p-java.md` (thiết kế thi công) riêng biệt. |
 | 2026-08-21 | Gộp 2 tài liệu thành `Tai-lieu-ky-thuat.md` (Phần I / Phần II). |
 | 2026-08-21 | Viết lại toàn diện thành tài liệu kỹ thuật đầy đủ (Phần A-K): bổ sung tổng quan hệ thống, kiến trúc module hiện có trong repo, yêu cầu phi chức năng, chiến lược kiểm thử, cấu hình/vận hành, xử lý lỗi/logging, rủi ro kỹ thuật, phụ lục thuật ngữ — không còn chỉ giới hạn ở thiết kế chức năng. |
+| 2026-11-20 | Triển khai mục J.2 (`JOIN_REJECTED`, báo sai mật khẩu ngay, giới hạn số lần thử); rủi ro 13 chuyển thành "đã giảm thiểu". |
 | 2026-11-19 | Phần J: thêm rủi ro 13 (nhập sai mật khẩu phòng không được báo ngay, server chưa báo lý do từ chối JOIN) và mục J.2 kế hoạch kiểm tra mật khẩu phía server + bản tin `JOIN_REJECTED`. |
 | 2026-11-19 | Phần J: cập nhật rủi ro 1 và 7 theo code hiện tại; thêm rủi ro 9-12 (signaling `ws://` chưa mã hoá, lịch sử không xác minh người viết, peer sai mật khẩu chưa bị ngắt, mật khẩu TURN trong lịch sử git) và mục J.1 kế hoạch chuyển sang `wss://`. |

@@ -55,7 +55,7 @@ class LobbyRulesTest {
                 new RoomSummary("chung", 2, "An", false),
                 new RoomSummary("rieng", 1, "Binh", true));
         assertTrue(LobbyRules.createInfoText("chung", false, rooms).contains("vào chung phòng"));
-        assertTrue(LobbyRules.createInfoText("rieng", true, rooms).contains("phòng riêng"));
+        assertTrue(LobbyRules.createInfoText("rieng", true, rooms).contains("chọn tên khác"));
         assertFalse(LobbyRules.createInfoText("moi", false, rooms).contains("⚠"));
         assertFalse(LobbyRules.createInfoText("chung", true, rooms).contains("⚠"),
                 "Phong co mat khau khong trung voi phong cong khai cung ten");
@@ -73,5 +73,17 @@ class LobbyRulesTest {
     void aloneHintMentionsPasswordOnlyForPasswordRooms() {
         assertTrue(LobbyRules.aloneHint(true).contains("mật khẩu"));
         assertTrue(LobbyRules.aloneHint(false).contains("không đặt mật khẩu"));
+    }
+
+    @Test
+    void joinRejectedMessagesNameTheProblem() {
+        assertTrue(LobbyRules.joinRejectedMessage("WRONG_PASSWORD", "ban-be").contains("Sai mật khẩu phòng \"ban-be\""));
+        assertTrue(LobbyRules.joinRejectedMessage("ROOM_FULL", "ban-be").contains("đủ người"));
+        assertTrue(LobbyRules.joinRejectedMessage("RATE_LIMITED", "ban-be").contains("1 phút"));
+        assertTrue(LobbyRules.joinRejectedMessage("AUTH_EXPIRED", "ban-be").contains("đăng nhập lại"));
+        assertTrue(LobbyRules.joinRejectedMessage("SOMETHING_NEW", "ban-be").contains("SOMETHING_NEW"));
+        assertTrue(LobbyRules.requiresLogin("AUTH_EXPIRED"));
+        assertTrue(LobbyRules.requiresLogin("AUTH_REQUIRED"));
+        assertFalse(LobbyRules.requiresLogin("WRONG_PASSWORD"));
     }
 }

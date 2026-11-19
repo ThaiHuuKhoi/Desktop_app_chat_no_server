@@ -37,6 +37,38 @@ public final class Navigator {
         showHome(stage, accountMode, config.userName(), config.authToken());
     }
 
+    /**
+     * Quay ve Home sau khi server tu choi cho vao phong: hien ly do, va voi sai mat khau thi mo lai hop
+     * nhap mat khau cua dung phong do. Token het han (che do tai khoan) thi chuyen sang man hinh dang nhap.
+     */
+    static void showHomeAfterJoinRejected(Stage stage, RoomConfig config, String reason) {
+        boolean accountMode = config.authToken() != null && !config.authToken().isBlank();
+        if (LobbyRules.requiresLogin(reason) && accountMode) {
+            showAuth(stage);
+            javafx.scene.control.Alert alert = new javafx.scene.control.Alert(
+                    javafx.scene.control.Alert.AlertType.WARNING, LobbyRules.joinRejectedMessage(reason, config.roomName()));
+            alert.initOwner(stage);
+            alert.setHeaderText("Cần đăng nhập lại");
+            style(alert.getDialogPane());
+            alert.show();
+            return;
+        }
+        FXMLLoader loader = new FXMLLoader(Navigator.class.getResource("/view/home.fxml"));
+        Parent root = load(loader);
+        HomeController controller = loader.getController();
+        controller.setStage(stage);
+        controller.setAccountMode(accountMode);
+        if (accountMode) {
+            controller.setAuthenticatedUser(config.userName(), config.authToken());
+        } else {
+            controller.setUserName(config.userName());
+        }
+        stage.setOnCloseRequest(null);
+        stage.setTitle(ChatApplication.APP_TITLE);
+        stage.setScene(styledScene(root, HOME_WIDTH, HOME_HEIGHT));
+        controller.showJoinRejected(config, reason);
+    }
+
     public static void showEntry(Stage stage) {
         FXMLLoader loader = new FXMLLoader(Navigator.class.getResource("/view/entry.fxml"));
         Parent root = load(loader);

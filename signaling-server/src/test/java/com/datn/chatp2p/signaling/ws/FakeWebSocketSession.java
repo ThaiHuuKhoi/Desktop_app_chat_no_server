@@ -104,7 +104,8 @@ final class FakeWebSocketSession implements WebSocketSession {
 
     @Override
     public InetSocketAddress getRemoteAddress() {
-        throw new UnsupportedOperationException("Khong dung trong test nay");
+        // Khong co dia chi that - server dung id session lam khoa gioi han thu sai mat khau.
+        return null;
     }
 
     @Override

@@ -36,6 +36,14 @@ public interface SignalingClient {
     /** Goi khi nhan duoc ICE candidate tu mot peer khac (relay qua server). */
     void onIceCandidate(Consumer<SignalMessage> handler);
 
+    /**
+     * Goi khi server tu choi JOIN; {@code payload} cua ban tin la ma ly do
+     * ({@link com.datn.chatp2p.common.signal.JoinRejectReason}). Mac dinh khong lam gi
+     * (cai dat gia lap trong test khong can).
+     */
+    default void onJoinRejected(Consumer<SignalMessage> handler) {
+    }
+
     /** Gui SDP offer toi mot peer cu the trong cung phong. */
     void sendOffer(String toPeerId, String sdp);
 

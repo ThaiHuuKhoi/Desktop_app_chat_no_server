@@ -131,6 +131,11 @@ public final class WebSocketSignalingClient implements SignalingClient {
     }
 
     @Override
+    public void onJoinRejected(Consumer<SignalMessage> handler) {
+        dispatcher.register(SignalType.JOIN_REJECTED, handler);
+    }
+
+    @Override
     public void sendOffer(String toPeerId, String sdp) {
         sendTargeted(SignalType.OFFER, toPeerId, sdp);
     }

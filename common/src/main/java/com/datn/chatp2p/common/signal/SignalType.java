@@ -21,5 +21,10 @@ public enum SignalType {
     /** Client -> Server -> Client dich: SDP answer (relay, khong doc noi dung). */
     ANSWER,
     /** Client -> Server -> Client dich: ICE candidate (relay, khong doc noi dung). */
-    ICE_CANDIDATE
+    ICE_CANDIDATE,
+    /**
+     * Server -> Client: tu choi JOIN, {@code payload} la ma ly do trong {@link JoinRejectReason}
+     * (Tai-lieu-ky-thuat.md muc J.2). Them VAO CUOI de khong doi thu tu gia tri cu.
+     */
+    JOIN_REJECTED
 }

@@ -45,6 +45,13 @@ public interface ChatSessionListener {
     default void onFileTransferUpdated(FileTransferStatus status) {
     }
 
+    /**
+     * Server tu choi cho vao phong (sai mat khau, phong day, token het han...). {@code reason} la ma
+     * {@link com.datn.chatp2p.common.signal.JoinRejectReason}; giao dien nen roi phong va bao nguoi dung.
+     */
+    default void onJoinRejected(String reason) {
+    }
+
     /** Khong ket noi duoc voi 1 peer; {@code reason} da viet cho nguoi dung doc. */
     void onPeerConnectionFailed(String peerId, String reason);
 }

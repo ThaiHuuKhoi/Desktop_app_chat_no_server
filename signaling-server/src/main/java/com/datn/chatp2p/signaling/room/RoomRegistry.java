@@ -1,5 +1,6 @@
 package com.datn.chatp2p.signaling.room;
 
+import com.datn.chatp2p.common.signal.JoinRejectReason;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.WebSocketSession;
 
@@ -25,6 +26,7 @@ public class RoomRegistry {
     /** Ky tu ngan cach ten phong va "the" mat khau trong roomId cua phong co mat khau (khop RoomConfig o client). */
     static final char PRIVATE_ROOM_SEPARATOR = '~';
     private final Map<String, Map<String, PeerSession>> roomsByRoomId = new ConcurrentHashMap<>();
+    private final Object privateRoomLock = new Object();
 
     /**
      * Them mot peer vao phong, tao phong neu chua ton tai. Tra ve danh sach cac
@@ -39,22 +41,70 @@ public class RoomRegistry {
      * khi 2 RoomSession that join gan nhu dong thoi qua 1 signaling-server that.
      */
     public List<PeerSession> join(PeerSession newPeer) {
-        return tryJoin(newPeer).orElseThrow(() -> new IllegalStateException("Room da day hoac peerId da ton tai"));
+        JoinResult result = tryJoin(newPeer);
+        if (!result.accepted()) {
+            throw new IllegalStateException("Khong vao duoc phong: " + result.rejectReason());
+        }
+        return result.existingPeers();
     }
 
-    public Optional<List<PeerSession>> tryJoin(PeerSession newPeer) {
+    /**
+     * Thu them peer vao phong. Tu choi (kem ma ly do {@link JoinRejectReason}) khi phong day, trung
+     * peerId, hoac - voi phong co mat khau "ten~the" - dang co phong CUNG TEN nhung KHAC the (sai
+     * mat khau, Tai-lieu-ky-thuat.md muc J.2). Server von biet cac the dang dung nen khong lo them gi.
+     *
+     * <p>Phong co mat khau kiem tra + tao phong duoi {@link #privateRoomLock}: neu khong, 2 nguoi
+     * cung luc tao "X~T1" va "X~T2" deu thay chua co phong ten X va ca 2 deu duoc tao.
+     */
+    public JoinResult tryJoin(PeerSession newPeer) {
+        String roomId = newPeer.getRoomId();
+        int separator = roomId.indexOf(PRIVATE_ROOM_SEPARATOR);
+        if (separator < 0) {
+            return joinRoom(newPeer);
+        }
+        String namePrefix = roomId.substring(0, separator + 1);
+        synchronized (privateRoomLock) {
+            for (Map.Entry<String, Map<String, PeerSession>> entry : roomsByRoomId.entrySet()) {
+                if (entry.getKey().startsWith(namePrefix) && !entry.getKey().equals(roomId)
+                        && !entry.getValue().isEmpty()) {
+                    return JoinResult.rejected(JoinRejectReason.WRONG_PASSWORD);
+                }
+            }
+            return joinRoom(newPeer);
+        }
+    }
+
+    private JoinResult joinRoom(PeerSession newPeer) {
         Map<String, PeerSession> room =
                 roomsByRoomId.computeIfAbsent(newPeer.getRoomId(), roomId -> new ConcurrentHashMap<>());
         synchronized (room) {
-            if (room.containsKey(newPeer.getPeerId()) || room.size() >= MAX_PEERS_PER_ROOM) {
+            String reject = room.containsKey(newPeer.getPeerId()) ? JoinRejectReason.DUPLICATE_PEER
+                    : room.size() >= MAX_PEERS_PER_ROOM ? JoinRejectReason.ROOM_FULL
+                    : null;
+            if (reject != null) {
                 if (room.isEmpty()) {
                     roomsByRoomId.remove(newPeer.getRoomId(), room);
                 }
-                return Optional.empty();
+                return JoinResult.rejected(reject);
             }
             List<PeerSession> existingPeers = List.copyOf(room.values());
             room.put(newPeer.getPeerId(), newPeer);
-            return Optional.of(existingPeers);
+            return JoinResult.accepted(existingPeers);
+        }
+    }
+
+    /** Ket qua {@link #tryJoin}: hoac vao duoc (kem danh sach peer co san), hoac bi tu choi kem ly do. */
+    public record JoinResult(List<PeerSession> existingPeers, String rejectReason) {
+        static JoinResult accepted(List<PeerSession> existingPeers) {
+            return new JoinResult(existingPeers, null);
+        }
+
+        static JoinResult rejected(String reason) {
+            return new JoinResult(List.of(), reason);
+        }
+
+        public boolean accepted() {
+            return rejectReason == null;
         }
     }
 

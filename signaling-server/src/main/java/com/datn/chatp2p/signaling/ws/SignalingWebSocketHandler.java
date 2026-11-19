@@ -1,9 +1,11 @@
 package com.datn.chatp2p.signaling.ws;
 
+import com.datn.chatp2p.common.signal.JoinRejectReason;
 import com.datn.chatp2p.common.signal.SignalMessage;
 import com.datn.chatp2p.common.signal.SignalType;
 import com.datn.chatp2p.signaling.room.PeerSession;
 import com.datn.chatp2p.signaling.room.RoomRegistry;
+import com.datn.chatp2p.signaling.room.WrongPasswordLimiter;
 import com.datn.chatp2p.signaling.auth.AuthService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -57,6 +59,7 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
     private final ObjectMapper objectMapper;
     private final AuthService authService;
     private final boolean authenticationRequired;
+    private final WrongPasswordLimiter wrongPasswordLimiter = new WrongPasswordLimiter();
 
     @Autowired
     public SignalingWebSocketHandler(RoomRegistry roomRegistry, ObjectMapper objectMapper, AuthService authService,
@@ -97,7 +100,7 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
             case JOIN -> handleJoin(session, signal);
             case LEAVE -> handleLeave(session);
             case OFFER, ANSWER, ICE_CANDIDATE -> relayToTargetPeer(session, signal);
-            case PEER_JOINED, PEER_LEFT, PEER_LIST ->
+            case PEER_JOINED, PEER_LEFT, PEER_LIST, JOIN_REJECTED ->
                     log.debug("Bo qua ban tin chi server moi duoc phat: {}", signal.getType());
         }
     }
@@ -115,13 +118,24 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
                 || (authenticationRequired && authenticatedUser.isEmpty())
                 || (signal.getAuthToken() != null && !signal.getAuthToken().isBlank()
                 && authenticatedUser.isEmpty())) {
-            String reason = signal.getRoomId() == null || signal.getFromPeerId() == null || signal.getUserName() == null
-                    ? "thieu roomId/fromPeerId/userName"
-                    : (signal.getAuthToken() == null || signal.getAuthToken().isBlank())
-                    ? "server yeu cau dang nhap nhung JOIN khong co token"
+            boolean missingField = signal.getRoomId() == null || signal.getFromPeerId() == null
+                    || signal.getUserName() == null;
+            boolean missingToken = signal.getAuthToken() == null || signal.getAuthToken().isBlank();
+            String reason = missingField ? "thieu roomId/fromPeerId/userName"
+                    : missingToken ? "server yeu cau dang nhap nhung JOIN khong co token"
                     : "token khong hop le hoac da het han";
             log.warn("Tu choi JOIN tu session {} (room={}): {}, token={}", session.getId(), signal.getRoomId(), reason,
                     com.datn.chatp2p.common.log.SecretLogging.reveal(signal.getAuthToken()));
+            sendJoinRejected(session, signal.getRoomId(), missingField ? JoinRejectReason.INVALID_JOIN
+                    : missingToken ? JoinRejectReason.AUTH_REQUIRED
+                    : JoinRejectReason.AUTH_EXPIRED);
+            return;
+        }
+        boolean privateRoom = signal.getRoomId().indexOf('~') >= 0;
+        String clientKey = privateRoom ? clientKey(session) : null;
+        if (privateRoom && wrongPasswordLimiter.isBlocked(clientKey)) {
+            log.warn("Tu choi JOIN room={} tu {}: thu sai mat khau qua nhieu lan", signal.getRoomId(), clientKey);
+            sendJoinRejected(session, signal.getRoomId(), JoinRejectReason.RATE_LIMITED);
             return;
         }
         authenticatedUser.ifPresent(user -> signal.setUserName(user.username()));
@@ -137,10 +151,13 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
         }
 
         PeerSession self = new PeerSession(session, signal.getRoomId(), signal.getFromPeerId(), signal.getUserName());
-        Optional<List<PeerSession>> joined = roomRegistry.tryJoin(self);
-        if (joined.isEmpty()) {
-            log.warn("Tu choi JOIN room={} peer={} do trung peerId hoac phong da day",
-                    self.getRoomId(), self.getPeerId());
+        RoomRegistry.JoinResult joined = roomRegistry.tryJoin(self);
+        if (!joined.accepted()) {
+            if (JoinRejectReason.WRONG_PASSWORD.equals(joined.rejectReason())) {
+                wrongPasswordLimiter.recordFailure(clientKey);
+            }
+            log.warn("Tu choi JOIN room={} peer={}: {}", self.getRoomId(), self.getPeerId(), joined.rejectReason());
+            sendJoinRejected(session, self.getRoomId(), joined.rejectReason());
             return;
         }
         session.getAttributes().put(ROOM_ID_ATTR, self.getRoomId());
@@ -149,7 +166,7 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
             session.getAttributes().put(AUTH_TOKEN_ATTR, signal.getAuthToken());
         }
 
-        List<PeerSession> existingPeers = joined.get();
+        List<PeerSession> existingPeers = joined.existingPeers();
 
         send(session, peerListMessage(self.getRoomId(), existingPeers));
 
@@ -218,6 +235,23 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
         }
         Object token = session.getAttributes().get(AUTH_TOKEN_ATTR);
         return token instanceof String tokenValue && authService.authenticate(tokenValue).isPresent();
+    }
+
+    /** Bao client ly do bi tu choi JOIN ({@link JoinRejectReason}) - client hien thong bao tuong ung. */
+    private void sendJoinRejected(WebSocketSession session, String roomId, String reason) {
+        SignalMessage rejected = new SignalMessage();
+        rejected.setType(SignalType.JOIN_REJECTED);
+        rejected.setRoomId(roomId);
+        rejected.setPayload(reason);
+        send(session, rejected);
+    }
+
+    /** Khoa gioi han thu sai mat khau: dia chi IP cua client (khong co thi dung id session). */
+    private static String clientKey(WebSocketSession session) {
+        java.net.InetSocketAddress remote = session.getRemoteAddress();
+        return remote != null && remote.getAddress() != null
+                ? remote.getAddress().getHostAddress()
+                : "session:" + session.getId();
     }
 
     private SignalMessage peerListMessage(String roomId, List<PeerSession> peers) {

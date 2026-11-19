@@ -2,6 +2,7 @@ package com.datn.chatp2p.client.view;
 
 import com.datn.chatp2p.client.session.AuthClient.RoomSummary;
 import com.datn.chatp2p.client.session.RoomConfig;
+import com.datn.chatp2p.common.signal.JoinRejectReason;
 
 import java.util.List;
 
@@ -107,17 +108,42 @@ final class LobbyRules {
             return base + "\n⚠ Đã có phòng công khai tên này — bạn sẽ vào chung phòng với những người đang ở đó.";
         }
         if (usePassword && privateExists) {
-            return base + "\n⚠ Đã có phòng có mật khẩu tên này. Nếu mật khẩu của bạn khác, bạn sẽ ở một phòng riêng.";
+            return base + "\n⚠ Đã có phòng có mật khẩu tên này. Nếu mật khẩu của bạn khác, bạn sẽ bị báo sai mật khẩu — hãy chọn tên khác.";
         }
         return base;
     }
 
     /** Goi y khi da o mot minh trong phong mot luc (khong phan biet duoc "sai mat khau" voi "chua ai vao"). */
     static String aloneHint(boolean passwordProtected) {
+        // Sai mat khau gio duoc server bao ngay (JOIN_REJECTED), nen goi y nay chi con cho truong hop
+        // sai TEN phong hoac ban be chua vao.
         return passwordProtected
-                ? "Vẫn chưa có ai trong phòng. Nếu bạn bè đã vào, hãy kiểm tra lại tên phòng và mật khẩu "
-                        + "(phân biệt hoa thường) — người nhập khác mật khẩu sẽ ở một phòng khác."
+                ? "Vẫn chưa có ai trong phòng. Nếu bạn bè đã vào, hãy kiểm tra lại tên phòng (phân biệt hoa thường). "
+                        + "Nếu nhập sai mật khẩu, bạn sẽ được báo ngay."
                 : "Vẫn chưa có ai trong phòng. Nếu bạn bè đã vào, hãy kiểm tra lại tên phòng (phân biệt hoa thường) "
                         + "và chắc chắn họ không đặt mật khẩu.";
+    }
+
+    /** Thong bao cho nguoi dung khi server tu choi cho vao phong ({@link JoinRejectReason}). */
+    static String joinRejectedMessage(String reason, String roomName) {
+        String room = "\"" + roomName + "\"";
+        if (reason == null) {
+            return "Không vào được phòng " + room + ".";
+        }
+        return switch (reason) {
+            case JoinRejectReason.WRONG_PASSWORD -> "Sai mật khẩu phòng " + room + ". Vui lòng nhập lại "
+                    + "(phân biệt hoa thường). Nếu bạn đang tạo phòng mới, hãy chọn tên khác vì tên này đã có người dùng.";
+            case JoinRejectReason.ROOM_FULL -> "Phòng " + room + " đã đủ người (tối đa 8 người).";
+            case JoinRejectReason.AUTH_REQUIRED -> "Server yêu cầu đăng nhập trước khi vào phòng.";
+            case JoinRejectReason.AUTH_EXPIRED -> "Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.";
+            case JoinRejectReason.RATE_LIMITED -> "Bạn đã nhập sai mật khẩu quá nhiều lần. Vui lòng thử lại sau 1 phút.";
+            case JoinRejectReason.DUPLICATE_PEER -> "Không vào được phòng " + room + " (trùng mã phiên). Vui lòng thử lại.";
+            default -> "Server từ chối cho vào phòng " + room + " (" + reason + ").";
+        };
+    }
+
+    /** Ly do tu choi can dang nhap lai (token thieu / het han). */
+    static boolean requiresLogin(String reason) {
+        return JoinRejectReason.AUTH_REQUIRED.equals(reason) || JoinRejectReason.AUTH_EXPIRED.equals(reason);
     }
 }

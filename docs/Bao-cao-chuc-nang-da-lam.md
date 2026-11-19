@@ -55,7 +55,7 @@ Kiến trúc chung: mỗi người chạy một client JavaFX. Signaling server 
 | Tên hoặc mật khẩu không hợp lệ | Hiện yêu cầu: tên 3–64 ký tự (chữ, số, `_`), mật khẩu 8–200 ký tự | ✅ | |
 | Đăng nhập từ máy có khoá danh tính khác với khoá đã gắn với tài khoản | Từ chối: "Khóa identity không khớp tài khoản này" | ✅ | Thêm chức năng chuyển khoá sang máy mới |
 | Không kết nối được tới server | Hiện "Không thể kết nối auth server" | ✅ | |
-| Token hết hạn (sau 12 giờ) hoặc không hợp lệ khi vào phòng | Server bỏ qua bản tin `JOIN`, log server ghi **đúng lý do** ("token không hợp lệ hoặc đã hết hạn" / "không có token"); client vẫn chưa được báo, chỉ thấy phòng trống | ❌ | Server gửi lại bản tin lỗi `JOIN_REJECTED` để client yêu cầu đăng nhập lại (Tài liệu kỹ thuật, mục J.2) |
+| Token hết hạn (sau 12 giờ) hoặc không hợp lệ khi vào phòng | Server từ chối và gửi `JOIN_REJECTED(AUTH_EXPIRED / AUTH_REQUIRED)`; client báo "Phiên đăng nhập đã hết hạn" và chuyển sang màn hình đăng nhập | ✅ | |
 | Token và mật khẩu đi qua mạng dạng rõ (`ws://`, `http://`) | Chưa mã hoá đường truyền tới server | ❌ | Chuyển sang `wss://` / `https://` (kế hoạch ở Tài liệu kỹ thuật, mục J.1) |
 
 ---
@@ -86,13 +86,13 @@ Kiến trúc chung: mỗi người chạy một client JavaFX. Signaling server 
 | Nhập sai trong hộp thoại (tên rỗng, tên có `~`, mật khẩu dưới 6 ký tự, nhập lại không khớp, chưa nhập mật khẩu) | Hộp thoại **giữ nguyên** và hiện lỗi ngay bên dưới, không đóng mất dữ liệu đã nhập | ✅ | |
 | Gõ thừa dấu cách ở đầu/cuối mật khẩu hoặc tên phòng | Tự cắt khoảng trắng hai đầu, ở mọi phía, nên vẫn khớp nhau | ✅ | |
 | Tạo phòng trùng tên phòng công khai đang có người | Hộp "Thông tin phòng" cảnh báo "bạn sẽ vào chung phòng với những người đang ở đó" | ✅ | |
-| Tạo phòng có mật khẩu trùng tên phòng có mật khẩu đang có | Cảnh báo "nếu mật khẩu của bạn khác, bạn sẽ ở một phòng riêng" | ✅ | Server kiểm tra mật khẩu khi vào phòng (J.2) |
+| Tạo phòng có mật khẩu trùng tên phòng có mật khẩu đang có | Cảnh báo "nếu mật khẩu của bạn khác, bạn sẽ bị báo sai mật khẩu — hãy chọn tên khác"; nếu vẫn vào thì server trả `WRONG_PASSWORD` | ✅ | |
 | Nội dung hộp thoại cao thêm (hiện ô mật khẩu, hiện dòng lỗi) | Cửa sổ hộp thoại tự giãn theo, hàng nút luôn hiện | ✅ | |
-| Ở một mình trong phòng quá lâu (sai tên, sai mật khẩu, hoặc bạn bè chưa vào) | Sau 20 s hiện gợi ý kiểm tra lại tên phòng và mật khẩu (phân biệt hoa thường) | ⚠️ | Báo sai mật khẩu ngay (J.2) |
+| Ở một mình trong phòng quá lâu (sai tên phòng, hoặc bạn bè chưa vào) | Sau 20 s hiện gợi ý kiểm tra lại tên phòng (phân biệt hoa thường). Sai mật khẩu thì đã được báo ngay | ⚠️ | |
 | Tên phòng phân biệt hoa thường (`Phong-A` khác `phong-a`) | Ghi rõ trong gợi ý ở sảnh và trong hộp thoại | ⚠️ | Chuẩn hoá tên phòng về chữ thường |
 | Không kết nối được tới server khi vào phòng | Báo lỗi lên giao diện: "Không thể kết nối tới signaling server", mở lại các nút ở sảnh | ✅ | |
 | Mất kết nối với server khi đang trong phòng | Client tự kết nối lại với thời gian chờ tăng dần (1 s, 2 s, 4 s… tối đa 30 s) và tự gửi lại `JOIN`. Các kết nối P2P đã có **vẫn hoạt động** vì không đi qua server | ✅ | Hiện trạng thái "Đang kết nối lại…" trên giao diện |
-| Phòng đã đủ 8 người, hoặc trùng `peerId` | Server từ chối `JOIN` nhưng chỉ ghi log, client không được báo | ❌ | Server gửi lại lý do từ chối để giao diện hiện "Phòng đã đầy" (J.2) |
+| Phòng đã đủ 8 người, hoặc trùng `peerId` | Server gửi `JOIN_REJECTED(ROOM_FULL / DUPLICATE_PEER)`; client quay về sảnh và hiện lý do | ✅ | |
 | Bản tin JSON hỏng hoặc thiếu trường | Server bỏ qua bản tin đó, không ảnh hưởng người khác | ✅ | |
 | Một client cố giả mạo người khác khi gửi OFFER/ANSWER | Server chỉ chuyển tiếp nếu người gửi đã `JOIN` đúng phòng và đúng `peerId` | ✅ | |
 | Server sập | Không ai vào phòng mới được; các cuộc chat đang diễn ra vẫn tiếp tục | ⚠️ | Chấp nhận ở quy mô đồ án (Tài liệu kỹ thuật, rủi ro 5) |
@@ -299,21 +299,19 @@ Kiến trúc chung: mỗi người chạy một client JavaFX. Signaling server 
 4. Chỉ người có bằng chứng hợp lệ mới hiện trên giao diện và được trao đổi tin.
 5. Trong danh sách phòng ở sảnh, phòng hiện với biểu tượng 🔒, tên và số người; **thẻ không bao giờ được gửi cho người xem danh sách**.
 
-**Khi nhập sai mật khẩu — hành vi hiện tại**
-1. Client tạo ra thẻ khác thẻ của phòng thật, nên JOIN vào `tên~thẻ-khác`, tức là **một phòng trống khác**. Không có thông báo "sai mật khẩu" ngay.
-2. Người dùng thấy màn hình phòng với trạng thái "Đang chờ người khác vào phòng". Người trong phòng thật không thấy người này.
-3. Sau **20 giây** ở một mình, khung chat hiện gợi ý kiểm tra lại tên phòng và mật khẩu (phân biệt hoa thường). Người dùng phải tự rời phòng và vào lại.
-4. Nếu hai người cùng gõ sai **giống hệt nhau**, họ vào chung một phòng riêng, tách biệt với phòng thật.
-
-Về **bảo mật**, mật khẩu sai không bao giờ lọt vào được phòng thật. Điểm yếu nằm ở **trải nghiệm**: người dùng không biết ngay là mình gõ sai. Lý do là client không có gì để so mật khẩu; server cố ý không gửi thẻ về, vì nếu gửi thì bất kỳ ai đã đăng nhập cũng có thể lấy thẻ về máy và dò mật khẩu offline không giới hạn.
-
-**Hướng sửa đã thống nhất (chưa triển khai, Tài liệu kỹ thuật mục J.2):** server kiểm tra ngay lúc JOIN. Nếu đã có phòng có mật khẩu tên `X` với thẻ `T1` mà có người JOIN `X~T2`, server từ chối và gửi bản tin `JOIN_REJECTED(WRONG_PASSWORD)`; client hiện hộp "Sai mật khẩu phòng" và cho nhập lại. Server giới hạn số lần thử (ví dụ 5 lần/phút cho mỗi kết nối), nên người ngoài chỉ thử được từng lần, không dò offline được.
+**Khi nhập sai mật khẩu (Tài liệu kỹ thuật mục J.2)**
+1. Client tạo ra thẻ khác thẻ của phòng thật, nên gửi JOIN `tên~thẻ-khác`.
+2. Server thấy đang có phòng có mật khẩu **cùng tên nhưng khác thẻ**, nên **từ chối** và gửi lại `JOIN_REJECTED(WRONG_PASSWORD)`. Server vốn đã biết các thẻ đang dùng, nên không lộ thêm thông tin gì; thẻ đúng không bao giờ được gửi cho client.
+3. Client rời màn hình phòng, quay về sảnh, hiện "Sai mật khẩu phòng …" và **mở lại hộp nhập mật khẩu** của đúng phòng đó.
+4. **Giới hạn số lần thử:** quá 5 lần sai trong 1 phút từ cùng một địa chỉ IP thì server trả `RATE_LIMITED` cho mọi lần JOIN phòng có mật khẩu (kể cả mật khẩu đúng) đến khi hết 1 phút. Người ngoài chỉ thử được từng lần, không dò hàng loạt được.
+5. **Hệ quả:** khi tên phòng đang được một nhóm dùng với mật khẩu khác, nhóm vào sau sẽ bị báo sai mật khẩu và phải chọn tên khác. Khi mọi người đã rời phòng, tên đó lại dùng được với mật khẩu mới.
 
 **Lỗi có thể xảy ra và cách xử lý**
 
 | Tình huống | Hệ thống xử lý | TT | Hướng cải thiện |
 |---|---|---|---|
-| Nhập sai mật khẩu | Vào một phòng trống khác, không thấy ai; sau 20 s có gợi ý kiểm tra lại mật khẩu | ⚠️ | Server kiểm tra lúc JOIN, báo "Sai mật khẩu" ngay, có giới hạn số lần thử (J.2) |
+| Nhập sai mật khẩu | Server từ chối ngay (`WRONG_PASSWORD`); client quay về sảnh, báo "Sai mật khẩu phòng" và mở lại hộp nhập mật khẩu | ✅ | |
+| Thử sai mật khẩu nhiều lần liên tiếp | Quá 5 lần/phút từ cùng IP thì bị chặn (`RATE_LIMITED`) trong 1 phút | ✅ | |
 | Mật khẩu quá ngắn khi tạo phòng | Không cho tạo, yêu cầu tối thiểu 6 ký tự; phải nhập lại trùng khớp | ✅ | |
 | Server bị chiếm và cố ghép người lạ vào phòng | Người lạ không có bằng chứng hợp lệ nên bị bỏ qua; giao diện cảnh báo "người này không có đúng mật khẩu phòng" | ✅ | |
 | Người sai mật khẩu vẫn giữ kết nối P2P | Mọi bản tin của họ bị lọc, nhưng kết nối chưa bị chủ động ngắt | ⚠️ | Thêm chức năng ngắt kết nối một người trong `RoomSession` |
@@ -410,7 +408,7 @@ Một lần chạy toàn bộ test, `PeerConnectionBurstThroughputTest` fail đ�
 ## Hạn chế chính và hướng phát triển
 
 1. **Signaling chưa mã hoá đường truyền (`ws://`)**: token đăng nhập có thể bị nghe lén (nội dung chat thì không). Kế hoạch chuyển sang `wss://` ở Tài liệu kỹ thuật, mục J.1.
-2. **Nhập sai mật khẩu phòng không được báo ngay**, và **server chưa báo lý do khi từ chối vào phòng** (token hết hạn, phòng đầy). Hướng giải quyết chung: server kiểm tra mật khẩu lúc JOIN và gửi bản tin `JOIN_REJECTED` kèm lý do, có giới hạn số lần thử (Tài liệu kỹ thuật, mục J.2).
+2. *(Đã giải quyết)* Nhập sai mật khẩu phòng, phòng đầy, token hết hạn giờ đều được server báo ngay bằng `JOIN_REJECTED` kèm lý do (Tài liệu kỹ thuật, mục J.2).
 3. **Lịch sử chat không xác minh được người viết từng tin**: hướng giải quyết là ký từng tin.
 4. **Chưa chủ động ngắt kết nối** người sai mật khẩu hoặc có chữ ký danh tính sai.
 5. **Tên phòng phân biệt hoa thường**: nên chuẩn hoá về chữ thường.
