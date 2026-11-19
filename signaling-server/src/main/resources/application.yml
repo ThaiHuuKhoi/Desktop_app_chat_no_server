@@ -1,5 +1,10 @@
 server:
   port: 8080
+  # Mac dinh nghe moi dia chi; tren VPS dat CHAT_P2P_SERVER_ADDRESS=127.0.0.1 de chi Caddy (TLS) goi vao.
+  address: ${CHAT_P2P_SERVER_ADDRESS:0.0.0.0}
+  # Dung sau reverse proxy (Caddy/Nginx): doc IP that cua client tu X-Forwarded-For (Tomcat chi tin
+  # header nay khi request den tu dia chi noi bo, vd 127.0.0.1) - can cho gioi han thu sai mat khau theo IP.
+  forward-headers-strategy: native
 
 spring:
   application:

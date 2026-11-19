@@ -47,7 +47,7 @@ public class HomeController {
 
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final Logger LOG = Logger.getLogger(HomeController.class.getName());
-    private static final String DEFAULT_SERVER_URI = "ws://165.101.47.83:8080";
+    private static final String DEFAULT_SERVER_URI = "wss://chat.zingme.fun";
 
     @FXML
     private StackPane avatarHolder;

@@ -3,7 +3,7 @@ package com.datn.chatp2p.client.session;
 /**
  * Thong tin nguoi dung nhap o man hinh Home de vao phong.
  *
- * @param serverUri    dia chi signaling server (vd. {@code ws://165.101.47.83:8080}).
+ * @param serverUri    dia chi signaling server (vd. {@code wss://chat.zingme.fun}).
  * @param roomPassword mat khau phong; rong = phong cong khai. Khong bao gio gui len server
  *                     (xem {@code RoomSecret}).
  */
