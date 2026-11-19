@@ -25,3 +25,9 @@ logging:
 chat-p2p:
   auth:
     required: ${CHAT_P2P_AUTH_REQUIRED:true}
+  # TURN tam thoi (coturn use-auth-secret): de trong secret/host = khong cap TURN.
+  turn:
+    secret: ${CHAT_P2P_TURN_SECRET:}
+    host: ${CHAT_P2P_TURN_HOST:}
+    port: ${CHAT_P2P_TURN_PORT:3478}
+    ttl-seconds: ${CHAT_P2P_TURN_TTL_SECONDS:21600}

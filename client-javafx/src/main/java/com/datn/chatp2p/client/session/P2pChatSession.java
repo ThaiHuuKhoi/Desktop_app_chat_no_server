@@ -119,8 +119,15 @@ public final class P2pChatSession implements ChatSession {
                 + (roomSecret != null ? ", mat khau phong=" + SecretLogging.reveal(config.roomPassword()) : "")
                 + ", dang nhap=" + (config.authToken() != null && !config.authToken().isBlank())
                 + (config.authToken() != null && !config.authToken().isBlank()
-                        ? ", token=" + SecretLogging.reveal(config.authToken()) : "")
-                + ", TURN=" + (TURN_SERVERS.isEmpty() ? "khong cau hinh" : TURN_SERVERS.size() + " server"));
+                        ? ", token=" + SecretLogging.reveal(config.authToken()) : ""));
+        // TURN: uu tien cau hinh cuc bo (client.properties / bien moi truong - tien khi test); khong co thi
+        // xin tai khoan TAM THOI tu server (GET /turn-credentials) - nguoi dung khong phai cau hinh gi.
+        List<TurnServerConfig> turnServers = TURN_SERVERS.isEmpty()
+                ? new AuthClient().turnServers(config.serverUri())
+                : TURN_SERVERS;
+        LOG.info(() -> "TURN: " + (!TURN_SERVERS.isEmpty() ? "dung cau hinh cuc bo (" + TURN_SERVERS.size() + " server)"
+                : turnServers.isEmpty() ? "khong co (chi ket noi truc tiep)"
+                : "dung tai khoan tam thoi tu server " + turnServers.get(0).address()));
         this.signalingClient = new WebSocketSignalingClient();
         this.signalingClient.setAuthToken(config.authToken());
         this.roomSession = new RoomSession(
@@ -129,7 +136,7 @@ public final class P2pChatSession implements ChatSession {
                 config.userName(),
                 signalingClient,
                 STUN_SERVERS,
-                TURN_SERVERS);
+                turnServers);
         this.fileTransfers = new FileTransferManager(
                 (peerId, type, namespace, payload) -> roomSession.sendTo(peerId, type, namespace, payload),
                 this::notifyFileTransfer);

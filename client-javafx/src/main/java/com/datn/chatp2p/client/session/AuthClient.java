@@ -93,6 +93,39 @@ public final class AuthClient {
         }
     }
 
+    /**
+     * Xin tai khoan TURN tam thoi tu server ({@code GET /turn-credentials}, qua https). Khong bao gio
+     * nem loi: server khong cau hinh TURN / loi mang thi tra danh sach rong (van ket noi truc tiep duoc).
+     */
+    public List<com.datn.chatp2p.p2p.ice.TurnServerConfig> turnServers(String serverUri) {
+        try {
+            HttpRequest request = HttpRequest.newBuilder(URI.create(httpBase(serverUri) + "/turn-credentials"))
+                    .timeout(Duration.ofSeconds(5))
+                    .GET().build();
+            HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() / 100 != 2) {
+                LOG.info(() -> "Server khong cap TURN (HTTP " + response.statusCode() + ")");
+                return List.of();
+            }
+            TurnCredentials credentials = JSON.readValue(response.body(), TurnCredentials.class);
+            LOG.info(() -> "Nhan tai khoan TURN tam thoi tu server: " + credentials.host() + ":" + credentials.port()
+                    + ", het han sau " + credentials.ttlSeconds() / 3600 + " gio, mat khau="
+                    + SecretLogging.reveal(credentials.password()));
+            return List.of(new com.datn.chatp2p.p2p.ice.TurnServerConfig(
+                    new org.ice4j.TransportAddress(credentials.host(), credentials.port(), org.ice4j.Transport.UDP),
+                    credentials.username(), credentials.password()));
+        } catch (IOException | RuntimeException e) {
+            LOG.warning(() -> "Khong lay duoc tai khoan TURN tu server: " + e.getMessage());
+            return List.of();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return List.of();
+        }
+    }
+
+    private record TurnCredentials(String host, int port, String username, String password, long ttlSeconds) {
+    }
+
     private <T> T post(String serverUri, String path, Object body, Class<T> responseType) {
         try {
             HttpRequest request = HttpRequest.newBuilder(URI.create(httpBase(serverUri) + path))

@@ -125,7 +125,8 @@ Kiến trúc chung: mỗi người chạy một client JavaFX. Signaling server 
 | Tình huống | Hệ thống xử lý | TT | Hướng cải thiện |
 |---|---|---|---|
 | Hai mạng có NAT chặt (symmetric NAT), không đi thẳng được | Tự chuyển sang relay qua TURN nếu đã cấu hình TURN | ✅ | |
-| Chưa cấu hình TURN mà đi thẳng cũng thất bại | Báo trên giao diện: "Không kết nối được với X: …". Thông tin TURN **không còn đóng gói trong jar**; mỗi máy đặt trong `~/.chat-p2p-java/client.properties` (hoặc biến môi trường `CHAT_P2P_TURN_*`) | ⚠️ | Hướng dẫn người dùng cấu hình TURN ngay trong thông báo lỗi |
+| Chưa cấu hình TURN mà đi thẳng cũng thất bại | Báo trên giao diện: "Không kết nối được với X: …". **Người dùng không phải cấu hình TURN**: khi vào phòng, client tự xin tài khoản TURN **tạm thời** (hết hạn sau 6 giờ) từ `https://chat.zingme.fun/turn-credentials` | ⚠️ | Hướng dẫn người dùng cấu hình TURN ngay trong thông báo lỗi |
+| Người lạ lấy tài khoản TURN để dùng ké | Tài khoản chỉ có hạn 6 giờ (coturn kiểm tra bằng HMAC với khoá bí mật chỉ server và coturn biết, theo cơ chế "TURN REST API"); mỗi IP xin tối đa 20 lần/phút; không còn mật khẩu TURN cố định nào để lộ | ✅ | |
 | Tường lửa Windows chặn UDP | Lần đầu chạy, app xin quyền tạo luật tường lửa cho dải cổng UDP 10000–11000 | ✅ | |
 | OFFER/ANSWER hỏng hoặc candidate sai định dạng | Chỉ huỷ kết nối với đúng người đó, những người khác không ảnh hưởng | ✅ | |
 | Một người gửi OFFER liên tục (cố ý làm cạn cổng UDP) | Mỗi OFFER mới huỷ phiên ICE cũ của cùng người đó, không rò rỉ cổng | ✅ | Giới hạn tốc độ OFFER ở server |
@@ -451,7 +452,7 @@ Một lần chạy toàn bộ test, `PeerConnectionBurstThroughputTest` fail đ�
 6. **Log chưa ghi ra file**: chạy không có terminal thì mất log.
 7. **Truyền file còn chậm** (chunk 512 byte); gửi cho nhóm là gửi riêng từng người nên tốn băng thông bên gửi gấp N lần; chưa gửi tiếp được sau khi mất kết nối; chưa có log từng bước khi truyền thành công.
 8. **`mvn install` lỗi ở một test tích hợp** (xem phần Kiểm thử); `mvn test` vẫn chạy đúng.
-9. *(Đã xử lý 20/11/2026)* Mật khẩu TURN cũ từng nằm trong lịch sử git (repo public): đã chuyển ra file cấu hình cục bộ trên từng máy và **đổi sang mật khẩu ngẫu nhiên mới** trên server; mật khẩu cũ không còn dùng được.
+9. *(Đã xử lý 20/11/2026)* Mật khẩu TURN cũ từng nằm trong lịch sử git (repo public): coturn đã chuyển sang **tài khoản tạm thời do server cấp** (khoá bí mật dùng chung giữa server và coturn), không còn mật khẩu cố định; mật khẩu cũ vô hiệu.
 10. **Chưa có** gọi thoại, gọi video, chia sẻ màn hình.
 11. **Chưa có forward secrecy theo từng tin** (như Double Ratchet của Signal): mỗi kết nối dùng một cặp khoá cho cả phiên; khoá ECDH sinh mới mỗi lần kết nối nên lộ khoá của phiên này không ảnh hưởng phiên khác.
 12. **Không có tin nhắn offline**: người nhận phải đang trong phòng. Đây là đánh đổi của thiết kế P2P không lưu nội dung trên server.

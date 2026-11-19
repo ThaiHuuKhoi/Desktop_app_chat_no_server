@@ -80,21 +80,31 @@ java -jar signaling-server/target/signaling-server.jar
 mvn -pl client-javafx javafx:run
 ```
 
-### Cau hinh TURN cho client
+### Cau hinh TURN
 
-TURN credential **khong** nam trong repo/jar. Dat bang bien moi truong
-(`CHAT_P2P_TURN_HOST`, `CHAT_P2P_TURN_PORT`, `CHAT_P2P_TURN_USERNAME`,
-`CHAT_P2P_TURN_PASSWORD`), `-D` system property cung ten, hoac file cuc bo
-`~/.chat-p2p-java/client.properties`:
+**Nguoi dung khong can cau hinh gi.** Khi vao phong, client goi
+`GET <server>/turn-credentials` (qua https) va nhan 1 tai khoan TURN **tam thoi**
+(het han sau 6 gio), theo co che "TURN REST API" cua coturn.
 
-```properties
-chat.p2p.turn.host=turn.example.com
-chat.p2p.turn.port=3478
-chat.p2p.turn.username=chatuser
-chat.p2p.turn.password=mat-khau-turn
+Phia server (VPS), coturn va signaling server dung chung 1 khoa bi mat:
+
+```ini
+# /etc/turnserver.conf
+use-auth-secret
+static-auth-secret=<khoa-bi-mat>
 ```
 
-De trong ca 4 gia tri thi client chi dung ICE truc tiep (STUN).
+```ini
+# bien moi truong cua signaling server
+CHAT_P2P_TURN_SECRET=<khoa-bi-mat>   # giong static-auth-secret
+CHAT_P2P_TURN_HOST=165.101.47.83
+CHAT_P2P_TURN_PORT=3478              # mac dinh 3478
+CHAT_P2P_TURN_TTL_SECONDS=21600      # mac dinh 6 gio
+```
+
+De test voi TURN khac, van co the dat cau hinh co dinh o client (uu tien hon tai
+khoan tu server) bang bien moi truong `CHAT_P2P_TURN_HOST/PORT/USERNAME/PASSWORD`
+hoac file `~/.chat-p2p-java/client.properties` (`chat.p2p.turn.host=...`).
 
 ### Cau hinh tai khoan
 
