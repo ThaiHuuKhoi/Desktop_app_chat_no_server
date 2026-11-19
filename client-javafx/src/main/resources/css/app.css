@@ -569,3 +569,23 @@
     -fx-text-fill: -color-fg-emphasis;
     -fx-icon-color: -color-fg-emphasis;
 }
+
+/* ---------- Danh sach phong o sanh ---------- */
+
+.room-lock-icon {
+    -fx-icon-color: -color-warning-fg;
+}
+
+.room-public-icon {
+    -fx-icon-color: -color-fg-muted;
+}
+
+.room-list-name {
+    -fx-font-weight: bold;
+}
+
+.room-list-count {
+    -fx-font-size: 11px;
+    -fx-text-fill: -color-fg-muted;
+    -fx-graphic-text-gap: 4;
+}

@@ -85,20 +85,27 @@ public class RoomRegistry {
         return room == null ? Optional.empty() : Optional.ofNullable(room.get(peerId));
     }
 
+    /**
+     * Danh sach phong dang co nguoi cho man hinh sanh. Phong co mat khau co roomId "ten~the" (the suy
+     * ra tu mat khau o client): van liet ke (de nguoi dung chon roi nhap mat khau) nhung CAT BO the -
+     * chi tra ve ten + {@code passwordProtected = true}, khong lo gi de do mat khau.
+     */
     public List<RoomSnapshot> activeRooms() {
         List<RoomSnapshot> result = new ArrayList<>();
         roomsByRoomId.forEach((roomId, peers) -> {
-            // Phong co mat khau co roomId "ten~the" (the suy ra tu mat khau o client) - KHONG liet ke,
-            // de nguoi khac khong biet ten phong rieng tu hay so nguoi trong do.
-            if (!peers.isEmpty() && roomId.indexOf(PRIVATE_ROOM_SEPARATOR) < 0) {
+            if (!peers.isEmpty()) {
                 PeerSession owner = peers.values().iterator().next();
-                result.add(new RoomSnapshot(roomId, peers.size(), owner.getUserName()));
+                int separator = roomId.indexOf(PRIVATE_ROOM_SEPARATOR);
+                boolean passwordProtected = separator >= 0;
+                String displayName = passwordProtected ? roomId.substring(0, separator) : roomId;
+                result.add(new RoomSnapshot(displayName, peers.size(), owner.getUserName(), passwordProtected));
             }
         });
         return result;
     }
 
-    public record RoomSnapshot(String roomId, int peerCount, String ownerUserName) {
+    /** @param roomId ten phong de hien thi (da cat "the" mat khau neu co). */
+    public record RoomSnapshot(String roomId, int peerCount, String ownerUserName, boolean passwordProtected) {
     }
 
     /** Tim va xoa peer gan voi mot WebSocketSession bi dong (duyet tat ca phong). */

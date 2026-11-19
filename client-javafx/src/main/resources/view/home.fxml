@@ -4,7 +4,7 @@
 <?import javafx.scene.control.Button?>
 <?import javafx.scene.control.Label?>
 <?import javafx.scene.control.ListView?>
-<?import javafx.scene.control.PasswordField?>
+
 <?import javafx.scene.control.TextField?>
 <?import javafx.scene.control.TitledPane?>
 <?import javafx.scene.control.Tooltip?>
@@ -33,7 +33,7 @@
         </HBox>
 
         <HBox spacing="18" styleClass="home-columns" alignment="TOP_CENTER">
-            <VBox spacing="14" styleClass="room-create-column" HBox.hgrow="ALWAYS">
+            <VBox fx:id="createColumn" spacing="14" styleClass="room-create-column" prefWidth="290" maxWidth="300" HBox.hgrow="NEVER">
                 <Label text="Bắt đầu cuộc trò chuyện" styleClass="column-title"/>
                 <HBox spacing="12" alignment="CENTER_LEFT" styleClass="identity-row">
                     <StackPane fx:id="avatarHolder"/>
@@ -43,42 +43,30 @@
                     </VBox>
                 </HBox>
 
-                <VBox spacing="6">
-                    <Label text="Tên phòng" styleClass="field-label"/>
-                    <HBox spacing="8">
-                        <TextField fx:id="roomNameField" promptText="Nhập tên phòng" HBox.hgrow="ALWAYS"/>
-                        <Button onAction="#onGenerateRoomName" styleClass="button-icon">
-                            <graphic><FontIcon iconLiteral="fth-shuffle"/></graphic>
-                            <tooltip><Tooltip text="Sinh tên phòng ngẫu nhiên"/></tooltip>
-                        </Button>
-                        <Button fx:id="copyRoomButton" onAction="#onCopyRoomName" styleClass="button-icon">
-                            <graphic><FontIcon iconLiteral="fth-copy"/></graphic>
-                            <tooltip><Tooltip text="Sao chép tên phòng"/></tooltip>
-                        </Button>
-                    </HBox>
-                    <Label fx:id="roomHintLabel" text="Chia sẻ tên phòng để mời bạn bè tham gia (phân biệt hoa thường)."
-                           styleClass="field-hint" wrapText="true"/>
-                </VBox>
-
-                <VBox spacing="6">
-                    <Label text="Mật khẩu phòng (tuỳ chọn)" styleClass="field-label"/>
-                    <PasswordField fx:id="roomPasswordField" promptText="Để trống nếu là phòng công khai"/>
-                    <Label text="Tối thiểu 6 ký tự, phân biệt hoa thường. Chỉ người nhập đúng mật khẩu mới thấy nhau; mật khẩu không được gửi lên server."
-                           styleClass="field-hint" wrapText="true"/>
-                </VBox>
+                <Button fx:id="createRoomButton" text="Tạo phòng" onAction="#onCreateRoom"
+                        styleClass="accent, join-button" defaultButton="true" maxWidth="Infinity">
+                    <graphic><FontIcon iconLiteral="fth-plus-circle"/></graphic>
+                    <tooltip><Tooltip text="Tạo phòng mới: đặt tên phòng và (tuỳ chọn) mật khẩu"/></tooltip>
+                </Button>
+                <Button fx:id="joinByNameButton" text="Vào phòng bằng tên" onAction="#onJoinByName"
+                        maxWidth="Infinity">
+                    <graphic><FontIcon iconLiteral="fth-log-in"/></graphic>
+                    <tooltip><Tooltip text="Vào phòng bạn bè đã gửi tên (và mật khẩu nếu có)"/></tooltip>
+                </Button>
+                <Label text="Tạo phòng rồi gửi tên phòng (và mật khẩu, nếu đặt) cho bạn bè qua một kênh khác. Tên phòng và mật khẩu phân biệt hoa thường."
+                       styleClass="field-hint" wrapText="true"/>
+                <Label fx:id="joiningLabel" styleClass="field-hint" wrapText="true"/>
             </VBox>
 
             <VBox fx:id="roomBrowserBox" spacing="10" styleClass="room-browser-column" HBox.hgrow="ALWAYS">
                 <Label text="Phòng đang hoạt động" styleClass="column-title"/>
                 <TextField fx:id="roomSearchField" promptText="Tìm kiếm phòng..."/>
-                <ListView fx:id="roomListView" prefHeight="160" VBox.vgrow="ALWAYS"
-                          onMouseClicked="#onSelectRoom"/>
-                <HBox spacing="8">
-                    <Button text="Làm mới" onAction="#onRefreshRooms"/>
-                    <Button text="Tạo phòng" onAction="#onCreateRoom" styleClass="accent">
-                        <tooltip><Tooltip text="Tạo / vào phòng theo tên và mật khẩu đang nhập bên trái"/></tooltip>
-                    </Button>
-                </HBox>
+                <ListView fx:id="roomListView" prefHeight="200" VBox.vgrow="ALWAYS"/>
+                <Label text="Bấm vào một phòng để vào. Phòng có biểu tượng ổ khoá cần mật khẩu."
+                       styleClass="field-hint" wrapText="true"/>
+                <Button text="Làm mới" onAction="#onRefreshRooms">
+                    <graphic><FontIcon iconLiteral="fth-refresh-cw"/></graphic>
+                </Button>
             </VBox>
         </HBox>
 
@@ -88,13 +76,6 @@
                 <TextField fx:id="serverField" promptText="ws://địa-chỉ:8080"/>
             </VBox>
         </TitledPane>
-
-        <Button fx:id="joinButton" text="Tạo / Vào phòng" onAction="#onJoinRoom" styleClass="accent, join-button"
-                defaultButton="true" maxWidth="Infinity">
-            <graphic>
-                <FontIcon iconLiteral="fth-log-in"/>
-            </graphic>
-        </Button>
 
         <Label fx:id="errorLabel" styleClass="error-label" wrapText="true"/>
     </VBox>

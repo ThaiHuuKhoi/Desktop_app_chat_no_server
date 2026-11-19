@@ -14,7 +14,9 @@ import java.util.List;
 
 /** HTTP client for the signaling server account API. */
 public final class AuthClient {
-    private static final ObjectMapper JSON = new ObjectMapper();
+    /** Bo qua truong la tu server (server moi hon client van doc duoc). */
+    private static final ObjectMapper JSON = new ObjectMapper()
+            .configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     private static final java.util.logging.Logger LOG = java.util.logging.Logger.getLogger(AuthClient.class.getName());
     private final HttpClient http = HttpClient.newHttpClient();
 
@@ -78,7 +80,9 @@ public final class AuthClient {
                 LOG.warning("Tai danh sach phong that bai: HTTP " + response.statusCode());
                 throw new IllegalStateException("Không thể tải danh sách phòng");
             }
-            List<RoomSummary> result = Arrays.asList(JSON.readValue(response.body(), RoomSummary[].class));
+            List<RoomSummary> result = Arrays.stream(JSON.readValue(response.body(), RoomSummary[].class))
+                    .map(RoomSummary::normalized)
+                    .toList();
             LOG.info(() -> "Tai danh sach phong: " + result.size() + " phong dang hoat dong");
             return result;
         } catch (IOException e) {
@@ -121,10 +125,28 @@ public final class AuthClient {
     }
     public record AuthResult(String token, String username, String expiresAt) {
     }
-    public record RoomSummary(String roomId, int peerCount, String ownerUserName) {
+    /**
+     * 1 phong dang co nguoi.
+     *
+     * @param roomId            ten phong de hien thi va de vao (khong kem "the" mat khau).
+     * @param passwordProtected phong co mat khau - phai hoi mat khau truoc khi vao.
+     */
+    public record RoomSummary(String roomId, int peerCount, String ownerUserName, boolean passwordProtected) {
+
+        /**
+         * Server cu (truoc khi co truong passwordProtected) tra nguyen roomId "ten~the" cua phong co
+         * mat khau - tach ra o day de giao dien chi thay ten + co mat khau, khong dung toi "the".
+         */
+        public RoomSummary normalized() {
+            int separator = roomId == null ? -1 : roomId.indexOf(RoomConfig.PRIVATE_ROOM_SEPARATOR);
+            return separator < 0
+                    ? this
+                    : new RoomSummary(roomId.substring(0, separator), peerCount, ownerUserName, true);
+        }
+
         @Override
         public String toString() {
-            return roomId + "  ·  " + peerCount + " người";
+            return roomId + "  ·  " + peerCount + " người" + (passwordProtected ? "  ·  có mật khẩu" : "");
         }
     }
     private record RegisterResult(String token, String username, String expiresAt) {
