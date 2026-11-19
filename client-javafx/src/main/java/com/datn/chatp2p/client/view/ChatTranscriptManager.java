@@ -1,5 +1,7 @@
 package com.datn.chatp2p.client.view;
 
+import com.datn.chatp2p.client.session.FileTransferStatus;
+import com.datn.chatp2p.client.view.TranscriptEntry.FileTransfer;
 import com.datn.chatp2p.common.model.ChatMessage;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
@@ -18,22 +20,33 @@ final class ChatTranscriptManager {
 
     private final String selfPeerId;
     private final Function<String, String> displayNameResolver;
+    private final FileTransferActions fileActions;
     private final ObservableList<TranscriptEntry> groupTranscript = FXCollections.observableArrayList();
     private final Map<String, ObservableList<TranscriptEntry>> directTranscripts = new HashMap<>();
     private final Map<String, ListView<TranscriptEntry>> directViews = new HashMap<>();
 
     private TabPane tabs;
 
-    ChatTranscriptManager(String selfPeerId, Function<String, String> displayNameResolver) {
+    ChatTranscriptManager(String selfPeerId, Function<String, String> displayNameResolver,
+                          FileTransferActions fileActions) {
         this.selfPeerId = selfPeerId;
         this.displayNameResolver = displayNameResolver;
+        this.fileActions = fileActions;
     }
 
     void configure(TabPane tabs, ListView<TranscriptEntry> groupView) {
         this.tabs = tabs;
         groupView.setItems(groupTranscript);
-        groupView.setCellFactory(list -> new TranscriptCell(selfPeerId, displayNameResolver));
-        groupTranscript.addListener((ListChangeListener<TranscriptEntry>) change -> scrollToEnd(groupView));
+        groupView.setCellFactory(list -> newCell());
+        groupTranscript.addListener((ListChangeListener<TranscriptEntry>) change -> {
+            // Chi cuon xuong khi co dong MOI, khong cuon khi the file cap nhat tien do
+            while (change.next()) {
+                if (change.wasAdded() && !change.wasReplaced()) {
+                    scrollToEnd(groupView);
+                    return;
+                }
+            }
+        });
     }
 
     /**
@@ -86,7 +99,8 @@ final class ChatTranscriptManager {
     }
 
     boolean hasGroupUserMessages() {
-        return groupTranscript.stream().anyMatch(entry -> entry instanceof TranscriptEntry.UserMessage);
+        return groupTranscript.stream().anyMatch(entry ->
+                entry instanceof TranscriptEntry.UserMessage || entry instanceof FileTransfer);
     }
 
     void addDirect(String peerId, String displayName, ChatMessage message) {
@@ -99,6 +113,34 @@ final class ChatTranscriptManager {
         directTranscripts.get(peerId).add(new TranscriptEntry.UserMessage(message));
         directViews.get(peerId).refresh();
         scrollToEnd(directViews.get(peerId));
+    }
+
+    /**
+     * Them the file moi, hoac thay the file cu cung {@code fileId} bang trang
+     * thai moi. File gui trong DM nam o tab DM cua nguoi do.
+     */
+    void upsertFile(FileTransferStatus status, String peerDisplayName) {
+        ObservableList<TranscriptEntry> target;
+        if (status.direct()) {
+            // Chi chuyen sang tab DM khi co loi moi / vua gui, khong phai moi lan cap nhat tien do
+            boolean newTransfer = status.state() == FileTransferStatus.State.OFFERED
+                    || status.state() == FileTransferStatus.State.WAITING_ANSWER;
+            openDirect(status.peerId(), peerDisplayName, newTransfer);
+            target = directTranscripts.get(status.peerId());
+        } else {
+            target = groupTranscript;
+        }
+        for (int i = target.size() - 1; i >= 0; i--) {
+            if (target.get(i) instanceof FileTransfer existing
+                    && existing.status().fileId().equals(status.fileId())) {
+                target.set(i, new FileTransfer(status));
+                return;
+            }
+        }
+        target.add(new FileTransfer(status));
+        if (status.direct()) {
+            scrollToEnd(directViews.get(status.peerId()));
+        }
     }
 
     void openDirect(String peerId, String displayName) {
@@ -118,7 +160,8 @@ final class ChatTranscriptManager {
                 directTranscripts.computeIfAbsent(peerId, ignored -> FXCollections.observableArrayList());
         ListView<TranscriptEntry> view = new ListView<>(messages);
         view.setStyle("-fx-background-color: transparent;");
-        view.setCellFactory(list -> new TranscriptCell(selfPeerId, displayNameResolver));
+        view.getStyleClass().add("transcript");
+        view.setCellFactory(list -> newCell());
         directViews.put(peerId, view);
         Tab tab = new Tab("DM: " + displayName, view);
         tab.setUserData(peerId);
@@ -126,6 +169,10 @@ final class ChatTranscriptManager {
         if (focus) {
             tabs.getSelectionModel().select(tab);
         }
+    }
+
+    private TranscriptCell newCell() {
+        return new TranscriptCell(selfPeerId, displayNameResolver, fileActions);
     }
 
     String selectedDirectPeerId() {
