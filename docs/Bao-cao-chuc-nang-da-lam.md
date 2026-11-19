@@ -435,6 +435,8 @@ Toàn bộ test tự động chạy bằng `mvn test` từ thư mục gốc trê
 
 Ngoài test tự động, các thay đổi giao diện (bong bóng chat Markdown, 3 theme, sảnh chờ, 4 hộp thoại kể cả trạng thái sau khi tích mật khẩu và khi hiện lỗi) được kiểm tra bằng cách dựng màn hình với dữ liệu giả và chụp ảnh.
 
+**Kiểm thử bằng tay (20/11/2026, trên bản `main` mới nhất, server thật `wss://chat.zingme.fun`):** đạt. Đã thử chat nhóm và chat riêng, phòng có mật khẩu (kể cả nhập sai mật khẩu được báo ngay), gửi / nhận / từ chối / huỷ file, trạng thái giao tin, so vân tay và đánh dấu tin cậy, kết nối qua TLS.
+
 Một lần chạy toàn bộ test, `PeerConnectionBurstThroughputTest` fail đúng lúc máy đang tải nặng; chạy lại riêng 3 lần và chạy lại cả bộ đều pass. Nhiều khả năng test nhạy với thời gian chờ 5 s, cần theo dõi thêm.
 
 ---
@@ -449,7 +451,7 @@ Một lần chạy toàn bộ test, `PeerConnectionBurstThroughputTest` fail đ�
 6. **Log chưa ghi ra file**: chạy không có terminal thì mất log.
 7. **Truyền file còn chậm** (chunk 512 byte); gửi cho nhóm là gửi riêng từng người nên tốn băng thông bên gửi gấp N lần; chưa gửi tiếp được sau khi mất kết nối; chưa có log từng bước khi truyền thành công.
 8. **`mvn install` lỗi ở một test tích hợp** (xem phần Kiểm thử); `mvn test` vẫn chạy đúng.
-9. **Mật khẩu TURN từng nằm trong lịch sử git** (repo public): đã chuyển ra file cấu hình cục bộ nhưng cần đổi mật khẩu TURN trên server.
+9. *(Đã xử lý 20/11/2026)* Mật khẩu TURN cũ từng nằm trong lịch sử git (repo public): đã chuyển ra file cấu hình cục bộ trên từng máy và **đổi sang mật khẩu ngẫu nhiên mới** trên server; mật khẩu cũ không còn dùng được.
 10. **Chưa có** gọi thoại, gọi video, chia sẻ màn hình.
 11. **Chưa có forward secrecy theo từng tin** (như Double Ratchet của Signal): mỗi kết nối dùng một cặp khoá cho cả phiên; khoá ECDH sinh mới mỗi lần kết nối nên lộ khoá của phiên này không ảnh hưởng phiên khác.
 12. **Không có tin nhắn offline**: người nhận phải đang trong phòng. Đây là đánh đổi của thiết kế P2P không lưu nội dung trên server.
