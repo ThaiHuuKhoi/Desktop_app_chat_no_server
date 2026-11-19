@@ -1,5 +1,6 @@
 package com.datn.chatp2p.client.session;
 
+import com.datn.chatp2p.common.log.SecretLogging;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
@@ -17,13 +18,15 @@ public final class AuthClient {
     private static final java.util.logging.Logger LOG = java.util.logging.Logger.getLogger(AuthClient.class.getName());
     private final HttpClient http = HttpClient.newHttpClient();
 
-    // Log chi ghi ten tai khoan + ket qua - KHONG BAO GIO ghi mat khau hay token.
+    // Mat khau / token chi hien that khi bat che do log bi mat (SecretLogging), mac dinh la "***".
 
     public AuthResult login(String serverUri, String username, String password, String publicKey) {
-        LOG.info(() -> "Dang nhap tai khoan '" + username + "' qua " + httpBase(serverUri));
+        LOG.info(() -> "Dang nhap tai khoan '" + username + "', mat khau=" + SecretLogging.reveal(password)
+                + " qua " + httpBase(serverUri));
         try {
             AuthResult result = post(serverUri, "/auth/login", new Credentials(username, password, publicKey), AuthResult.class);
-            LOG.info(() -> "Dang nhap thanh cong: '" + result.username() + "', token het han luc " + result.expiresAt());
+            LOG.info(() -> "Dang nhap thanh cong: '" + result.username() + "', token=" + SecretLogging.reveal(result.token())
+                    + ", het han luc " + result.expiresAt());
             return result;
         } catch (RuntimeException e) {
             LOG.warning(() -> "Dang nhap '" + username + "' that bai: " + e.getMessage());
@@ -32,7 +35,8 @@ public final class AuthClient {
     }
 
     public void register(String serverUri, String username, String password, String publicKey) {
-        LOG.info(() -> "Dang ky tai khoan '" + username + "' qua " + httpBase(serverUri));
+        LOG.info(() -> "Dang ky tai khoan '" + username + "', mat khau=" + SecretLogging.reveal(password)
+                + " qua " + httpBase(serverUri));
         try {
             post(serverUri, "/auth/register", new Credentials(username, password, publicKey), RegisterResult.class);
             LOG.info(() -> "Dang ky thanh cong: '" + username + "'");
@@ -54,7 +58,7 @@ public final class AuthClient {
                 LOG.warning("Dang xuat that bai: HTTP " + response.statusCode());
                 throw new IllegalStateException("Đăng xuất thất bại");
             }
-            LOG.info("Da dang xuat, token bi thu hoi tren server");
+            LOG.info(() -> "Da dang xuat, token " + SecretLogging.reveal(token) + " bi thu hoi tren server");
         } catch (IOException e) {
             throw new IllegalStateException("Không thể kết nối auth server", e);
         } catch (InterruptedException e) {

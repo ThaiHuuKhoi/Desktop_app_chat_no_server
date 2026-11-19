@@ -285,6 +285,14 @@ public final class PeerConnection {
         this.remoteEcdhPublicKey = peerPublicKeyEncoded.clone();
         this.codec = new EnvelopeCodec(sessionKey);
         LOG.info(() -> "Trao khoa ECDH xong voi peer " + shortId(peerId) + " - tu day moi goi duoc ma hoa AES-256-GCM");
+        if (com.datn.chatp2p.common.log.SecretLogging.enabled()) {
+            LOG.info(() -> "  [bi mat] khoa phien AES-256 voi peer " + shortId(peerId) + " = "
+                    + com.datn.chatp2p.common.log.SecretLogging.revealHex(sessionKey.getEncoded()));
+            LOG.info(() -> "  [bi mat] public key ECDH cua minh = "
+                    + com.datn.chatp2p.common.log.SecretLogging.revealHex(ecdhKeyPair.getPublic().getEncoded()));
+            LOG.info(() -> "  [bi mat] public key ECDH cua peer = "
+                    + com.datn.chatp2p.common.log.SecretLogging.revealHex(peerPublicKeyEncoded));
+        }
         if (onHandshakeComplete != null) {
             onHandshakeComplete.run();
         }

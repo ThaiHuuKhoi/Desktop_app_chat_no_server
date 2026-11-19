@@ -30,6 +30,9 @@ public class ChatApplication extends Application {
 
     @Override
     public void start(Stage primaryStage) {
+        if (com.datn.chatp2p.common.log.SecretLogging.enabled()) {
+            LOG.warning(com.datn.chatp2p.common.log.SecretLogging.WARNING_BANNER);
+        }
         LOG.info(() -> "Khoi dong " + APP_TITLE + " (Java " + System.getProperty("java.version")
                 + ", theme=" + ThemeManager.current() + ", debug=" + Boolean.getBoolean("chat.debug") + ")");
         WindowsIceFirewallPermission.requestIfNeeded();

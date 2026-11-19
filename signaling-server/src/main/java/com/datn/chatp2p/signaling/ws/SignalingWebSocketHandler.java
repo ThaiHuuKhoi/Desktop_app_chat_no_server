@@ -120,7 +120,8 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
                     : (signal.getAuthToken() == null || signal.getAuthToken().isBlank())
                     ? "server yeu cau dang nhap nhung JOIN khong co token"
                     : "token khong hop le hoac da het han";
-            log.warn("Tu choi JOIN tu session {} (room={}): {}", session.getId(), signal.getRoomId(), reason);
+            log.warn("Tu choi JOIN tu session {} (room={}): {}, token={}", session.getId(), signal.getRoomId(), reason,
+                    com.datn.chatp2p.common.log.SecretLogging.reveal(signal.getAuthToken()));
             return;
         }
         authenticatedUser.ifPresent(user -> signal.setUserName(user.username()));

@@ -1,5 +1,6 @@
 package com.datn.chatp2p.signaling.auth;
 
+import com.datn.chatp2p.common.log.SecretLogging;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
@@ -20,7 +21,7 @@ import java.util.Optional;
 public class AuthService {
 
     private static final Duration SESSION_LIFETIME = Duration.ofHours(12);
-    /** Chi log ten tai khoan + ket qua - KHONG BAO GIO log mat khau hay token. */
+    /** Mat khau / token chi hien that khi bat SecretLogging (mac dinh "***") - KHONG bat tren VPS that. */
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(AuthService.class);
     private final JdbcTemplate jdbc;
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
@@ -28,9 +29,13 @@ public class AuthService {
 
     public AuthService(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
+        if (SecretLogging.enabled()) {
+            log.warn(SecretLogging.WARNING_BANNER);
+        }
     }
 
     public AuthUser register(String username, String password, String publicKey) {
+        log.info("Yeu cau dang ky '{}', mat khau={}", username, SecretLogging.reveal(password));
         validateCredentials(username, password);
         try {
             KeyHolder keyHolder = new GeneratedKeyHolder();
@@ -57,6 +62,7 @@ public class AuthService {
     }
 
     public SessionResult login(String username, String password, String publicKey) {
+        log.info("Yeu cau dang nhap '{}', mat khau={}", username, SecretLogging.reveal(password));
         UserRow user = jdbc.query(
                 "SELECT id, username, password_hash, public_key FROM users WHERE username = ?",
                 rs -> rs.next()
@@ -83,7 +89,8 @@ public class AuthService {
         String token = newToken();
         jdbc.update("INSERT INTO sessions (user_id, token_hash, expires_at) VALUES (?, ?, ?)",
                 user.id, hash(token), java.sql.Timestamp.from(Instant.now().plus(SESSION_LIFETIME)));
-        log.info("Dang nhap thanh cong '{}', cap token phien {} gio", username, SESSION_LIFETIME.toHours());
+        log.info("Dang nhap thanh cong '{}', cap token phien {} gio, token={}", username,
+                SESSION_LIFETIME.toHours(), SecretLogging.reveal(token));
         return new SessionResult(token, new AuthUser(user.id, user.username,
                 user.publicKey == null ? publicKey : user.publicKey),
                 Instant.now().plus(SESSION_LIFETIME));
@@ -92,7 +99,7 @@ public class AuthService {
     public void logout(String token) {
         int revoked = jdbc.update("UPDATE sessions SET revoked_at = CURRENT_TIMESTAMP WHERE token_hash = ?",
                 hash(token));
-        log.info("Dang xuat: thu hoi {} token phien", revoked);
+        log.info("Dang xuat: thu hoi {} token phien (token={})", revoked, SecretLogging.reveal(token));
     }
 
     public Optional<AuthUser> authenticate(String token) {

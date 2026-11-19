@@ -157,7 +157,8 @@ public class HomeController {
         try {
             String roomPassword = roomPasswordField.getText() == null ? "" : roomPasswordField.getText();
             LOG.info(() -> "Bam Vao phong: ten=" + userName + ", phong=" + roomName
-                    + (roomPassword.isEmpty() ? " (cong khai)" : " (co mat khau)")
+                    + (roomPassword.isEmpty() ? " (cong khai)"
+                            : " (co mat khau: " + com.datn.chatp2p.common.log.SecretLogging.reveal(roomPassword) + ")")
                     + ", che do=" + (accountMode ? "tai khoan" : "khach"));
             Navigator.showRoom(stage, new RoomConfig(userName, roomName, serverUri,
                     accountMode ? authToken : "", roomPassword));

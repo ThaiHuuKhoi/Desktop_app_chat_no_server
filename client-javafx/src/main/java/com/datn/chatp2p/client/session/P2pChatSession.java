@@ -1,5 +1,6 @@
 package com.datn.chatp2p.client.session;
 
+import com.datn.chatp2p.common.log.SecretLogging;
 import com.datn.chatp2p.common.model.ChatMessage;
 import com.datn.chatp2p.common.model.PeerVerificationState;
 import com.datn.chatp2p.common.protocol.Envelope;
@@ -112,7 +113,10 @@ public final class P2pChatSession implements ChatSession {
                 + ", phong=" + config.roomName()
                 + (roomSecret != null ? " [co mat khau, roomId tren server=" + serverRoomId + "]" : " [cong khai]")
                 + ", server=" + config.serverUri()
+                + (roomSecret != null ? ", mat khau phong=" + SecretLogging.reveal(config.roomPassword()) : "")
                 + ", dang nhap=" + (config.authToken() != null && !config.authToken().isBlank())
+                + (config.authToken() != null && !config.authToken().isBlank()
+                        ? ", token=" + SecretLogging.reveal(config.authToken()) : "")
                 + ", TURN=" + (TURN_SERVERS.isEmpty() ? "khong cau hinh" : TURN_SERVERS.size() + " server"));
         this.signalingClient = new WebSocketSignalingClient();
         this.signalingClient.setAuthToken(config.authToken());
@@ -165,8 +169,8 @@ public final class P2pChatSession implements ChatSession {
         history.add(new HistoryMessage(message.getId(), selfPeerId, config.userName(),
                 message.getText(), message.getTimeSent()));
         List<String> recipients = admittedPeerIds();
-        LOG.info(() -> "Gui tin NHOM id=" + shortId(message.getId()) + " (" + message.getText().length()
-                + " ky tu) toi " + recipients.size() + " nguoi"
+        LOG.info(() -> "Gui tin NHOM id=" + shortId(message.getId()) + " " + SecretLogging.text(message.getText())
+                + " toi " + recipients.size() + " nguoi"
                 + (recipients.isEmpty() ? " - phong chua co ai, chi luu vao lich su" : ""));
         for (String peerId : recipients) {
             try {
@@ -188,8 +192,8 @@ public final class P2pChatSession implements ChatSession {
         }
         MessagePayload payload = new MessagePayload(
                 message.getId(), message.getAuthorId(), message.getText(), message.getTimeSent());
-        LOG.info(() -> "Gui tin RIENG id=" + shortId(message.getId()) + " (" + message.getText().length()
-                + " ky tu) toi " + who(peerId));
+        LOG.info(() -> "Gui tin RIENG id=" + shortId(message.getId()) + " " + SecretLogging.text(message.getText())
+                + " toi " + who(peerId));
         sendMessageReliably(peerId, EnvelopeNamespace.DIRECT_MESSAGE, payload);
     }
 
@@ -390,7 +394,7 @@ public final class P2pChatSession implements ChatSession {
             return; // ban gui lai cua tin nhan da hien thi
         }
         LOG.info(() -> "Nhan tin " + (EnvelopeNamespace.DIRECT_MESSAGE.equals(envelope.namespace()) ? "RIENG" : "NHOM")
-                + " id=" + shortId(payload.id()) + " (" + payload.text().length() + " ky tu) tu " + who(peerId)
+                + " id=" + shortId(payload.id()) + " " + SecretLogging.text(payload.text()) + " tu " + who(peerId)
                 + " - da gui ACK");
         long now = System.currentTimeMillis();
         // Tac gia LUON la peer gui ket noi nay (khong tin authorId trong payload); dong ho cua
@@ -507,6 +511,12 @@ public final class P2pChatSession implements ChatSession {
         int total = payload.messages().size();
         LOG.info(() -> "Nhan goi lich su tu " + who(peerId) + ": " + total + " tin, " + added.size()
                 + " tin moi" + (added.size() < total ? " (" + (total - added.size()) + " da co/khong hop le)" : ""));
+        if (SecretLogging.enabled()) {
+            for (ChatMessage message : added) {
+                LOG.info(() -> "  lich su: [" + authorNames.getOrDefault(message.getAuthorId(), shortId(message.getAuthorId()))
+                        + "] " + SecretLogging.text(message.getText()));
+            }
+        }
         ChatSessionListener currentListener = listener;
         if (!added.isEmpty() && currentListener != null && !left) {
             currentListener.onHistoryReceived(peerId, added, authorNames);
