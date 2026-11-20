@@ -1394,3 +1394,14 @@
     -fx-icon-size: 12px;
     -fx-graphic-text-gap: 4;
 }
+
+/* Nut "Quay lai dang nhap" o loi chao sanh cho (che do khach) */
+.lobby-back-button {
+    -fx-padding: 4 8 4 4;
+    -fx-text-fill: -color-fg-muted;
+    -fx-graphic-text-gap: 6;
+}
+
+.lobby-back-button .ikonli-font-icon {
+    -fx-icon-color: -color-fg-muted;
+}

@@ -57,6 +57,8 @@ public class HomeController {
     @FXML private Label selfNameLabel;
     @FXML private Label serverLabel;
     @FXML private Label modeLabel;
+    @FXML private Button loginButton;
+    @FXML private Button backToLoginButton;
     @FXML private TextField userNameField;
     @FXML private VBox nameBox;
     @FXML private Button createRoomButton;
@@ -137,6 +139,13 @@ public class HomeController {
         nameBox.setManaged(!accountMode);
         refreshButton.setVisible(accountMode);
         modeLabel.setText(accountMode ? "Tài khoản" : "Khách");
+        // Khach: nut quay lai dang nhap (o the cua minh thay cho nhan "Khach", va dau loi chao)
+        modeLabel.setVisible(accountMode);
+        modeLabel.setManaged(accountMode);
+        loginButton.setVisible(!accountMode);
+        loginButton.setManaged(!accountMode);
+        backToLoginButton.setVisible(!accountMode);
+        backToLoginButton.setManaged(!accountMode);
         roomListView.setPlaceholder(placeholder(accountMode
                 ? "Chưa có phòng nào đang hoạt động.\nTạo phòng mới hoặc nhập tên phòng ở ô trên."
                 : "Khách không xem được danh sách phòng.\nGõ tên phòng bạn bè đã gửi ở ô trên rồi nhấn Enter."));
@@ -193,6 +202,14 @@ public class HomeController {
         errorLabel.setText("");
         RoomSummary listed = findRoom(name);
         showPreview(name, listed);
+    }
+
+    /** Khach chon nham "Vào với tư cách khách" -&gt; quay lai man hinh dang nhap. */
+    @FXML
+    private void onBackToLogin() {
+        if (!joining) {
+            Navigator.showAuth(stage);
+        }
     }
 
     @FXML
