@@ -38,6 +38,20 @@ class UserSettingsTest {
     }
 
     @Test
+    void lastAccountIsRememberedAndForgotten() throws Exception {
+        Path file = dir.resolve("settings.properties");
+        UserSettings settings = new UserSettings(file);
+        assertEquals(null, settings.lastAccount());
+
+        settings.setLastAccount("  khoi ");
+        assertEquals("khoi", new UserSettings(file).lastAccount());
+        assertFalse(Files.readString(file).toLowerCase().contains("password"), "chi luu ten, khong luu mat khau");
+
+        settings.setLastAccount(null);
+        assertEquals(null, new UserSettings(file).lastAccount());
+    }
+
+    @Test
     void corruptFileFallsBackToDefaults() throws Exception {
         Path file = dir.resolve("settings.properties");
         Files.writeString(file, "sound=\\u12");   // escape unicode hong -> Properties.load nem loi

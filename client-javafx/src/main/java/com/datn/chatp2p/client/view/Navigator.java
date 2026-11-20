@@ -73,13 +73,9 @@ public final class Navigator {
         controller.showJoinRejected(config, reason);
     }
 
+    /** Man hinh dau tien: dang nhap (tiep tuc nhanh voi tai khoan da nho / form / vao lam khach). */
     public static void showEntry(Stage stage) {
-        FXMLLoader loader = new FXMLLoader(Navigator.class.getResource("/view/entry.fxml"));
-        Parent root = load(loader);
-        loader.<EntryController>getController().setStage(stage);
-        stage.setOnCloseRequest(null);
-        stage.setTitle(ChatApplication.APP_TITLE);
-        stage.setScene(styledScene(root, HOME_WIDTH, HOME_HEIGHT));
+        showAuth(stage);
     }
 
     static void showAuth(Stage stage) {
@@ -88,7 +84,7 @@ public final class Navigator {
         loader.<AuthController>getController().setStage(stage);
 
         stage.setOnCloseRequest(null);
-        stage.setTitle(ChatApplication.APP_TITLE + " - Tài khoản");
+        stage.setTitle(ChatApplication.APP_TITLE);
         stage.setScene(styledScene(root, HOME_WIDTH, HOME_HEIGHT));
     }
 

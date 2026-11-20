@@ -34,7 +34,8 @@ public final class PeerIdentityService {
     private final KeyPair keyPair = loadIdentity();
     private final String localFingerprint = Fingerprint.of(keyPair.getPublic());
 
-    String localFingerprint() {
+    /** Van tay khoa danh tinh cua may nay (hien o man hinh dang nhap, hop so van tay). */
+    public String localFingerprint() {
         return localFingerprint;
     }
 
