@@ -140,6 +140,8 @@ public class RoomController implements ChatSessionListener {
     private boolean joinRejected;
     /** Peer da duoc canh bao "khoa da doi" (chi canh bao 1 lan moi peer). */
     private final java.util.Set<String> keyChangeWarned = new java.util.HashSet<>();
+    /** Peer ma nguoi dung da bam "Khong khop" khi so van tay (hien do trong danh sach, het khi so lai khop). */
+    private final java.util.Set<String> mismatchedPeers = new java.util.HashSet<>();
     /** Trang thai "dang gui / da nhan" cua cac tin minh gui. */
     private final DeliveryStatuses deliveryStatuses = new DeliveryStatuses();
     private final ReactionStore reactions = new ReactionStore();
@@ -193,7 +195,8 @@ public class RoomController implements ChatSessionListener {
 
         peerListView.setItems(peers);
         peerListView.setCellFactory(list -> new PeerListCell(this::openDirectMessage, this::verifyFingerprint,
-                item -> TrustedPeers.get().status(item.peer.displayName(), item.peer.remoteFingerprint())));
+                item -> TrustedPeers.get().status(item.peer.displayName(), item.peer.remoteFingerprint()),
+                item -> mismatchedPeers.contains(item.peer.peerId())));
         peerListView.setPlaceholder(new Label("Chưa có ai khác"));
 
         transcriptManager = new ChatTranscriptManager(
@@ -305,16 +308,22 @@ public class RoomController implements ChatSessionListener {
             notice(NoticeKind.INFO, "Chưa có vân tay của " + item.peer.displayName() + ", vui lòng đợi xác minh xong.");
             return;
         }
-        switch (FingerprintDialog.show(stage, item)) {
+        boolean keyChanged = TrustedPeers.get().status(item.peer.displayName(), item.peer.remoteFingerprint())
+                == TrustedPeers.Status.CHANGED;
+        switch (FingerprintDialog.show(stage, item, config.roomName(), keyChanged)) {
             case MATCH -> {
+                mismatchedPeers.remove(item.peer.peerId());
                 TrustedPeers.get().trust(item.peer.displayName(), item.peer.remoteFingerprint());
                 notice(NoticeKind.SECURE, "Đã đánh dấu tin cậy " + item.peer.displayName()
                         + ". Lần sau nếu khoá của người tên này thay đổi, bạn sẽ được cảnh báo.");
             }
             case MISMATCH -> {
+                // Giu trang thai do "Khong khop" trong danh sach nguoi cho toi khi so lai va khop.
+                mismatchedPeers.add(item.peer.peerId());
                 TrustedPeers.get().forget(item.peer.displayName());
                 notice(NoticeKind.WARNING, "Vân tay của " + item.peer.displayName()
-                        + " KHÔNG khớp: có thể có người đang xen giữa. Đừng gửi thông tin nhạy cảm.");
+                        + " KHÔNG khớp: có thể có người đang xen giữa. Đừng gửi thông tin nhạy cảm; "
+                        + "nên rời phòng và tạo phòng mới.");
             }
             case CANCELLED -> {
                 return;
@@ -358,6 +367,7 @@ public class RoomController implements ChatSessionListener {
             }
             peers.removeIf(item -> item.peer.peerId().equals(peerId));
             pendingPeerUpdates.remove(peerId);
+            mismatchedPeers.remove(peerId);
             typingTracker.removePeer(peerId);
             refreshTypingLabel();
             notice(NoticeKind.LEFT, displayNames.getOrDefault(peerId, "Một người") + " đã rời phòng");

@@ -27,16 +27,20 @@ class PeerListCell extends ListCell<PeerItem> {
     private final Consumer<PeerItem> onDirectMessageRequested;
     private final Consumer<PeerItem> onVerifyRequested;
     private final Function<PeerItem, TrustedPeers.Status> trustStatus;
+    private final java.util.function.Predicate<PeerItem> mismatched;
 
     /**
      * @param onVerifyRequested bam "So vân tay" -&gt; mo hop so van tay.
      * @param trustStatus       nguoi nay da duoc xac minh van tay truoc do chua ({@link TrustedPeers}).
+     * @param mismatched        nguoi dung da bam "Không khớp" khi so van tay voi nguoi nay trong phien.
      */
     PeerListCell(Consumer<PeerItem> onDirectMessageRequested, Consumer<PeerItem> onVerifyRequested,
-                 Function<PeerItem, TrustedPeers.Status> trustStatus) {
+                 Function<PeerItem, TrustedPeers.Status> trustStatus,
+                 java.util.function.Predicate<PeerItem> mismatched) {
         this.onDirectMessageRequested = onDirectMessageRequested;
         this.onVerifyRequested = onVerifyRequested;
         this.trustStatus = trustStatus;
+        this.mismatched = mismatched;
         // Vua khit chieu rong cot, ten dai thi rut gon "..." thay vi hien thanh cuon ngang
         setPrefWidth(0);
     }
@@ -62,8 +66,9 @@ class PeerListCell extends ListCell<PeerItem> {
         HBox nameRow = new HBox(4, nameLabel, direct);
         nameRow.setAlignment(Pos.CENTER_LEFT);
 
+        boolean isMismatched = mismatched.test(item);
         TrustedPeers.Status trust = item.isVerified() ? trustStatus.apply(item) : null;
-        Label verification = verificationLabel(item, trust);
+        Label verification = isMismatched ? mismatchLabel() : verificationLabel(item, trust);
         Label connection = connectionLabel(item.peer.connectionKind());
         FlowPane statusLine = new FlowPane(6, 2, verification, connection);
 
@@ -72,8 +77,8 @@ class PeerListCell extends ListCell<PeerItem> {
         HBox.setHgrow(text, Priority.ALWAYS);
 
         boolean canCompare = item.isVerified() && item.peer.remoteFingerprint() != null;
-        if (canCompare && trust != TrustedPeers.Status.TRUSTED) {
-            Button compare = new Button(trust == TrustedPeers.Status.CHANGED ? "So lại vân tay" : "So vân tay");
+        if (canCompare && (isMismatched || trust != TrustedPeers.Status.TRUSTED)) {
+            Button compare = new Button(isMismatched || trust == TrustedPeers.Status.CHANGED ? "So lại vân tay" : "So vân tay");
             compare.getStyleClass().addAll(Styles.SMALL, "peer-compare-button");
             compare.setOnAction(event -> onVerifyRequested.accept(item));
             text.getChildren().add(compare);
@@ -86,7 +91,9 @@ class PeerListCell extends ListCell<PeerItem> {
         HBox row = new HBox(10, Avatars.create(item.peer.displayName(), 17), text);
         row.setAlignment(Pos.TOP_LEFT);
         row.getStyleClass().add("peer-card");
-        if (trust == TrustedPeers.Status.CHANGED) {
+        if (isMismatched) {
+            row.getStyleClass().add("peer-card-mismatch");
+        } else if (trust == TrustedPeers.Status.CHANGED) {
             row.getStyleClass().add("peer-card-changed");
         } else if (trust == TrustedPeers.Status.TRUSTED) {
             row.getStyleClass().add("peer-card-trusted");
@@ -115,6 +122,15 @@ class PeerListCell extends ListCell<PeerItem> {
             label.getStyleClass().add("peer-status-muted");
             label.setTooltip(new Tooltip("Chữ ký danh tính hợp lệ. So vân tay qua một kênh khác để chắc đúng người."));
         }
+        return label;
+    }
+
+    private static Label mismatchLabel() {
+        Label label = new Label("Không khớp – có thể có người xen giữa", new FontIcon(Feather.X_OCTAGON));
+        label.getStyleClass().add("peer-status-mismatch");
+        label.setWrapText(true);
+        label.setTooltip(new Tooltip("Bạn đã đánh dấu vân tay KHÔNG khớp. Đừng gửi thông tin nhạy cảm; "
+                + "nên rời phòng và tạo phòng mới."));
         return label;
     }
 
