@@ -96,6 +96,16 @@ class MessageExtrasTest {
     }
 
     @Test
+    void everyAllowedReactionHasAColorImage() {
+        assertEquals("2764.png", EmojiImages.fileName("❤️"));
+        assertEquals("1f44d.png", EmojiImages.fileName("👍"));
+        for (String emoji : com.datn.chatp2p.common.protocol.ReactionPayload.ALLOWED) {
+            assertTrue(EmojiImages.class.getResource("/emoji/" + EmojiImages.fileName(emoji)) != null,
+                    "Thieu anh mau cho cam xuc " + emoji);
+        }
+    }
+
+    @Test
     void reactorNamesReadNaturally() {
         assertEquals("", MessageTexts.joinNames(java.util.List.of()));
         assertEquals("Bạn", MessageTexts.joinNames(java.util.List.of("Bạn")));

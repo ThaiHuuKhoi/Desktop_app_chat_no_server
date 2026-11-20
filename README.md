@@ -236,3 +236,10 @@ do tren Internet that / qua TURN.
 
 > **Tuong thich:** dinh dang datagram cua `P2pDataChannel` (chia manh) khac ban
 > cu - client moi va client cu khong ket noi duoc voi nhau, can cap nhat tat ca.
+
+## Ghi nguon
+
+Anh emoji mau cho 5 cam xuc (`client-javafx/src/main/resources/emoji/*.png`) lay tu
+[Twemoji](https://github.com/jdecked/twemoji) (ban 15.1.0), Copyright Twitter, Inc and
+other contributors, do hoa theo giay phep [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+Dung anh vi JavaFX tren Windows chi ve emoji don sac (da thu JavaFX 21, 22, 23, 24).
