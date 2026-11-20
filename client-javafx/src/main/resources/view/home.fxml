@@ -64,6 +64,11 @@
                     </HBox>
                 </VBox>
                 <Label fx:id="modeLabel" styleClass="lobby-mode-chip"/>
+                <!-- Khach: quay lai man hinh dang nhap (chon nham "Vào với tư cách khách") -->
+                <Button fx:id="loginButton" text="Đăng nhập" onAction="#onBackToLogin" styleClass="small">
+                    <graphic><FontIcon iconLiteral="fth-log-in"/></graphic>
+                    <tooltip><Tooltip text="Quay lại màn hình đăng nhập"/></tooltip>
+                </Button>
             </HBox>
         </VBox>
     </left>
@@ -75,6 +80,10 @@
                 <StackPane>
                     <!-- Loi chao (chua chon phong) -->
                     <VBox fx:id="welcomePane" styleClass="lobby-panel" spacing="18" maxWidth="560" maxHeight="-Infinity">
+                        <Button fx:id="backToLoginButton" text="Quay lại đăng nhập" onAction="#onBackToLogin"
+                                styleClass="flat, lobby-back-button">
+                            <graphic><FontIcon iconLiteral="fth-arrow-left"/></graphic>
+                        </Button>
                         <Label fx:id="welcomeTitle" text="Chào bạn" styleClass="lobby-title"/>
                         <Label text="Chọn một phòng ở bên trái, nhập tên phòng bạn bè đã gửi, hoặc tạo phòng mới. Tin nhắn đi thẳng giữa các máy và được mã hoá đầu-cuối."
                                styleClass="lobby-text" wrapText="true"/>
