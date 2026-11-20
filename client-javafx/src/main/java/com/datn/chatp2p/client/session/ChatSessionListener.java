@@ -64,6 +64,13 @@ public interface ChatSessionListener {
     default void onReaction(String messageId, String peerId, String emoji, boolean added) {
     }
 
+    /**
+     * {@code peerId} sua ({@code newText} khac null) hoac xoa ({@code newText} null) tin
+     * {@code messageId}. Giao dien PHAI kiem tra {@code peerId} dung la tac gia tin goc.
+     */
+    default void onMessageEdited(String messageId, String peerId, String newText) {
+    }
+
     /** Het luot gui lai ma {@code peerId} van chua xac nhan tin {@code messageId}. */
     default void onMessageDeliveryFailed(String messageId, String peerId) {
     }

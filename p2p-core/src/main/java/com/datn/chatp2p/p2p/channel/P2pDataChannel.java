@@ -20,10 +20,10 @@ import java.util.function.Consumer;
  * tao doi tuong nay - lop nay khong tu lam ICE, chi lo gui/nhan byte tren
  * duong truyen da co san.
  *
- * <p><b>Framing:</b> them 4-byte length-prefix truoc moi goi tin. Voi UDP thuan
- * dieu nay khong bat buoc (1 loi goi {@code send()} da anh xa dung 1 goi tin,
- * UDP tu giu ranh gioi) nhung van giu de dong bo voi thiet ke chung, phong khi
- * sau nay doi sang TCP/DTLS-over-UDP ma khong phai doi lai giao thuc dong goi.
+ * <p><b>Framing va chia manh:</b> byte dau moi datagram cho biet loai: {@code 1} = ban tin nguyen,
+ * {@code 2} = 1 manh cua ban tin lon (id ban tin, so thu tu, tong so manh). Ban tin lon hon
+ * {@value #MAX_FRAGMENT_DATA} byte duoc chia nho va ghep lai o ben nhan, vi ice4j cat bo moi goi UDP
+ * lon hon 1500 byte. Mat 1 manh la mat ca ban tin (tang tren tu gui lai neu can).
  *
  * <p><b>Gioi han da biet</b> (chua xu ly trong ban dau nay, xem
  * Tai-lieu-ky-thuat.md Phan H.3): UDP khong dam bao thu tu/khong mat goi - chua
@@ -32,8 +32,7 @@ import java.util.function.Consumer;
  */
 public final class P2pDataChannel implements DataChannel {
 
-    private static final int MAX_UDP_PAYLOAD = 65_507; // gioi han thuc te cua 1 datagram IPv4
-    private static final int LENGTH_PREFIX_BYTES = 4;
+    private static final int MAX_UDP_PAYLOAD = 65_507; // gioi han thuc te cua 1 datagram IPv4 (bo dem nhan)
     /** Xem javadoc cua {@link #enlargeSocketBuffers} - 1MB, du cho hang nghin Envelope nho don dap. */
     private static final int SOCKET_BUFFER_SIZE_BYTES = 1_048_576;
 
@@ -99,30 +98,18 @@ public final class P2pDataChannel implements DataChannel {
         if (closed) {
             throw new IllegalStateException("DataChannel da bi dong");
         }
-        byte[] framed = frame(data);
-        // Kiem tra RO RANG truoc khi goi socket.send() - neu khong, OS se tu choi
-        // voi 1 IOException "Message too long" chung chung, bi boc lai thanh
-        // UncheckedIOException KHONG noi ro nguyen nhan la payload qua lon (da
-        // xac nhan that: thong diep loi mac dinh chi la "Gui du lieu qua
-        // P2pDataChannel that bai", phai tu dao sau vao getCause() moi biet).
-        // Quan trong hon: gioi han 65.507 byte nay KHONG PHAI gioi han thuc te
-        // cho payload UNG DUNG - qua EnvelopeCodec (JSON + base64 hoa truong
-        // byte[] + AES-GCM), gioi han thuc te cho vi du 1 tin nhan van ban chi
-        // con khoang ~49KB. Bao loi som, ro rang o day de ai do lam tinh nang
-        // chia nho file/media (FILE_CHUNK/MEDIA_FRAME) sau nay biet chinh xac
-        // can chia nho toi dau, khong phai tu doan hay tu gap loi kho hieu.
-        if (framed.length > MAX_UDP_PAYLOAD) {
+        // Ban tin lon duoc chia thanh nhieu datagram nho (xem MAX_FRAGMENT_DATA); bao loi ro rang neu
+        // vuot gioi han tong de nguoi goi biet phai tu chia nho (vd file -> chunk).
+        if (data.length > MAX_MESSAGE_BYTES) {
             throw new IllegalArgumentException(
-                    "Payload qua lon de gui qua 1 goi UDP: " + framed.length + " byte (da gom "
-                            + LENGTH_PREFIX_BYTES + " byte length-prefix), vuot qua gioi han "
-                            + MAX_UDP_PAYLOAD + " byte cua 1 datagram IPv4. Du lieu dau vao cho send() "
-                            + "toi da " + (MAX_UDP_PAYLOAD - LENGTH_PREFIX_BYTES) + " byte - luu y day la"
-                            + " du lieu SAU KHI da qua EnvelopeCodec (JSON+base64+AES-GCM), nen payload"
-                            + " ung dung goc (vd noi dung tin nhan) can nho hon nhieu; voi du lieu lon hon"
-                            + " (vd file/media) phai tu chia nho (chunk) truoc khi goi send().");
+                    "Payload qua lon de gui qua P2pDataChannel: " + data.length + " byte, vuot gioi han "
+                            + MAX_MESSAGE_BYTES + " byte cho 1 ban tin (du lieu SAU KHI da qua EnvelopeCodec:"
+                            + " JSON+base64+AES-GCM). Du lieu lon hon (vd file/media) phai tu chia nho truoc khi gui.");
         }
         try {
-            socket.send(new DatagramPacket(framed, framed.length, remoteAddress));
+            for (byte[] frame : frames(data)) {
+                socket.send(new DatagramPacket(frame, frame.length, remoteAddress));
+            }
         } catch (IOException e) {
             throw new UncheckedIOException("Gui du lieu qua P2pDataChannel that bai", e);
         }
@@ -183,11 +170,14 @@ public final class P2pDataChannel implements DataChannel {
 
             byte[] data;
             try {
-                data = unframe(packet.getData(), packet.getLength());
+                data = accept(packet.getData(), packet.getLength());
             } catch (RuntimeException malformed) {
-                // Goi tin khong dung dinh dang length-prefix - bo qua, khong lam chet vong lap nhan.
+                // Goi tin sai dinh dang - bo qua, khong lam chet vong lap nhan.
                 logDropped("goi sai dinh dang (" + packet.getLength() + " byte)");
                 continue;
+            }
+            if (data == null) {
+                continue; // manh cua ban tin lon, con cho cac manh khac
             }
 
             Consumer<byte[]> handler = receiveHandler;
@@ -237,24 +227,118 @@ public final class P2pDataChannel implements DataChannel {
                 && packet.getAddress().equals(remoteAddress.getAddress());
     }
 
-    private static byte[] frame(byte[] data) {
-        ByteBuffer buffer = ByteBuffer.allocate(LENGTH_PREFIX_BYTES + data.length);
-        buffer.putInt(data.length);
-        buffer.put(data);
-        return buffer.array();
+    // ------------------------------------------------------------ chia manh
+
+    /**
+     * Du lieu toi da trong 1 datagram. ice4j ({@code MergingDatagramSocket}) nhan moi goi vao bo dem
+     * CO DINH 1500 byte - goi lon hon bi cat va bi bo am tham (da do that khi truyen file). Giu moi
+     * datagram &lt;= ~1170 byte (con cho cho header UDP/IP va TURN, va duoi MTU toi thieu 1280 cua IPv6).
+     */
+    static final int MAX_FRAGMENT_DATA = 1150;
+    /** 1 ban tin lon nhat sau khi ghep lai (chong ban tin rac chiem bo nho). */
+    static final int MAX_MESSAGE_BYTES = 1_048_576;
+    /** Toi da so ban tin dang ghep do dang cung luc, va thoi gian cho manh con thieu. */
+    static final int MAX_PENDING_MESSAGES = 64;
+    static final long FRAGMENT_TIMEOUT_MILLIS = 5_000;
+
+    private static final byte TYPE_WHOLE = 1;
+    private static final byte TYPE_FRAGMENT = 2;
+    /** type(1) + id ban tin(4) + so thu tu manh(2) + tong so manh(2). */
+    private static final int FRAGMENT_HEADER_BYTES = 9;
+
+    private final java.util.concurrent.atomic.AtomicInteger nextMessageId = new java.util.concurrent.atomic.AtomicInteger();
+    private final java.util.Map<Integer, Reassembly> pending = new java.util.LinkedHashMap<>();
+
+    /** Cac datagram can gui cho {@code data}: 1 goi nguyen neu vua, nguoc lai chia manh. */
+    java.util.List<byte[]> frames(byte[] data) {
+        if (data.length + 1 <= MAX_FRAGMENT_DATA + FRAGMENT_HEADER_BYTES) {
+            byte[] whole = new byte[1 + data.length];
+            whole[0] = TYPE_WHOLE;
+            System.arraycopy(data, 0, whole, 1, data.length);
+            return java.util.List.of(whole);
+        }
+        int count = (data.length + MAX_FRAGMENT_DATA - 1) / MAX_FRAGMENT_DATA;
+        int messageId = nextMessageId.getAndIncrement();
+        java.util.List<byte[]> result = new java.util.ArrayList<>(count);
+        for (int index = 0; index < count; index++) {
+            int from = index * MAX_FRAGMENT_DATA;
+            int length = Math.min(MAX_FRAGMENT_DATA, data.length - from);
+            ByteBuffer buffer = ByteBuffer.allocate(FRAGMENT_HEADER_BYTES + length);
+            buffer.put(TYPE_FRAGMENT).putInt(messageId).putShort((short) index).putShort((short) count);
+            buffer.put(data, from, length);
+            result.add(buffer.array());
+        }
+        return result;
     }
 
-    private static byte[] unframe(byte[] raw, int length) {
-        if (length < LENGTH_PREFIX_BYTES) {
-            throw new IllegalArgumentException("Goi tin qua ngan de chua length-prefix");
+    /** Nhan 1 datagram; tra ve ban tin day du (hoac null neu con cho manh khac). */
+    byte[] accept(byte[] raw, int length) {
+        if (length < 1) {
+            throw new IllegalArgumentException("Goi rong");
         }
-        ByteBuffer buffer = ByteBuffer.wrap(raw, 0, length);
-        int dataLength = buffer.getInt();
-        if (dataLength < 0 || dataLength > length - LENGTH_PREFIX_BYTES) {
-            throw new IllegalArgumentException("Length-prefix khong khop voi kich thuoc goi tin thuc te");
+        if (raw[0] == TYPE_WHOLE) {
+            return java.util.Arrays.copyOfRange(raw, 1, length);
         }
-        byte[] data = new byte[dataLength];
-        buffer.get(data);
-        return data;
+        if (raw[0] != TYPE_FRAGMENT || length <= FRAGMENT_HEADER_BYTES) {
+            throw new IllegalArgumentException("Goi sai dinh dang");
+        }
+        ByteBuffer buffer = ByteBuffer.wrap(raw, 1, length - 1);
+        int messageId = buffer.getInt();
+        int index = Short.toUnsignedInt(buffer.getShort());
+        int count = Short.toUnsignedInt(buffer.getShort());
+        if (count < 2 || index >= count || (long) count * MAX_FRAGMENT_DATA > MAX_MESSAGE_BYTES + MAX_FRAGMENT_DATA) {
+            throw new IllegalArgumentException("Thong so manh khong hop le");
+        }
+        byte[] part = java.util.Arrays.copyOfRange(raw, FRAGMENT_HEADER_BYTES, length);
+        long now = System.currentTimeMillis();
+        synchronized (pending) {
+            pending.values().removeIf(r -> now - r.startedAt > FRAGMENT_TIMEOUT_MILLIS);
+            Reassembly reassembly = pending.get(messageId);
+            if (reassembly == null) {
+                if (pending.size() >= MAX_PENDING_MESSAGES) {
+                    pending.remove(pending.keySet().iterator().next()); // bo ban tin cu nhat
+                }
+                reassembly = new Reassembly(count, now);
+                pending.put(messageId, reassembly);
+            } else if (reassembly.parts.length != count) {
+                throw new IllegalArgumentException("So manh khong khop");
+            }
+            byte[] complete = reassembly.add(index, part);
+            if (complete != null) {
+                pending.remove(messageId);
+            }
+            return complete;
+        }
+    }
+
+    private static final class Reassembly {
+        final byte[][] parts;
+        final long startedAt;
+        int received;
+        int totalBytes;
+
+        Reassembly(int count, long startedAt) {
+            this.parts = new byte[count][];
+            this.startedAt = startedAt;
+        }
+
+        byte[] add(int index, byte[] part) {
+            if (parts[index] != null) {
+                return null; // manh trung
+            }
+            parts[index] = part;
+            received++;
+            totalBytes += part.length;
+            if (received < parts.length) {
+                return null;
+            }
+            byte[] message = new byte[totalBytes];
+            int offset = 0;
+            for (byte[] piece : parts) {
+                System.arraycopy(piece, 0, message, offset, piece.length);
+                offset += piece.length;
+            }
+            return message;
+        }
     }
 }

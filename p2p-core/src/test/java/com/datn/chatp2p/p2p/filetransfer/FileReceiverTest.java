@@ -336,4 +336,26 @@ class FileReceiverTest {
             assertEquals(List.of(), receiver.receivedAbove(64));
         }
     }
+
+    /**
+     * Lo o chunk 0 ton tai lau, phia tren da nhan nhieu hon gioi han: ACK phai bao chunk MOI NHAT
+     * (index cao) va chunk vua toi - khong lap lai mai cac chunk thap da bao tu truoc.
+     */
+    @Test
+    void ackListPrefersNewestChunksAndTheOneJustReceived() throws Exception {
+        try (FileSender sender = FileSender.open(source("lo.bin", 12 * 4096));
+             FileReceiver receiver = FileReceiver.accept(sender.offer(), downloads())) {
+            for (int i = 1; i <= 9; i++) {
+                receiver.onChunk(sender.readChunk(i));
+            }
+            assertEquals(0, receiver.contiguousChunks());
+            assertEquals(List.of(1, 2, 3), receiver.receivedAbove(3), "cach cu: chi cac chunk thap");
+            assertEquals(List.of(7, 8, 9), receiver.receivedAboveForAck(3, -1));
+            assertEquals(List.of(4, 8, 9), receiver.receivedAboveForAck(3, 4), "luon co chunk vua toi");
+
+            receiver.onChunk(sender.readChunk(0));
+            assertEquals(10, receiver.contiguousChunks());
+            assertEquals(List.of(), receiver.receivedAboveForAck(3, 0), "chunk duoi contiguousUpTo khong can liet ke");
+        }
+    }
 }

@@ -34,6 +34,10 @@ import java.util.function.Consumer;
  *       rieng, gui lai voi backoff gap doi (500 ms ... 4 s), toi da {@code maxRetries} lan -
  *       qua thi {@code TIMEOUT}. Moi lan gui lai deu ma hoa lai voi IV moi nen khong bi co che
  *       chong replay cua {@code PeerConnection} chan.</li>
+ *   <li>Gui lai nhanh (kieu TCP RACK, {@link #FAST_RETRANSMIT_THRESHOLD}): khong doi het hen gio
+ *       neu ACK cho thay da co {@value #FAST_RETRANSMIT_THRESHOLD} chunk GUI SAU chunk do toi noi.
+ *       Truoc khi co buoc nay, moi chunk mat lam ca cua so dung ~500 ms (mat 1% goi: 2,4 MB/s con
+ *       0,2 MB/s - do bang {@code FileTransferBenchmarkTest}).</li>
  *   <li>{@link #onAck}: {@code contiguousUpTo} + {@code receivedAbove} danh dau chunk da nhan,
  *       khong gui lai chung nua.</li>
  *   <li>Du chunk nhung chua co {@code verified = true}: ben nhan dang kiem SHA-256, HOAC ban ACK
@@ -54,12 +58,35 @@ import java.util.function.Consumer;
  */
 public final class ReliableChunkSender {
 
+    private static final java.util.logging.Logger LOG =
+            java.util.logging.Logger.getLogger(ReliableChunkSender.class.getName());
+
     private enum State { NEW, OFFERING, SENDING, VERIFYING, COMPLETED, FAILED, CANCELLED }
 
     private static final class InFlight {
+        /** So lan HET HEN GIO lien tiep - quyet dinh backoff va {@code maxRetries} (duong truyen chet). */
         int retries;
+        /** So lan gui lai nhanh - khong lam tang backoff, chi bi chan boi {@link #MAX_FAST_RETRANSMITS}. */
+        int fastRetransmits;
         ScheduledFuture<?> timer;
+        /** So thu tu cua LAN GUI GAN NHAT (dem chung moi lan gui chunk) - dung cho gui lai nhanh. */
+        long sentSeq;
     }
+
+    /**
+     * Gui lai nhanh (kieu TCP RACK): 1 chunk dang bay duoc coi la MAT khi da co it nhat chung nay
+     * chunk GUI SAU no duoc xac nhan - khong doi het hen gio (500 ms+). Lon hon 1 de chiu duoc UDP
+     * dao thu tu nhe. Vi so sanh theo LAN GUI (khong theo index), ban gui lai bi mat cung duoc phat
+     * hien lai theo dung cach nay.
+     */
+    static final int FAST_RETRANSMIT_THRESHOLD = 3;
+
+    /**
+     * Tran so lan gui lai nhanh cho 1 chunk. Gui lai nhanh dua tren BANG CHUNG (chunk gui sau da toi)
+     * nen khong tinh vao {@code maxRetries} - vi {@code maxRetries} de phat hien duong truyen chet
+     * (het hen gio lien tiep). Tran nay chi chan vong lap vo han neu ben nhan co loi.
+     */
+    static final int MAX_FAST_RETRANSMITS = 50;
 
     private final ChunkSource source;
     private final FileOfferPayload offer;
@@ -76,6 +103,10 @@ public final class ReliableChunkSender {
     private int ackedCount;
     private int nextIndex;
     private final Map<Integer, InFlight> inFlight = new HashMap<>();
+    /** Dem moi lan gui chunk (ca gui lai) - xem {@link InFlight#sentSeq}. */
+    private long nextSendSeq;
+    /** {@code sentSeq} lon nhat trong cac chunk da duoc xac nhan. */
+    private long highestAckedSeq = -1;
     private ScheduledFuture<?> offerTask;
     private long offerElapsedMillis;
     private ScheduledFuture<?> probeTask;
@@ -198,6 +229,7 @@ public final class ReliableChunkSender {
             if (ack.verified() && upTo == totalChunks && ackedCount == totalChunks) {
                 complete(events);
             } else if (state == State.SENDING) {
+                fastRetransmitLost(events);
                 fillWindow(events);
             }
         }
@@ -276,11 +308,44 @@ public final class ReliableChunkSender {
     }
 
     private void transmitChunk(int index, InFlight entry, List<Runnable> events) {
+        entry.sentSeq = nextSendSeq++;
         if (!sendChunkNow(index, events)) {
             return;
         }
         int retries = entry.retries;
         entry.timer = schedule(() -> onChunkTimeout(index), config.backoffMillis(retries), events);
+    }
+
+    /**
+     * Gui lai ngay cac chunk ma ben nhan da nhan duoc nhieu chunk gui SAU chung - xem
+     * {@link #FAST_RETRANSMIT_THRESHOLD}. Bang chung chunk sau da toi cho thay duong truyen con song,
+     * nen dat lai bo dem het hen gio (backoff quay ve muc dau).
+     */
+    private void fastRetransmitLost(List<Runnable> events) {
+        if (highestAckedSeq < FAST_RETRANSMIT_THRESHOLD) {
+            return;
+        }
+        List<Integer> lost = new ArrayList<>();
+        for (Map.Entry<Integer, InFlight> e : inFlight.entrySet()) {
+            if (e.getValue().sentSeq + FAST_RETRANSMIT_THRESHOLD <= highestAckedSeq) {
+                lost.add(e.getKey());
+            }
+        }
+        lost.sort(null); // lap lo theo thu tu file: ben nhan tien contiguousUpTo som nhat
+        for (int index : lost) {
+            InFlight entry = inFlight.get(index);
+            if (state != State.SENDING || entry == null) {
+                return;
+            }
+            if (entry.fastRetransmits >= MAX_FAST_RETRANSMITS) {
+                fail(FileTransferReason.TIMEOUT, events);
+                return;
+            }
+            cancelTask(entry.timer);
+            entry.fastRetransmits++;
+            entry.retries = 0;
+            transmitChunk(index, entry, events);
+        }
     }
 
     private boolean sendChunkNow(int index, List<Runnable> events) {
@@ -349,6 +414,7 @@ public final class ReliableChunkSender {
         InFlight entry = inFlight.remove(index);
         if (entry != null) {
             cancelTask(entry.timer);
+            highestAckedSeq = Math.max(highestAckedSeq, entry.sentSeq);
         }
     }
 
@@ -364,6 +430,14 @@ public final class ReliableChunkSender {
     private void fail(String reason, List<Runnable> events) {
         if (isTerminal()) {
             return;
+        }
+        if (FileTransferReason.TIMEOUT.equals(reason)) {
+            State at = state;
+            String waiting = inFlight.entrySet().stream().sorted(Map.Entry.comparingByKey()).limit(12)
+                    .map(e -> e.getKey() + ":" + e.getValue().retries + "/" + e.getValue().fastRetransmits)
+                    .toList().toString();
+            LOG.warning(() -> "Gui file " + offer.fileId() + " TIMEOUT o trang thai " + at + ": da xac nhan "
+                    + ackedCount + "/" + totalChunks + ", dang cho (chunk:het gio/gui lai nhanh) " + waiting);
         }
         state = State.FAILED;
         stopAllTimers();

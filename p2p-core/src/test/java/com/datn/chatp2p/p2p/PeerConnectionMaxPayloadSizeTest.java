@@ -31,10 +31,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * khi di qua kenh UDP THAT ({@link P2pDataChannel}, khong phai
  * {@link LoopbackDataChannel} - kenh gia lap khong co gioi han nay).
  *
- * <p><b>Ly do can test rieng, khong chi doc code:</b> {@code P2pDataChannel}
- * gioi han 65.507 byte (UDP IPv4 toi da) nhung day KHONG PHAI gioi han thuc
- * te cho payload ung dung - truoc khi toi duoc kenh, du lieu da di qua nhieu
- * lop dong goi lam PHINH TO kich thuoc:
+ * <p><b>Gioi han:</b> {@code P2pDataChannel} chia ban tin thanh manh &lt;= 1150 byte
+ * (ice4j cat goi UDP &gt; 1500 byte) va nhan toi da {@code MAX_MESSAGE_BYTES} = 1 MB
+ * cho 1 ban tin SAU KHI dong goi. Day KHONG PHAI gioi han cho payload ung dung -
+ * truoc khi toi duoc kenh, du lieu da di qua nhieu lop dong goi lam PHINH TO:
  * <ol>
  *   <li>{@code MessagePayload} -> JSON (Jackson).</li>
  *   <li>JSON do bi nhet vao truong {@code Envelope.payload} kieu {@code byte[]} -
@@ -44,12 +44,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *       lan nua.</li>
  *   <li>JSON cuoi cung do di qua AES-GCM ({@code AesGcmCipher}) - them 12 byte
  *       IV + 16 byte tag co dinh.</li>
- *   <li>Cuoi cung {@code P2pDataChannel} them 4 byte length-prefix.</li>
  * </ol>
- * Gop lai, gioi han THUC TE cho {@code text} cua 1 {@code MessagePayload} chi
- * con khoang ~49KB - chua tung duoc xac nhan hay ghi lai o dau, du la con so
- * quan trong cho tinh nang chia nho file/media (FILE_CHUNK/MEDIA_FRAME) sau
- * nay.
+ * Gop lai, gioi han THUC TE cho {@code text} cua 1 {@code MessagePayload} con
+ * khoang ~780 KB. (Truoc khi co chia manh, gioi han la 1 datagram 65 507 byte,
+ * tuc ~49 KB text.)
  */
 class PeerConnectionMaxPayloadSizeTest {
 
@@ -68,11 +66,10 @@ class PeerConnectionMaxPayloadSizeTest {
     void aClearlyOversizedPayloadFailsWithAnUnderstandableErrorInsteadOfHangingOrSilentlyTruncating() throws Exception {
         setUpConnectedPeers(envelope -> { });
 
-        // 60.000 ky tu - VUOT QUA ca gioi han tho 65.507 byte cua UDP mot khi
-        // cong them phinh to do JSON+base64+AES-GCM (thuc te gioi han con thap
-        // hon nhieu, ~49.000 - xem javadoc lop nay) - phai nem loi RO RANG,
-        // khong duoc treo vo thoi han hay im lang cat bot du lieu.
-        String oversizedText = "x".repeat(60_000);
+        // 1.000.000 ky tu -> ~1,33 MB sau JSON+base64+AES-GCM, VUOT gioi han 1 MB
+        // cua 1 ban tin (xem javadoc lop nay) - phai nem loi RO RANG, khong duoc
+        // treo vo thoi han hay im lang cat bot du lieu.
+        String oversizedText = "x".repeat(1_000_000);
         MessagePayload oversized = new MessagePayload("m-big", "peer-a", oversizedText, 1L);
 
         // Truoc khi them kiem tra ro rang trong P2pDataChannel.send(): loi that
@@ -86,7 +83,7 @@ class PeerConnectionMaxPayloadSizeTest {
                 "Payload qua lon phai nem IllegalArgumentException ro rang, khong phai IOException chung chung");
         assertTrue(failure.getMessage().contains("qua lon"),
                 "Thong diep loi phai noi ro nguyen nhan la payload qua lon, khong duoc chung chung");
-        System.out.println("Loi that khi gui payload 60.000 ky tu: " + failure.getMessage());
+        System.out.println("Loi that khi gui payload 1.000.000 ky tu: " + failure.getMessage());
     }
 
     @Test
@@ -94,16 +91,15 @@ class PeerConnectionMaxPayloadSizeTest {
         BlockingQueue<Envelope> bInbox = new ArrayBlockingQueue<>(10);
         setUpConnectedPeers(bInbox::add);
 
-        // 40.000 ky tu - ro rang duoi ngong hieu qua ~49.000 da uoc tinh o
-        // javadoc lop nay (con nhieu bien do an toan cho phan JSON/base64/AES-GCM
-        // con lai) - phai gui/nhan nguyen ven, khong bi cat bot.
-        String text = "y".repeat(40_000);
+        // 200.000 ky tu (~270 KB sau dong goi, ~235 manh UDP) - vuot xa 1 datagram
+        // nhung duoi gioi han 1 MB: phai duoc chia manh, ghep lai va toi nguyen ven.
+        String text = "y".repeat(200_000);
         MessagePayload payload = new MessagePayload("m-ok", "peer-a", text, 2L);
 
         peerA.send(EnvelopeType.MESSAGE, payload);
 
         Envelope received = bInbox.poll(5, TimeUnit.SECONDS);
-        assertNotNull(received, "Payload 40.000 ky tu (duoi ngong hieu qua) phai toi noi trong 5s");
+        assertNotNull(received, "Payload 200.000 ky tu (duoi gioi han 1 MB) phai toi noi trong 5s");
         MessagePayload parsed = decodeOnPeerB(received);
         assertEquals(payload, parsed, "Noi dung phai nguyen ven, khong bi cat bot giua duong");
     }

@@ -9,6 +9,7 @@ import com.datn.chatp2p.common.protocol.EnvelopeType;
 import com.datn.chatp2p.common.protocol.IdentityPayload;
 import com.datn.chatp2p.common.protocol.MessageAckPayload;
 import com.datn.chatp2p.common.protocol.MessagePayload;
+import com.datn.chatp2p.common.protocol.MessageEditPayload;
 import com.datn.chatp2p.common.protocol.MessageReadPayload;
 import com.datn.chatp2p.common.protocol.ReactionPayload;
 import com.datn.chatp2p.common.protocol.MessageTranscriptPayload;
@@ -100,6 +101,8 @@ public final class P2pChatSession implements ChatSession {
                                 + MESSAGE_MAX_RETRIES + " lần gửi lại)"));
             });
     private final RoomSession roomSession;
+    /** "ten" hoac "ten~the" (the suy ra tu mat khau bang PBKDF2) - khoa luu lich su tren may. */
+    private final String serverRoomId;
     private final FileTransferManager fileTransfers;
 
     private volatile ChatSessionListener listener;
@@ -111,7 +114,7 @@ public final class P2pChatSession implements ChatSession {
                 ? RoomSecret.derive(config.roomName(), config.roomPassword())
                 : null;
         // Phong co mat khau: server chi thay "ten~the", nguoi khac mat khau roi vao phong khac.
-        String serverRoomId = roomSecret == null
+        this.serverRoomId = roomSecret == null
                 ? config.roomName()
                 : config.roomName() + RoomConfig.PRIVATE_ROOM_SEPARATOR + roomSecret.serverRoomTag();
         LOG.info(() -> "Tao phien: toi=" + config.userName() + " (" + shortId(selfPeerId) + ")"
@@ -150,6 +153,11 @@ public final class P2pChatSession implements ChatSession {
     }
 
     @Override
+    public String storageKey() {
+        return serverRoomId;
+    }
+
+    @Override
     public void start(ChatSessionListener listener) {
         this.listener = listener;
         LOG.info(() -> "Vao phong: gui JOIN toi signaling server " + config.serverUri());
@@ -165,6 +173,7 @@ public final class P2pChatSession implements ChatSession {
         roomSession.onEnvelope(EnvelopeType.PEER_IDENTITY, admittedOnly(this::handlePeerIdentity));
         roomSession.onEnvelope(EnvelopeType.MESSAGE_READ, admittedOnly(this::handleMessageRead));
         roomSession.onEnvelope(EnvelopeType.MESSAGE_REACTION, admittedOnly(this::handleReaction));
+        roomSession.onEnvelope(EnvelopeType.MESSAGE_EDIT, admittedOnly(this::handleMessageEdit));
         // Truyen file cung chi nhan tu peer da qua cong mat khau.
         for (EnvelopeType type : List.of(EnvelopeType.FILE_OFFER, EnvelopeType.FILE_ANSWER,
                 EnvelopeType.FILE_CHUNK, EnvelopeType.FILE_ACK, EnvelopeType.FILE_CANCEL)) {
@@ -559,6 +568,73 @@ public final class P2pChatSession implements ChatSession {
                 .filter(java.util.Objects::nonNull)
                 .limit(MAX_READ_IDS_PER_PACKET)
                 .forEach(id -> currentListener.onMessageRead(id, peerId));
+    }
+
+    @Override
+    public void editMessage(String directPeerId, String messageId, String newText) {
+        if (left) {
+            throw new IllegalStateException("Da roi phong, khong the sua tin");
+        }
+        if (newText != null && newText.length() > GroupHistory.MAX_TEXT_CHARS) {
+            throw new IllegalArgumentException("Tin nhắn quá dài");
+        }
+        MessageEditPayload payload = new MessageEditPayload(UUID.randomUUID().toString(), messageId, newText, newText == null);
+        LOG.info(() -> (newText == null ? "Xoa" : "Sua") + " tin id=" + shortId(messageId)
+                + (directPeerId == null ? " (nhom)" : " (rieng voi " + who(directPeerId) + ")"));
+        if (directPeerId != null) {
+            if (!admittedPeers.contains(directPeerId)) {
+                throw new IllegalArgumentException("Người này chưa vào phòng hoặc đã rời phòng");
+            }
+            sendReliably(directPeerId, payload.editId(), () -> roomSession.sendTo(
+                    directPeerId, EnvelopeType.MESSAGE_EDIT, EnvelopeNamespace.DIRECT_MESSAGE, payload));
+            return;
+        }
+        // Lich su nhom chia se cho nguoi vao sau cung phai theo ban moi (hoac khong con tin da xoa).
+        if (newText == null) {
+            history.remove(messageId, selfPeerId);
+        } else {
+            history.edit(messageId, selfPeerId, newText);
+        }
+        for (String peerId : admittedPeerIds()) {
+            try {
+                sendReliably(peerId, payload.editId(),
+                        () -> roomSession.sendTo(peerId, EnvelopeType.MESSAGE_EDIT, null, payload));
+            } catch (RuntimeException error) {
+                notifyConnectionFailed(peerId, error);
+            }
+        }
+    }
+
+    private void handleMessageEdit(String peerId, Envelope envelope) {
+        MessageEditPayload payload;
+        try {
+            payload = OBJECT_MAPPER.readValue(envelope.payload(), MessageEditPayload.class);
+        } catch (IOException error) {
+            LOG.fine(() -> "Bo qua MESSAGE_EDIT hong tu " + peerId);
+            return;
+        }
+        if (payload.editId() == null || payload.messageId() == null
+                || (!payload.deleted() && (payload.text() == null || payload.text().length() > GroupHistory.MAX_TEXT_CHARS))) {
+            return;
+        }
+        sendQuietly(peerId, EnvelopeType.MESSAGE_ACK, null, new MessageAckPayload(payload.editId()));
+        if (!deliveryTracker.markReceived(peerId, payload.editId())) {
+            return; // ban gui lai
+        }
+        boolean direct = EnvelopeNamespace.DIRECT_MESSAGE.equals(envelope.namespace());
+        // Chi tac gia moi sua / xoa duoc: GroupHistory chi doi tin co authorId == nguoi gui ban tin nay.
+        if (!direct) {
+            if (payload.deleted()) {
+                history.remove(payload.messageId(), peerId);
+            } else {
+                history.edit(payload.messageId(), peerId, payload.text());
+            }
+        }
+        LOG.info(() -> who(peerId) + (payload.deleted() ? " xoa" : " sua") + " tin id=" + shortId(payload.messageId()));
+        ChatSessionListener currentListener = listener;
+        if (currentListener != null && !left) {
+            currentListener.onMessageEdited(payload.messageId(), peerId, payload.deleted() ? null : payload.text());
+        }
     }
 
     private void handleReaction(String peerId, Envelope envelope) {

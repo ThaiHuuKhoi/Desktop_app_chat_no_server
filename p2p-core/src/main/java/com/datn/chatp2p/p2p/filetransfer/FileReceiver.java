@@ -202,6 +202,32 @@ public final class FileReceiver implements AutoCloseable {
     }
 
     /**
+     * {@code receivedAbove} cho FILE_ACK, chon cho ben gui biet DUNG cai no dang cho: chunk
+     * {@code justReceived} (neu nam tren {@link #contiguousChunks()}) roi cac chunk da nhan co index
+     * CAO NHAT (gui gan day nhat), toi da {@code limit} phan tu, tang dan.
+     *
+     * <p>Khac {@link #receivedAbove}: khi 1 lo ton tai lau, phia tren no co the da co hon {@code limit}
+     * chunk - liet ke {@code limit} chunk THAP nhat (da xac nhan tu lau) se khong bao gio bao cac
+     * chunk moi, ben gui tuong chung mat va gui lai hang loat. Ben gui nho vinh vien chunk nao da
+     * xac nhan, nen moi chunk chi can duoc bao 1 lan ngay khi toi (cong them vai lan du phong).
+     *
+     * @param justReceived index chunk vua nhan, hoac -1
+     */
+    public synchronized List<Integer> receivedAboveForAck(int limit, int justReceived) {
+        int contiguous = contiguousChunks();
+        java.util.TreeSet<Integer> picked = new java.util.TreeSet<>();
+        if (justReceived > contiguous && justReceived < offer.totalChunks() && received.get(justReceived)) {
+            picked.add(justReceived);
+        }
+        for (int i = received.previousSetBit(offer.totalChunks() - 1);
+             i > contiguous && picked.size() < limit;
+             i = received.previousSetBit(i - 1)) {
+            picked.add(i);
+        }
+        return new ArrayList<>(picked);
+    }
+
+    /**
      * Da nhan du chunk: kiem SHA-256 ca file roi doi ten {@code .part} thanh file that.
      *
      * @return duong dan file da luu (khong ghi de file co san)

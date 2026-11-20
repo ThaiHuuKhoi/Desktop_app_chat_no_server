@@ -69,31 +69,38 @@ final class FileTransferManager implements AutoCloseable {
     }
 
     /**
-     * Kich thuoc chunk khi gui qua mang that: 512 byte.
+     * Kich thuoc chunk khi gui qua mang that: 4 KB ({@link FileTransferLimits#DEFAULT_CHUNK_SIZE}, D5).
      *
-     * <p>LY DO (da do that): {@code MergingDatagramSocket} cua ice4j nhan moi goi UDP vao bo dem
-     * CO DINH 1500 byte - goi lon hon bi cat cut va {@code P2pDataChannel} am tham bo di. Chunk
-     * 4 KB (D5) sau EnvelopeCodec thanh ~7,3 KB nen KHONG BAO GIO toi noi. Chunk 512 byte ->
-     * goi ~1,1 KB, vua 1 goi &lt;= 1200 byte (an toan ca voi MTU duong Internet / TURN). Doi lai
-     * {@link FileTransferLimits#DEFAULT_CHUNK_SIZE} khi {@code P2pDataChannel} chia nho goi.</p>
+     * <p>ice4j ({@code MergingDatagramSocket}) cat moi goi UDP &gt; 1500 byte, nen truoc day phai gui
+     * chunk 512 byte (1 goi ~1,1 KB). Nay {@code P2pDataChannel} tu chia ban tin thanh manh
+     * &lt;= 1150 byte, chunk 4 KB (~7,3 KB sau EnvelopeCodec) di thanh ~7 datagram.</p>
+     *
+     * <p>Chon bang {@code FileTransferBenchmarkTest} (4 MB qua ICE that tren localhost, trung vi 3 lan):
+     * 512 B/cua so 64 ~5,7 MB/s; 4 KB/cua so 8 ~18 MB/s o muc mat goi 0-3%. 8 KB nhanh tuong duong
+     * khi mang sach nhung sup manh khi mat goi (1 chunk ~14 manh, mat 1 manh la mat ca chunk).</p>
      */
-    static final int NETWORK_CHUNK_SIZE = 512;
+    static final int NETWORK_CHUNK_SIZE = FileTransferLimits.DEFAULT_CHUNK_SIZE;
 
     static final FileTransferLimits NETWORK_LIMITS =
             new FileTransferLimits(FileTransferLimits.DEFAULT_MAX_FILE_SIZE, NETWORK_CHUNK_SIZE);
 
     /**
-     * Tham so D5 cua A, rieng cua so 64 chunk (64 x 512 byte = 32 KB dang bay) de bu chunk nho.
-     * Khong tang qua ~90: hang doi nhan cua ice4j chi giu 100 goi.
+     * Tham so D5 cua A, cua so 8 chunk (8 x 4 KB = 32 KB dang bay, ~60 datagram) - giu duoi hang doi
+     * nhan 100 goi cua ice4j. Cua so 16 nhanh ngang khi mang sach nhung de vuot hang doi do.
      */
-    static final ReliableTransferConfig NETWORK_CONFIG = new ReliableTransferConfig(64,
+    static final ReliableTransferConfig NETWORK_CONFIG = new ReliableTransferConfig(8,
             ReliableTransferConfig.DEFAULT.initialRetryMillis(), ReliableTransferConfig.DEFAULT.maxRetryMillis(),
             ReliableTransferConfig.DEFAULT.maxRetries(), ReliableTransferConfig.DEFAULT.offerRetryMillis(),
             ReliableTransferConfig.DEFAULT.answerTimeoutMillis());
 
     static final long RECEIVE_IDLE_TIMEOUT_MS = 30_000;
-    /** Gui ACK sau moi bao nhieu chunk moi nhan theo thu tu. */
-    static final int ACK_EVERY_CHUNKS = 8;
+    /**
+     * Gui ACK sau moi chung nay byte moi nhan theo thu tu (chunk 512 B: 8 chunk; chunk &gt;= 4 KB: moi
+     * chunk). Tinh theo byte chu khong theo so chunk: voi chunk lon, cua so ben gui chi vai chunk -
+     * doi du 8 chunk moi ACK se lam ben gui dung cho ACK tre {@link #ACK_DELAY_MS} moi luot
+     * (da do: chunk 8 KB, cua so 4 chi con ~0,5 MB/s).
+     */
+    static final int ACK_EVERY_BYTES = 4096;
     /** Gui ACK neu sau chung nay ms khong co chunk moi (A, muc 2.4). */
     static final long ACK_DELAY_MS = 50;
     /** D4: toi da 64 phan tu trong receivedAbove. */
@@ -461,8 +468,9 @@ final class FileTransferManager implements AutoCloseable {
                 progress = in.status;
                 completeNow = true;
             } else {
-                List<Integer> above = in.receiver.receivedAbove(ACK_SELECTIVE_LIMIT);
-                if (result == ChunkResult.DUPLICATE || !above.isEmpty() || in.chunksSinceAck >= ACK_EVERY_CHUNKS) {
+                List<Integer> above = in.receiver.receivedAboveForAck(ACK_SELECTIVE_LIMIT, chunk.index());
+                if (result == ChunkResult.DUPLICATE || !above.isEmpty()
+                        || in.chunksSinceAck >= ackEveryChunks(in.offer.chunkSize())) {
                     ack = ackNow(in, above);
                 } else if (in.delayedAck == null || in.delayedAck.isDone()) {
                     // Chua du 8 chunk: van ACK neu 50 ms khong co chunk moi (vd cuoi cua so)
@@ -486,6 +494,11 @@ final class FileTransferManager implements AutoCloseable {
         }
     }
 
+    /** So chunk theo thu tu giua 2 ACK - xem {@link #ACK_EVERY_BYTES}. */
+    static int ackEveryChunks(int chunkSize) {
+        return Math.max(1, ACK_EVERY_BYTES / Math.max(1, chunkSize));
+    }
+
     /** Tao FILE_ACK hien tai va reset bo dem. Goi trong khoa cua {@code in}. */
     private FileAckPayload ackNow(Incoming in, List<Integer> above) {
         cancelTimer(in.delayedAck);
@@ -499,7 +512,7 @@ final class FileTransferManager implements AutoCloseable {
             if (in.status.state() != State.IN_PROGRESS || in.chunksSinceAck == 0) {
                 return;
             }
-            ack = ackNow(in, in.receiver.receivedAbove(ACK_SELECTIVE_LIMIT));
+            ack = ackNow(in, in.receiver.receivedAboveForAck(ACK_SELECTIVE_LIMIT, -1));
         }
         trySend(in.peerId, EnvelopeType.FILE_ACK, null, ack);
     }

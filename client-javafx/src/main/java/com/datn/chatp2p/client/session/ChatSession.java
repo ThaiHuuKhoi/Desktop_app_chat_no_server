@@ -58,6 +58,23 @@ public interface ChatSession {
     default void sendReaction(String directPeerId, String messageId, String emoji, boolean added) {
     }
 
+    /**
+     * Sua ({@code newText} khac null) hoac xoa ({@code newText} null) tin {@code messageId} cua chinh minh.
+     *
+     * @param directPeerId null = tin trong khung nhom; khac null = tin rieng voi nguoi do.
+     */
+    default void editMessage(String directPeerId, String messageId, String newText) {
+        throw new UnsupportedOperationException("Che do nay chua ho tro sua tin");
+    }
+
+    /**
+     * Khoa nhan dien phong de luu lich su tren may: ten phong, hoac "ten~the" voi phong co mat khau
+     * (the suy ra bang PBKDF2, khong lo mat khau). null neu khong ho tro.
+     */
+    default String storageKey() {
+        return null;
+    }
+
     /** Dung luong file toi da duoc gui / nhan (byte). */
     default long maxFileSize() {
         return 0;

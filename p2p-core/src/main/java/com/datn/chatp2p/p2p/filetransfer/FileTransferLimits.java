@@ -14,9 +14,10 @@ import java.util.regex.Pattern;
  * Chunk 16 KB -> ~29 KB/goi, con xa gioi han 65 507 byte cua 1 datagram ke ca khi qua TURN;
  * 32 KB -> ~58,5 KB, qua sat gioi han nen tran duoc ha xuong 16 KB (A).
  *
- * <p>LUU Y: tren mang that, ice4j ({@code MergingDatagramSocket}) hien cat moi goi o
- * 1500 byte - client dang gui chunk 512 byte cho toi khi {@code P2pDataChannel} chia
- * nho goi (xem {@code FileTransferManager.NETWORK_CHUNK_SIZE}).
+ * <p>LUU Y: tren mang that, ice4j ({@code MergingDatagramSocket}) cat moi goi o 1500 byte -
+ * {@code P2pDataChannel} chia ban tin thanh manh &lt;= 1150 byte nen chunk 4 KB van di duoc
+ * (xem {@code FileTransferManager.NETWORK_CHUNK_SIZE}). Chunk cang lon cang nhieu manh, mat 1
+ * manh la phai gui lai ca chunk.
  *
  * @param maxFileSize dung luong file toi da (byte)
  * @param chunkSize   kich thuoc chunk ben gui dung khi tao offer

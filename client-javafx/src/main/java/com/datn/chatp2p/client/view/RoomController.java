@@ -9,6 +9,7 @@ import com.datn.chatp2p.client.session.RoomConfig;
 import com.datn.chatp2p.client.session.SessionPeer;
 import com.datn.chatp2p.client.session.SessionPeer.ConnectionKind;
 import com.datn.chatp2p.client.util.DesktopNotifier;
+import com.datn.chatp2p.client.util.LocalHistoryStore;
 import com.datn.chatp2p.client.util.SoundPlayer;
 import com.datn.chatp2p.client.util.ThemeManager;
 import com.datn.chatp2p.client.util.TrustedPeers;
@@ -29,6 +30,7 @@ import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
+import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
 import javafx.scene.control.TabPane;
@@ -127,6 +129,8 @@ public class RoomController implements ChatSessionListener {
     /** Trang thai "dang gui / da nhan" cua cac tin minh gui. */
     private final DeliveryStatuses deliveryStatuses = new DeliveryStatuses();
     private final ReactionStore reactions = new ReactionStore();
+    /** Tin da bi tac gia sua (false) hoac xoa (true). */
+    private final Map<String, Boolean> editedOrDeleted = new HashMap<>();
     /** Tin nguoi khac gui ma minh chua "xem": khoa = null (khung nhom) hoac peerId (tab rieng). */
     private final Map<String, List<ChatMessage>> unreadByTab = new HashMap<>();
     /** Tin dang duoc tra loi (hien thanh "Dang tra loi ..." tren o nhap), hoac null. */
@@ -176,6 +180,7 @@ public class RoomController implements ChatSessionListener {
                 new FileCardActions(),
                 new RoomMessageContext());
         transcriptManager.configure(chatTabs, transcriptListView);
+        loadLocalHistory();
         installFileDrop();
 
         typingNotifier = new TypingNotifier(session::sendTypingStatus, System::currentTimeMillis);
@@ -446,6 +451,38 @@ public class RoomController implements ChatSessionListener {
         });
     }
 
+    @Override
+    public void onMessageEdited(String messageId, String peerId, String newText) {
+        Platform.runLater(() -> {
+            ChatMessage original = transcriptManager.findMessage(messageId);
+            // Chi tac gia moi duoc sua / xoa tin cua ho.
+            if (original == null || !original.getAuthorId().equals(peerId)) {
+                return;
+            }
+            applyEdit(original, newText);
+        });
+    }
+
+    /** Sua / xoa tin cua minh: cap nhat ngay tren may minh roi gui cho moi nguoi. */
+    private void applyOwnEdit(ChatMessage message, String newText) {
+        try {
+            session.editMessage(transcriptManager.selectedDirectPeerId(), message.getId(), newText);
+            applyEdit(message, newText);
+        } catch (RuntimeException e) {
+            notice(NoticeKind.WARNING, (newText == null ? "Xoá" : "Sửa") + " tin thất bại: " + e.getMessage());
+        }
+    }
+
+    /** {@code newText} null = xoa. */
+    private void applyEdit(ChatMessage original, String newText) {
+        editedOrDeleted.put(original.getId(), newText == null);
+        ChatMessage updated = new ChatMessage(original.getId(), original.getAuthorId(),
+                newText == null ? original.getText() : newText, original.getTimeSent(),
+                original.getTimeReceived(), original.getReplyToId());
+        transcriptManager.replaceMessage(updated);
+        transcriptManager.refreshAll();
+    }
+
     /** Tin nguoi khac vua toi: ghi nho la chua xem, roi bao "da xem" ngay neu dang mo dung tab do. */
     private void queueReadReceipt(String directPeerId, ChatMessage message) {
         unreadByTab.computeIfAbsent(directPeerId, key -> new java.util.ArrayList<>()).add(message);
@@ -532,6 +569,52 @@ public class RoomController implements ChatSessionListener {
         @Override
         public void reply(ChatMessage message) {
             startReply(message);
+        }
+
+        @Override
+        public boolean isEdited(String messageId) {
+            return Boolean.FALSE.equals(editedOrDeleted.get(messageId));
+        }
+
+        @Override
+        public boolean isDeleted(String messageId) {
+            return Boolean.TRUE.equals(editedOrDeleted.get(messageId));
+        }
+
+        @Override
+        public void edit(ChatMessage message) {
+            TextArea editor = new TextArea(message.getText());
+            editor.setWrapText(true);
+            editor.setPrefRowCount(4);
+            editor.setPrefWidth(420);
+            ButtonType save = new ButtonType("Lưu", ButtonBar.ButtonData.OK_DONE);
+            Dialog<String> dialog = new Dialog<>();
+            dialog.initOwner(stage);
+            dialog.setTitle("Sửa tin nhắn");
+            dialog.setHeaderText("Sửa tin nhắn");
+            dialog.getDialogPane().setContent(editor);
+            dialog.getDialogPane().getButtonTypes().addAll(save, ButtonType.CANCEL);
+            dialog.setResultConverter(button -> button == save ? editor.getText().strip() : null);
+            Navigator.style(dialog.getDialogPane());
+            Platform.runLater(editor::requestFocus);
+            dialog.showAndWait()
+                    .filter(text -> !text.isEmpty() && !text.equals(message.getText()))
+                    .ifPresent(text -> applyOwnEdit(message, text));
+        }
+
+        @Override
+        public void delete(ChatMessage message) {
+            ButtonType remove = new ButtonType("Xoá", ButtonBar.ButtonData.OK_DONE);
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                    "Tin sẽ bị xoá ở máy mọi người trong phòng. Người khác có thể đã đọc hoặc lưu lại nội dung.",
+                    remove, ButtonType.CANCEL);
+            confirm.initOwner(stage);
+            confirm.setHeaderText("Xoá tin nhắn này?");
+            confirm.getDialogPane().lookupButton(remove).getStyleClass().add(Styles.DANGER);
+            Navigator.style(confirm.getDialogPane());
+            if (confirm.showAndWait().orElse(ButtonType.CANCEL) == remove) {
+                applyOwnEdit(message, null);
+            }
         }
 
         @Override
@@ -761,7 +844,53 @@ public class RoomController implements ChatSessionListener {
         typingTicker.stop();
         aloneHintTimer.stop();
         DesktopNotifier.setOnClick(null);
+        saveLocalHistory();
         session.leave();
+    }
+
+    // ---------- Lich su luu tren may (tuy chon) ----------
+
+    /** Bat tuy chon "luu lich su" thi hien lai tin nhom tu lan vao phong truoc (ma hoa DPAPI). */
+    private void loadLocalHistory() {
+        String key = session.storageKey();
+        if (key == null || !UserSettings.get().saveHistory()) {
+            return;
+        }
+        List<LocalHistoryStore.SavedMessage> saved = LocalHistoryStore.forCurrentUser().load(key);
+        for (LocalHistoryStore.SavedMessage item : saved) {
+            // Peer id doi moi lan vao phong: tin cua minh gan lai id hien tai, tin nguoi khac dung ten da luu.
+            String authorId = item.mine() ? session.selfPeerId() : "saved:" + item.authorName();
+            if (!item.mine()) {
+                displayNames.putIfAbsent(authorId, item.authorName());
+            }
+            ChatMessage message = new ChatMessage(item.id(), authorId, item.text(), item.timeSent(),
+                    item.timeSent(), item.replyToId());
+            transcriptManager.addGroup(new UserMessage(message, UserMessage.SAVED_ON_DEVICE));
+        }
+        if (!saved.isEmpty()) {
+            notice(NoticeKind.INFO, "Đã hiện lại " + saved.size() + " tin nhắn đã lưu trên máy từ lần trước.");
+        }
+    }
+
+    /** Luu tin nhom (tru tin da xoa) khi roi phong - chi khi bat tuy chon va da thuc su vao phong. */
+    private void saveLocalHistory() {
+        String key = session.storageKey();
+        if (key == null || joinRejected || !UserSettings.get().saveHistory()) {
+            return;
+        }
+        List<LocalHistoryStore.SavedMessage> toSave = new java.util.ArrayList<>();
+        for (TranscriptEntry entry : transcriptManager.groupTranscript()) {
+            if (entry instanceof UserMessage user && !Boolean.TRUE.equals(editedOrDeleted.get(user.message().getId()))) {
+                ChatMessage m = user.message();
+                boolean mine = session.selfPeerId().equals(m.getAuthorId());
+                toSave.add(new LocalHistoryStore.SavedMessage(m.getId(), mine,
+                        mine ? config.userName() : displayNames.getOrDefault(m.getAuthorId(), "Người lạ"),
+                        m.getText(), m.getTimeSent(), m.getReplyToId()));
+            }
+        }
+        if (!toSave.isEmpty()) {
+            LocalHistoryStore.forCurrentUser().save(key, toSave);
+        }
     }
 
     // ---------- Dang go / thong bao ----------

@@ -757,3 +757,12 @@
 .file-preview {
     -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.15), 4, 0, 0, 1);
 }
+
+.message-deleted {
+    -fx-font-style: italic;
+    -fx-text-fill: -color-fg-subtle;
+}
+
+.message-deleted .ikonli-font-icon {
+    -fx-icon-color: -color-fg-subtle;
+}
