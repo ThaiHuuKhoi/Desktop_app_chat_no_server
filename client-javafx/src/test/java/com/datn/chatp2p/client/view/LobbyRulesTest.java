@@ -42,14 +42,6 @@ class LobbyRulesTest {
     }
 
     @Test
-    void confirmJoinTextDependsOnRoomType() {
-        String publicText = LobbyRules.confirmJoinText(new RoomSummary("a", 3, "An", false));
-        assertTrue(publicText.contains("công khai") && publicText.contains("3 người"));
-        String privateText = LobbyRules.confirmJoinText(new RoomSummary("b", 2, "Binh", true));
-        assertTrue(privateText.contains("có mật khẩu") && privateText.contains("hỏi mật khẩu"));
-    }
-
-    @Test
     void createInfoWarnsAboutExistingRoomsWithSameName() {
         List<RoomSummary> rooms = List.of(
                 new RoomSummary("chung", 2, "An", false),
@@ -85,5 +77,20 @@ class LobbyRulesTest {
         assertTrue(LobbyRules.requiresLogin("AUTH_EXPIRED"));
         assertTrue(LobbyRules.requiresLogin("AUTH_REQUIRED"));
         assertFalse(LobbyRules.requiresLogin("WRONG_PASSWORD"));
+    }
+
+    @Test
+    void previewDescribesRoomAndFullness() {
+        RoomSummary locked = new RoomSummary("phong-do-an", 3, "Lan", true);
+        assertEquals("3/8 người · tạo bởi Lan · có mật khẩu", LobbyRules.previewMeta(locked));
+        assertEquals("5/8 người · công khai", LobbyRules.previewMeta(new RoomSummary("lop", 5, null, false)));
+
+        assertFalse(LobbyRules.isFull(locked));
+        RoomSummary full = new RoomSummary("cafe", 8, "Ha", false);
+        assertTrue(LobbyRules.isFull(full));
+        assertTrue(LobbyRules.previewHint(full).contains("đủ 8 người"));
+        assertTrue(LobbyRules.previewHint(locked).contains("Sai mật khẩu sẽ được báo ngay"));
+        assertTrue(LobbyRules.previewHint(null).contains("để trống nếu là phòng công khai"),
+                "Phong nhap theo ten: mat khau tuy chon");
     }
 }

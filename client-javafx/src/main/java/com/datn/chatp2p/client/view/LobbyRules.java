@@ -24,6 +24,9 @@ final class LobbyRules {
     /** Mat khau phong ngan qua de bi do (du da qua PBKDF2). */
     static final int MIN_ROOM_PASSWORD_LENGTH = 6;
 
+    /** Khop {@code RoomRegistry.MAX_PEERS_PER_ROOM} cua signaling server (mesh toi da 8 nguoi). */
+    static final int MAX_PEERS_PER_ROOM = 8;
+
     private LobbyRules() {
     }
 
@@ -78,13 +81,33 @@ final class LobbyRules {
         return password.isEmpty() ? "Vui lòng nhập mật khẩu phòng." : null;
     }
 
-    /** Noi dung hop xac nhan khi chon 1 phong trong danh sach. */
-    static String confirmJoinText(RoomSummary room) {
-        String people = room.peerCount() > 0 ? "Đang có " + room.peerCount() + " người trong phòng." : "";
+    /** Phong da du nguoi (server se tu choi ROOM_FULL). */
+    static boolean isFull(RoomSummary room) {
+        return room.peerCount() >= MAX_PEERS_PER_ROOM;
+    }
+
+    /** Dong mo ta duoi ten phong khi xem truoc, vd "3/8 người · tạo bởi Lan · có mật khẩu". */
+    static String previewMeta(RoomSummary room) {
+        StringBuilder text = new StringBuilder(room.peerCount() + "/" + MAX_PEERS_PER_ROOM + " người");
+        if (room.ownerUserName() != null && !room.ownerUserName().isBlank()) {
+            text.append(" · tạo bởi ").append(room.ownerUserName());
+        }
+        text.append(room.passwordProtected() ? " · có mật khẩu" : " · công khai");
+        return text.toString();
+    }
+
+    /** Goi y duoi nut "Vao phong" khi xem truoc. {@code room == null}: phong nhap theo ten. */
+    static String previewHint(RoomSummary room) {
+        if (room == null) {
+            return "Phòng không có trong danh sách (hoặc bạn đang là khách). Nếu phòng có mật khẩu, nhập đúng "
+                    + "mật khẩu bạn bè đã gửi; để trống nếu là phòng công khai. Tên phòng phân biệt hoa thường.";
+        }
+        if (isFull(room)) {
+            return "Phòng đã đủ " + MAX_PEERS_PER_ROOM + " người, hãy thử lại sau.";
+        }
         return room.passwordProtected()
-                ? "Phòng \"" + room.roomId() + "\" có mật khẩu. " + people
-                        + "\nBạn sẽ được hỏi mật khẩu ở bước tiếp theo."
-                : "Phòng \"" + room.roomId() + "\" là phòng công khai. " + people;
+                ? "Sai mật khẩu sẽ được báo ngay. Mật khẩu chỉ dùng trên máy bạn để tạo khoá phòng."
+                : "Phòng công khai: ai biết tên phòng đều vào được.";
     }
 
     /**

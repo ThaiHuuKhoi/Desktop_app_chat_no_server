@@ -1,88 +1,150 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<?import javafx.geometry.Insets?>
 <?import javafx.scene.control.Button?>
 <?import javafx.scene.control.Label?>
 <?import javafx.scene.control.ListView?>
-
+<?import javafx.scene.control.PasswordField?>
 <?import javafx.scene.control.TextField?>
 <?import javafx.scene.control.TitledPane?>
 <?import javafx.scene.control.Tooltip?>
+<?import javafx.scene.layout.BorderPane?>
 <?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Region?>
 <?import javafx.scene.layout.StackPane?>
 <?import javafx.scene.layout.VBox?>
 <?import org.kordamp.ikonli.javafx.FontIcon?>
 
-<StackPane xmlns="http://javafx.com/javafx"
-           xmlns:fx="http://javafx.com/fxml"
-           fx:controller="com.datn.chatp2p.client.view.HomeController"
-           styleClass="home-root">
+<!-- Sanh cho kieu thanh ben (giong cot trai cua man hinh phong): danh sach phong ben trai,
+     khung giua la loi chao hoac xem truoc phong dang chon (nhap mat khau + vao ngay tai cho). -->
+<BorderPane xmlns="http://javafx.com/javafx"
+            xmlns:fx="http://javafx.com/fxml"
+            fx:controller="com.datn.chatp2p.client.view.HomeController"
+            styleClass="home-root, lobby-root">
 
-    <VBox styleClass="home-card" spacing="18" maxWidth="700" maxHeight="-Infinity">
-        <padding>
-            <Insets top="30" right="32" bottom="28" left="32"/>
-        </padding>
-
-        <HBox spacing="12" alignment="CENTER_LEFT">
-            <FontIcon iconLiteral="fth-send" styleClass="app-logo"/>
-            <Label text="Chat P2P Java" styleClass="app-title"/>
-        </HBox>
-        <HBox spacing="6" alignment="CENTER_LEFT">
-            <FontIcon iconLiteral="fth-lock" styleClass="app-subtitle-icon"/>
-            <Label text="Chat trực tiếp, mã hoá đầu-cuối, không lưu trên máy chủ" styleClass="app-subtitle"/>
-        </HBox>
-
-        <HBox spacing="18" styleClass="home-columns" alignment="TOP_CENTER">
-            <VBox fx:id="createColumn" spacing="14" styleClass="room-create-column" prefWidth="290" maxWidth="300" HBox.hgrow="NEVER">
-                <Label text="Bắt đầu cuộc trò chuyện" styleClass="column-title"/>
-                <HBox spacing="12" alignment="CENTER_LEFT" styleClass="identity-row">
-                    <StackPane fx:id="avatarHolder"/>
-                    <VBox spacing="4" HBox.hgrow="ALWAYS">
-                        <Label text="Tên hiển thị của bạn" styleClass="field-label"/>
-                        <TextField fx:id="userNameField" promptText="Ví dụ: Khôi"/>
-                    </VBox>
+    <!-- ============ THANH BEN: tao / tim / danh sach phong ============ -->
+    <left>
+        <VBox styleClass="sidebar" prefWidth="290" minWidth="240">
+            <VBox styleClass="sidebar-header" spacing="12">
+                <HBox spacing="10" alignment="CENTER_LEFT">
+                    <StackPane styleClass="app-badge">
+                        <FontIcon iconLiteral="fth-message-square"/>
+                    </StackPane>
+                    <Label text="Chat P2P" styleClass="lobby-brand" maxWidth="Infinity" HBox.hgrow="ALWAYS"/>
+                    <Button fx:id="themeToggleButton" styleClass="button-icon, flat"/>
                 </HBox>
-
-                <Button fx:id="createRoomButton" text="Tạo phòng" onAction="#onCreateRoom"
-                        styleClass="accent, join-button" defaultButton="true" maxWidth="Infinity">
-                    <graphic><FontIcon iconLiteral="fth-plus-circle"/></graphic>
-                    <tooltip><Tooltip text="Tạo phòng mới: đặt tên phòng và (tuỳ chọn) mật khẩu"/></tooltip>
+                <Button fx:id="createRoomButton" text="Tạo phòng mới" onAction="#onCreateRoom"
+                        styleClass="accent, lobby-create-button" maxWidth="Infinity">
+                    <graphic><FontIcon iconLiteral="fth-plus"/></graphic>
+                    <tooltip><Tooltip text="Đặt tên phòng và (tuỳ chọn) mật khẩu"/></tooltip>
                 </Button>
-                <Button fx:id="joinByNameButton" text="Vào phòng bằng tên" onAction="#onJoinByName"
-                        maxWidth="Infinity">
-                    <graphic><FontIcon iconLiteral="fth-log-in"/></graphic>
-                    <tooltip><Tooltip text="Vào phòng bạn bè đã gửi tên (và mật khẩu nếu có)"/></tooltip>
-                </Button>
-                <Label text="Tạo phòng rồi gửi tên phòng (và mật khẩu, nếu đặt) cho bạn bè qua một kênh khác. Tên phòng và mật khẩu phân biệt hoa thường."
-                       styleClass="field-hint" wrapText="true"/>
-                <Label fx:id="joiningLabel" styleClass="field-hint" wrapText="true"/>
+                <TextField fx:id="roomSearchField" promptText="Tìm hoặc nhập tên phòng…" styleClass="lobby-search">
+                    <tooltip><Tooltip text="Gõ để lọc danh sách · Enter để vào phòng theo tên (kể cả phòng không có trong danh sách)"/></tooltip>
+                </TextField>
             </VBox>
 
-            <VBox fx:id="roomBrowserBox" spacing="10" styleClass="room-browser-column" HBox.hgrow="ALWAYS">
-                <Label text="Phòng đang hoạt động" styleClass="column-title"/>
-                <TextField fx:id="roomSearchField" promptText="Tìm kiếm phòng..."/>
-                <ListView fx:id="roomListView" prefHeight="200" VBox.vgrow="ALWAYS"/>
-                <Label text="Bấm vào một phòng để vào. Phòng có biểu tượng ổ khoá cần mật khẩu."
-                       styleClass="field-hint" wrapText="true"/>
-                <Button text="Làm mới" onAction="#onRefreshRooms">
+            <HBox styleClass="lobby-section-row" alignment="CENTER_LEFT">
+                <Label fx:id="roomSectionLabel" text="ĐANG HOẠT ĐỘNG" styleClass="section-title"
+                       maxWidth="Infinity" HBox.hgrow="ALWAYS"/>
+                <Button fx:id="refreshButton" onAction="#onRefreshRooms" styleClass="button-icon, flat, lobby-refresh">
                     <graphic><FontIcon iconLiteral="fth-refresh-cw"/></graphic>
+                    <tooltip><Tooltip text="Làm mới danh sách phòng"/></tooltip>
                 </Button>
-            </VBox>
-        </HBox>
+            </HBox>
+            <ListView fx:id="roomListView" styleClass="lobby-room-list, edge-to-edge" VBox.vgrow="ALWAYS"/>
+            <Label fx:id="sidebarHint" styleClass="lobby-sidebar-hint" wrapText="true" minHeight="-Infinity"
+                   text="Không thấy phòng? Phòng có mật khẩu vẫn vào được: gõ đúng tên ở ô tìm kiếm rồi nhấn Enter."/>
 
-        <TitledPane text="Tuỳ chọn kết nối" expanded="false" styleClass="advanced-pane">
-            <VBox spacing="8">
-                <Label text="Địa chỉ signaling server" styleClass="field-label"/>
-                <TextField fx:id="serverField" promptText="ws://địa-chỉ:8080"/>
-            </VBox>
-        </TitledPane>
+            <HBox styleClass="self-card" spacing="10" alignment="CENTER_LEFT">
+                <StackPane fx:id="avatarHolder"/>
+                <VBox spacing="2" HBox.hgrow="ALWAYS" minWidth="0">
+                    <Label fx:id="selfNameLabel" styleClass="self-name"/>
+                    <HBox spacing="6" alignment="CENTER_LEFT">
+                        <Region styleClass="lobby-status-dot"/>
+                        <Label fx:id="serverLabel" styleClass="self-subtitle"/>
+                    </HBox>
+                </VBox>
+                <Label fx:id="modeLabel" styleClass="lobby-mode-chip"/>
+            </HBox>
+        </VBox>
+    </left>
 
-        <Label fx:id="errorLabel" styleClass="error-label" wrapText="true"/>
-    </VBox>
+    <!-- ============ KHUNG GIUA: loi chao / xem truoc phong ============ -->
+    <center>
+        <BorderPane styleClass="lobby-center">
+            <center>
+                <StackPane>
+                    <!-- Loi chao (chua chon phong) -->
+                    <VBox fx:id="welcomePane" styleClass="lobby-panel" spacing="18" maxWidth="560" maxHeight="-Infinity">
+                        <Label fx:id="welcomeTitle" text="Chào bạn" styleClass="lobby-title"/>
+                        <Label text="Chọn một phòng ở bên trái, nhập tên phòng bạn bè đã gửi, hoặc tạo phòng mới. Tin nhắn đi thẳng giữa các máy và được mã hoá đầu-cuối."
+                               styleClass="lobby-text" wrapText="true"/>
+                        <VBox fx:id="nameBox" spacing="6">
+                            <Label text="Tên hiển thị của bạn" styleClass="field-label"/>
+                            <TextField fx:id="userNameField" promptText="Ví dụ: Khôi"/>
+                        </VBox>
+                        <HBox spacing="10">
+                            <Button text="Tạo phòng mới" onAction="#onCreateRoom" styleClass="accent">
+                                <graphic><FontIcon iconLiteral="fth-plus"/></graphic>
+                            </Button>
+                            <Button text="Vào phòng bằng tên" onAction="#onJoinByName">
+                                <graphic><FontIcon iconLiteral="fth-log-in"/></graphic>
+                            </Button>
+                        </HBox>
+                        <HBox spacing="10">
+                            <VBox styleClass="feature-tile" spacing="6" HBox.hgrow="ALWAYS" maxWidth="Infinity">
+                                <FontIcon iconLiteral="fth-shield" styleClass="feature-icon, feature-icon-success"/>
+                                <Label text="Mã hoá đầu-cuối" styleClass="feature-text" wrapText="true"/>
+                            </VBox>
+                            <VBox styleClass="feature-tile" spacing="6" HBox.hgrow="ALWAYS" maxWidth="Infinity">
+                                <FontIcon iconLiteral="fth-share-2" styleClass="feature-icon, feature-icon-accent"/>
+                                <Label text="Kết nối thẳng giữa các máy" styleClass="feature-text" wrapText="true"/>
+                            </VBox>
+                            <VBox styleClass="feature-tile" spacing="6" HBox.hgrow="ALWAYS" maxWidth="Infinity">
+                                <FontIcon iconLiteral="fth-database" styleClass="feature-icon, feature-icon-warning"/>
+                                <Label text="Máy chủ không lưu tin" styleClass="feature-text" wrapText="true"/>
+                            </VBox>
+                        </HBox>
+                        <TitledPane text="Tuỳ chọn kết nối" expanded="false" styleClass="advanced-pane">
+                            <VBox spacing="8">
+                                <Label text="Địa chỉ signaling server" styleClass="field-label"/>
+                                <TextField fx:id="serverField" promptText="wss://địa-chỉ"/>
+                            </VBox>
+                        </TitledPane>
+                    </VBox>
 
-    <Button fx:id="themeToggleButton" styleClass="button-icon, flat" StackPane.alignment="TOP_RIGHT">
-        <StackPane.margin>
-            <Insets top="12" right="12"/>
-        </StackPane.margin>
-    </Button>
-</StackPane>
+                    <!-- Xem truoc phong dang chon -->
+                    <VBox fx:id="previewPane" styleClass="lobby-panel" spacing="20" maxWidth="560" maxHeight="-Infinity"
+                          visible="false" managed="false">
+                        <HBox spacing="16" alignment="CENTER_LEFT">
+                            <StackPane styleClass="room-preview-icon">
+                                <FontIcon fx:id="previewIcon" iconLiteral="fth-lock"/>
+                            </StackPane>
+                            <VBox spacing="4" minWidth="0" HBox.hgrow="ALWAYS">
+                                <Label fx:id="previewName" styleClass="lobby-title"/>
+                                <Label fx:id="previewMeta" styleClass="lobby-text" wrapText="true"/>
+                            </VBox>
+                        </HBox>
+                        <VBox styleClass="lobby-card" spacing="12">
+                            <VBox fx:id="previewPasswordBox" spacing="6">
+                                <Label fx:id="previewPasswordLabel" text="Mật khẩu phòng" styleClass="field-label"/>
+                                <PasswordField fx:id="previewPasswordField"/>
+                            </VBox>
+                            <Button fx:id="joinButton" text="Vào phòng" onAction="#onJoinPreview"
+                                    styleClass="accent, lobby-join-button" maxWidth="Infinity" defaultButton="true"/>
+                            <Label fx:id="previewHint" styleClass="field-hint" wrapText="true" minHeight="-Infinity"/>
+                        </VBox>
+                        <Button text="Quay lại" onAction="#onBackToWelcome" styleClass="flat">
+                            <graphic><FontIcon iconLiteral="fth-arrow-left"/></graphic>
+                        </Button>
+                    </VBox>
+                </StackPane>
+            </center>
+            <bottom>
+                <VBox styleClass="lobby-messages" spacing="6" alignment="CENTER">
+                    <Label fx:id="joiningLabel" styleClass="field-hint" wrapText="true"/>
+                    <Label fx:id="errorLabel" styleClass="error-label" wrapText="true" maxWidth="560"/>
+                </VBox>
+            </bottom>
+        </BorderPane>
+    </center>
+</BorderPane>

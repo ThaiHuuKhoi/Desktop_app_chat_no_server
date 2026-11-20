@@ -122,26 +122,24 @@
 /* ---------- Man hinh Room: cot trai ---------- */
 
 .room-root {
-    -fx-background-color: -color-bg-subtle;
+    -fx-background-color: -color-bg-default;
 }
 
 .sidebar {
     -fx-background-color: -color-bg-subtle;
-    -fx-border-color: -color-border-default;
+    -fx-border-color: -color-border-muted;
     -fx-border-width: 0 1 0 0;
-    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.10), 18, 0, 3, 0);
 }
 
 .sidebar-header {
-    -fx-padding: 20 18 18 20;
-    -fx-background-color: linear-gradient(to bottom right, -color-accent-subtle, -color-bg-subtle);
+    -fx-padding: 18 16 14 16;
     -fx-border-color: -color-border-muted;
     -fx-border-width: 0 0 1 0;
 }
 
 .room-icon {
-    -fx-icon-size: 22px;
-    -fx-icon-color: -color-accent-fg;
+    -fx-icon-size: 16px;
+    -fx-icon-color: -color-fg-muted;
 }
 
 .room-name {
@@ -155,18 +153,117 @@
     -fx-text-fill: -color-fg-muted;
 }
 
-.room-subtitle-icon {
-    -fx-icon-size: 11px;
-    -fx-icon-color: -color-success-fg;
+.invite-button {
+    -fx-font-size: 12px;
+    -fx-padding: 5 12 5 10;
+    -fx-background-radius: 8;
+    -fx-graphic-text-gap: 6;
 }
 
-.room-subtitle {
-    -fx-font-size: 11px;
-    -fx-text-fill: -color-success-fg;
+.sidebar-section {
+    -fx-padding: 14 18 6 18;
 }
 
 .section-header {
     -fx-padding: 18 18 8 18;
+}
+
+/* Danh sach hoi thoai (Nhom + tin rieng) */
+.conversation-list,
+.conversation-list .list-cell {
+    -fx-background-color: transparent;
+}
+
+.conversation-list .list-cell {
+    -fx-padding: 8 10 8 10;
+    -fx-background-insets: 1 8 1 8;
+    -fx-background-radius: 8;
+}
+
+.conversation-list .list-cell:hover {
+    -fx-background-color: -color-bg-default;
+}
+
+.conversation-list .list-cell:selected {
+    -fx-background-color: -color-accent-subtle;
+}
+
+.conversation-group-icon {
+    -fx-min-width: 28px;
+    -fx-min-height: 28px;
+    -fx-max-width: 28px;
+    -fx-max-height: 28px;
+    -fx-background-color: -color-bg-default;
+    -fx-background-radius: 8;
+}
+
+.conversation-group-icon .ikonli-font-icon {
+    -fx-icon-size: 15px;
+    -fx-icon-color: -color-fg-muted;
+}
+
+.conversation-title {
+    -fx-font-size: 13px;
+    -fx-text-fill: -color-fg-default;
+}
+
+.conversation-title-unread,
+.conversation-list .list-cell:selected .conversation-title {
+    -fx-font-weight: bold;
+}
+
+.conversation-subtitle {
+    -fx-font-size: 11px;
+    -fx-text-fill: -color-fg-muted;
+}
+
+.unread-badge {
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+    -fx-min-width: 20px;
+    -fx-alignment: center;
+    -fx-padding: 1 6 1 6;
+    -fx-background-color: -color-accent-emphasis;
+    -fx-background-radius: 999;
+    -fx-text-fill: -color-fg-emphasis;
+}
+
+/* Cot phai: nguoi trong phong + bao mat */
+.members-panel {
+    -fx-background-color: -color-bg-subtle;
+    -fx-border-color: -color-border-muted;
+    -fx-border-width: 0 0 0 1;
+}
+
+.members-title {
+    -fx-padding: 18 18 8 18;
+}
+
+.security-card {
+    -fx-padding: 12 14 12 14;
+    -fx-background-insets: 0 12 14 12;
+    -fx-border-insets: 0 12 14 12;
+    -fx-background-color: transparent;
+    -fx-border-color: -color-border-default;
+    -fx-border-radius: 10;
+    -fx-background-radius: 10;
+}
+
+.security-card-title {
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -color-fg-default;
+}
+
+.security-line {
+    -fx-font-size: 11.5px;
+    -fx-text-fill: -color-fg-muted;
+    -fx-graphic-text-gap: 7;
+}
+
+.security-line .ikonli-font-icon {
+    -fx-icon-size: 12px;
+    -fx-icon-color: -color-fg-subtle;
 }
 
 .section-title-icon {
@@ -186,14 +283,71 @@
 }
 
 .peer-list .list-cell {
-    -fx-padding: 10 14 10 16;
-    -fx-background-radius: 10;
+    -fx-padding: 3 10 3 10;
 }
 
-.peer-list .list-cell:hover {
-    -fx-background-color: -color-bg-default;
-    -fx-border-color: -color-border-muted;
+.peer-card {
+    -fx-padding: 10;
+    -fx-background-radius: 10;
     -fx-border-radius: 10;
+}
+
+.peer-list .list-cell:hover .peer-card,
+.peer-card-trusted {
+    -fx-background-color: -color-bg-default;
+}
+
+.peer-card-changed {
+    -fx-background-color: -color-warning-subtle;
+    -fx-border-color: -color-warning-fg;
+}
+
+.peer-status-trusted,
+.peer-status-changed,
+.peer-status-muted,
+.peer-connection-direct,
+.peer-connection-relay {
+    -fx-font-size: 11px;
+    -fx-graphic-text-gap: 4;
+}
+
+.peer-status-trusted,
+.peer-status-trusted .ikonli-font-icon {
+    -fx-text-fill: -color-success-fg;
+    -fx-icon-color: -color-success-fg;
+    -fx-icon-size: 12px;
+}
+
+.peer-status-changed,
+.peer-status-changed .ikonli-font-icon {
+    -fx-text-fill: -color-warning-fg;
+    -fx-icon-color: -color-warning-fg;
+    -fx-icon-size: 12px;
+    -fx-font-weight: bold;
+}
+
+.peer-status-muted,
+.peer-status-muted .ikonli-font-icon {
+    -fx-text-fill: -color-fg-muted;
+    -fx-icon-color: -color-fg-muted;
+    -fx-icon-size: 11px;
+}
+
+.peer-connection-direct {
+    -fx-text-fill: -color-accent-fg;
+}
+
+.peer-connection-relay {
+    -fx-text-fill: -color-warning-fg;
+}
+
+.peer-compare-button {
+    -fx-font-size: 11.5px;
+}
+
+.peer-dm-button .ikonli-font-icon {
+    -fx-icon-size: 15px;
+    -fx-icon-color: -color-fg-muted;
 }
 
 .status-dot-online {
@@ -259,16 +413,34 @@
 }
 
 .chat-header {
-    -fx-padding: 20 28 16 28;
+    -fx-padding: 14 22 14 22;
     -fx-background-color: -color-bg-default;
-    -fx-border-color: -color-border-default;
+    -fx-border-color: -color-border-muted;
     -fx-border-width: 0 0 1 0;
 }
 
 .chat-title {
-    -fx-font-size: 20px;
+    -fx-font-size: 16px;
     -fx-font-weight: bold;
     -fx-text-fill: -color-fg-default;
+}
+
+.chat-title-icon {
+    -fx-icon-size: 17px;
+    -fx-icon-color: -color-fg-muted;
+}
+
+/* Thanh tab bi an: chon hoi thoai o danh sach ben trai */
+.conversation-tabs > .tab-header-area {
+    visibility: hidden;
+    -fx-padding: 0;
+    -fx-min-height: 0;
+    -fx-pref-height: 0;
+    -fx-max-height: 0;
+}
+
+.conversation-tabs > .tab-content-area {
+    -fx-padding: 0;
 }
 
 .status-chip {
@@ -445,16 +617,30 @@
 /* ---------- O nhap tin nhan ---------- */
 
 .message-input-bar {
-    -fx-padding: 14 24 12 24;
+    -fx-padding: 6 22 14 22;
     -fx-background-color: -color-bg-default;
+}
+
+/* O soan tin bo tron: nut dinh kem + o nhap + nut gui nam chung 1 khung */
+.composer {
+    -fx-padding: 6;
+    -fx-background-color: -color-bg-subtle;
+    -fx-background-radius: 12;
     -fx-border-color: -color-border-default;
-    -fx-border-width: 1 0 0 0;
+    -fx-border-radius: 12;
 }
 
 .message-area {
-    -fx-pref-height: 54px;
+    -fx-pref-height: 42px;
     -fx-max-height: 120px;
-    -fx-background-radius: 12;
+}
+
+.composer .message-area,
+.composer .message-area .content,
+.composer .message-area:focused {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-effect: null;
 }
 
 .send-button {
@@ -737,6 +923,39 @@
 .reaction-chip-mine {
     -fx-border-color: -color-accent-emphasis;
     -fx-background-color: -color-accent-subtle;
+    -fx-border-width: 1.5;
+}
+
+/* Dai 5 cam xuc canh bong bong, hien khi re chuot vao tin */
+.quick-reactions {
+    -fx-padding: 2 4 2 4;
+    -fx-background-color: -color-bg-default;
+    -fx-background-radius: 18;
+    -fx-border-color: -color-border-default;
+    -fx-border-radius: 18;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.18), 8, 0, 0, 2);
+}
+
+.reaction-pick {
+    -fx-min-width: 30px;
+    -fx-min-height: 30px;
+    -fx-pref-width: 30px;
+    -fx-pref-height: 30px;
+    -fx-padding: 0;
+    -fx-background-color: transparent;
+    -fx-background-radius: 15;
+    -fx-border-color: transparent;
+    -fx-cursor: hand;
+}
+
+.reaction-pick:hover {
+    -fx-background-color: -color-bg-subtle;
+    -fx-scale-x: 1.15;
+    -fx-scale-y: 1.15;
+}
+
+.reaction-pick-mine {
+    -fx-background-color: -color-accent-subtle;
 }
 
 .reply-bar {
@@ -765,4 +984,413 @@
 
 .message-deleted .ikonli-font-icon {
     -fx-icon-color: -color-fg-subtle;
+}
+
+/* ---------- Sanh cho kieu thanh ben (dung chung .sidebar / .self-card voi man hinh phong) ---------- */
+
+.lobby-root {
+    -fx-background-color: -color-bg-default;
+}
+
+.app-badge {
+    -fx-min-width: 30px;
+    -fx-min-height: 30px;
+    -fx-max-width: 30px;
+    -fx-max-height: 30px;
+    -fx-background-color: -color-accent-emphasis;
+    -fx-background-radius: 9;
+}
+
+.app-badge .ikonli-font-icon {
+    -fx-icon-size: 16px;
+    -fx-icon-color: -color-fg-emphasis;
+}
+
+.lobby-brand {
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -color-fg-default;
+}
+
+.lobby-create-button {
+    -fx-font-weight: bold;
+    -fx-padding: 9 12 9 12;
+}
+
+.lobby-section-row {
+    -fx-padding: 12 10 4 18;
+}
+
+.lobby-refresh .ikonli-font-icon {
+    -fx-icon-size: 13px;
+    -fx-icon-color: -color-fg-muted;
+}
+
+.lobby-room-list,
+.lobby-room-list .list-cell {
+    -fx-background-color: transparent;
+}
+
+.lobby-room-list .list-cell {
+    -fx-padding: 11 12 11 12;
+    -fx-background-insets: 1 8 1 8;
+    -fx-background-radius: 8;
+}
+
+.lobby-room-list .list-cell:hover {
+    -fx-background-color: -color-bg-default;
+}
+
+.lobby-room-list .list-cell:selected {
+    -fx-background-color: -color-accent-subtle;
+}
+
+.lobby-room-list .list-cell:selected .room-list-name {
+    -fx-font-weight: bold;
+}
+
+.room-list-full {
+    -fx-font-size: 11.5px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -color-warning-fg;
+}
+
+.lobby-placeholder {
+    -fx-text-fill: -color-fg-muted;
+    -fx-font-size: 12px;
+    -fx-text-alignment: center;
+    -fx-padding: 16;
+}
+
+.lobby-sidebar-hint {
+    -fx-font-size: 11.5px;
+    -fx-text-fill: -color-fg-muted;
+    -fx-padding: 6 18 12 18;
+}
+
+.lobby-status-dot {
+    -fx-min-width: 7px;
+    -fx-min-height: 7px;
+    -fx-max-width: 7px;
+    -fx-max-height: 7px;
+    -fx-background-color: -color-success-emphasis;
+    -fx-background-radius: 4;
+}
+
+.lobby-mode-chip {
+    -fx-font-size: 11px;
+    -fx-padding: 2 8 2 8;
+    -fx-background-color: -color-neutral-subtle;
+    -fx-background-radius: 999;
+    -fx-text-fill: -color-fg-muted;
+}
+
+.lobby-center {
+    -fx-background-color: -color-bg-default;
+    -fx-padding: 32;
+}
+
+.lobby-panel {
+    -fx-padding: 8;
+}
+
+.lobby-title {
+    -fx-font-size: 24px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -color-fg-default;
+}
+
+.lobby-text {
+    -fx-font-size: 13.5px;
+    -fx-text-fill: -color-fg-muted;
+}
+
+.lobby-card {
+    -fx-padding: 18;
+    -fx-background-color: -color-bg-subtle;
+    -fx-background-radius: 14;
+    -fx-border-color: -color-border-default;
+    -fx-border-radius: 14;
+}
+
+.lobby-join-button {
+    -fx-font-size: 14px;
+    -fx-font-weight: bold;
+    -fx-padding: 10 16 10 16;
+}
+
+.room-preview-icon {
+    -fx-min-width: 60px;
+    -fx-min-height: 60px;
+    -fx-max-width: 60px;
+    -fx-max-height: 60px;
+    -fx-background-color: -color-accent-subtle;
+    -fx-background-radius: 16;
+}
+
+.room-preview-icon .ikonli-font-icon {
+    -fx-icon-size: 26px;
+    -fx-icon-color: -color-accent-fg;
+}
+
+.feature-tile {
+    -fx-padding: 12 14 12 14;
+    -fx-background-radius: 12;
+    -fx-border-color: -color-border-default;
+    -fx-border-radius: 12;
+}
+
+.feature-icon {
+    -fx-icon-size: 18px;
+}
+
+.feature-icon-success {
+    -fx-icon-color: -color-success-fg;
+}
+
+.feature-icon-accent {
+    -fx-icon-color: -color-accent-fg;
+}
+
+.feature-icon-warning {
+    -fx-icon-color: -color-warning-fg;
+}
+
+.feature-text {
+    -fx-font-size: 12px;
+    -fx-text-fill: -color-fg-default;
+}
+
+.lobby-messages {
+    -fx-padding: 8 0 0 0;
+}
+
+/* ---------- Man hinh dang nhap: tiep tuc nhanh / form / khach ---------- */
+
+.login-root {
+    -fx-background-color: -color-bg-default;
+}
+
+.app-badge-large {
+    -fx-min-width: 52px;
+    -fx-min-height: 52px;
+    -fx-max-width: 52px;
+    -fx-max-height: 52px;
+    -fx-background-radius: 15;
+}
+
+.app-badge-large .ikonli-font-icon {
+    -fx-icon-size: 26px;
+}
+
+.login-title {
+    -fx-font-size: 24px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -color-fg-default;
+}
+
+.login-card {
+    -fx-padding: 22;
+    -fx-background-color: -color-bg-subtle;
+    -fx-background-radius: 16;
+    -fx-border-color: -color-border-default;
+    -fx-border-radius: 16;
+}
+
+.login-account-name {
+    -fx-font-size: 17px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -color-fg-default;
+}
+
+.login-account-handle {
+    -fx-font-size: 12.5px;
+    -fx-text-fill: -color-fg-muted;
+}
+
+.login-fingerprint {
+    -fx-font-size: 12px;
+    -fx-text-fill: -color-success-fg;
+    -fx-graphic-text-gap: 6;
+}
+
+.login-fingerprint .ikonli-font-icon {
+    -fx-icon-size: 12px;
+    -fx-icon-color: -color-success-fg;
+}
+
+.login-submit {
+    -fx-font-size: 14.5px;
+    -fx-font-weight: bold;
+    -fx-padding: 11 16 11 16;
+}
+
+.login-tabs {
+    -fx-padding: 4;
+    -fx-background-color: -color-bg-default;
+    -fx-background-radius: 12;
+}
+
+.login-tab {
+    -fx-padding: 8 12 8 12;
+    -fx-font-weight: bold;
+    -fx-background-radius: 9;
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-text-fill: -color-fg-muted;
+}
+
+.login-tab:selected {
+    -fx-background-color: -color-accent-subtle;
+    -fx-text-fill: -color-fg-default;
+}
+
+.login-option {
+    -fx-alignment: center-left;
+    -fx-padding: 12 16 12 16;
+    -fx-background-radius: 12;
+    -fx-border-radius: 12;
+    -fx-graphic-text-gap: 12;
+    -fx-font-weight: bold;
+}
+
+.login-warning {
+    -fx-padding: 14;
+    -fx-background-color: -color-warning-subtle;
+    -fx-background-radius: 12;
+    -fx-border-color: -color-warning-fg;
+    -fx-border-radius: 12;
+}
+
+.login-warning-title,
+.login-warning-title .ikonli-font-icon {
+    -fx-font-weight: bold;
+    -fx-text-fill: -color-warning-fg;
+    -fx-icon-color: -color-warning-fg;
+    -fx-graphic-text-gap: 8;
+}
+
+.login-warning-text {
+    -fx-font-size: 12.5px;
+    -fx-text-fill: -color-fg-default;
+}
+
+.login-forget {
+    -fx-font-size: 12px;
+}
+
+.login-footnote {
+    -fx-font-size: 11.5px;
+    -fx-text-fill: -color-fg-muted;
+    -fx-text-alignment: center;
+}
+
+/* ---------- Hop so van tay ---------- */
+
+.verify-dialog {
+    -fx-padding: 4 2 4 2;
+}
+
+.verify-title {
+    -fx-font-size: 18px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -color-fg-default;
+}
+
+.verify-subtitle {
+    -fx-font-size: 12.5px;
+    -fx-text-fill: -color-fg-muted;
+}
+
+.verify-step-number {
+    -fx-min-width: 22px;
+    -fx-min-height: 22px;
+    -fx-alignment: center;
+    -fx-font-size: 11.5px;
+    -fx-font-weight: bold;
+    -fx-background-color: -color-accent-subtle;
+    -fx-background-radius: 11;
+    -fx-text-fill: -color-accent-fg;
+}
+
+.verify-step-text {
+    -fx-font-size: 12.5px;
+    -fx-text-fill: -color-fg-default;
+}
+
+.verify-qr {
+    -fx-padding: 10;
+    -fx-background-color: white;
+    -fx-background-radius: 12;
+}
+
+.verify-qr-caption,
+.verify-hint {
+    -fx-font-size: 11.5px;
+    -fx-text-fill: -color-fg-muted;
+}
+
+.verify-section-title {
+    -fx-font-size: 12.5px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -color-fg-default;
+}
+
+.safety-number-grid {
+    -fx-padding: 12 14 12 14;
+    -fx-background-color: -color-bg-subtle;
+    -fx-background-radius: 10;
+    -fx-border-color: -color-border-default;
+    -fx-border-radius: 10;
+}
+
+.safety-number {
+    -fx-font-family: "Consolas", "Cascadia Mono", monospace;
+    -fx-font-size: 17px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -color-fg-default;
+}
+
+.verify-details {
+    -fx-font-size: 12px;
+}
+
+.verify-notice {
+    -fx-font-size: 12.5px;
+    -fx-padding: 10 12 10 12;
+    -fx-background-radius: 10;
+    -fx-graphic-text-gap: 10;
+    -fx-text-fill: -color-fg-default;
+}
+
+.verify-warning {
+    -fx-background-color: -color-bg-subtle;
+}
+
+.verify-warning .ikonli-font-icon,
+.verify-changed .ikonli-font-icon {
+    -fx-icon-color: -color-warning-fg;
+    -fx-icon-size: 15px;
+}
+
+.verify-changed {
+    -fx-background-color: -color-warning-subtle;
+    -fx-border-color: -color-warning-fg;
+    -fx-border-radius: 10;
+}
+
+/* Nguoi da bi danh dau "Khong khop" trong danh sach nguoi */
+.peer-card-mismatch {
+    -fx-background-color: -color-danger-subtle;
+    -fx-border-color: -color-danger-fg;
+}
+
+.peer-status-mismatch,
+.peer-status-mismatch .ikonli-font-icon {
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -color-danger-fg;
+    -fx-icon-color: -color-danger-fg;
+    -fx-icon-size: 12px;
+    -fx-graphic-text-gap: 4;
 }

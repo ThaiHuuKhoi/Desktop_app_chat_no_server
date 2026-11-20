@@ -335,12 +335,23 @@ class TranscriptCell extends ListCell<TranscriptEntry> {
 
         HBox row = new HBox(8);
         row.setPadding(new Insets(continuation ? 1 : 8, 0, 1, 0));
+        // Re chuot vao tin -> dai 5 cam xuc hien CANH bong bong, bam 1 lan la tha. Luon chiem cho
+        // (chi an / hien) nen danh sach khong bi giat khi re chuot qua cac tin.
+        Node bubbleLine = bubble;
+        if (!deleted) {
+            HBox quick = quickReactions(message);
+            quick.visibleProperty().bind(row.hoverProperty());
+            HBox line = mine ? new HBox(6, quick, bubble) : new HBox(6, bubble, quick);
+            line.setAlignment(Pos.CENTER_LEFT);
+            line.setFillHeight(false); // dai cam xuc giu chieu cao vua du, khong keo theo bong bong
+            bubbleLine = line;
+        }
         if (mine) {
             row.setAlignment(Pos.CENTER_RIGHT);
             if (reactions == null) {
-                row.getChildren().add(bubble);
+                row.getChildren().add(bubbleLine);
             } else {
-                VBox stack = new VBox(2, bubble, reactions);
+                VBox stack = new VBox(2, bubbleLine, reactions);
                 stack.setAlignment(Pos.CENTER_RIGHT);
                 row.getChildren().add(stack);
             }
@@ -356,7 +367,7 @@ class TranscriptCell extends ListCell<TranscriptEntry> {
             nameLabel.getStyleClass().add("message-author");
             column.getChildren().add(nameLabel);
         }
-        column.getChildren().add(bubble);
+        column.getChildren().add(bubbleLine);
         if (reactions != null) {
             column.getChildren().add(reactions);
         }
@@ -384,7 +395,10 @@ class TranscriptCell extends ListCell<TranscriptEntry> {
     }
 
 
-    /** Cac "chip" cam xuc duoi bong bong ("👍 2"), bam de bat / tat cam xuc cua minh. */
+    /**
+     * Cac "chip" cam xuc duoi bong bong (anh mau + so nguoi): bam de bat / tat cam xuc cua minh, re
+     * chuot de xem ai da tha. Tin chua co cam xuc -&gt; null.
+     */
     private Node reactionRow(ChatMessage message, boolean mine) {
         java.util.Map<String, Integer> counts = messageContext.reactions(message.getId());
         if (counts.isEmpty()) {
@@ -393,11 +407,17 @@ class TranscriptCell extends ListCell<TranscriptEntry> {
         HBox chips = new HBox(4);
         chips.setAlignment(mine ? Pos.CENTER_RIGHT : Pos.CENTER_LEFT);
         counts.forEach((emoji, count) -> {
-            Label chip = new Label(emoji + " " + count);
+            boolean own = messageContext.reactedBySelf(message.getId(), emoji);
+            Label chip = new Label(String.valueOf(count), EmojiImages.node(emoji, 16));
+            chip.setGraphicTextGap(4);
             chip.getStyleClass().add("reaction-chip");
-            if (messageContext.reactedBySelf(message.getId(), emoji)) {
+            if (own) {
                 chip.getStyleClass().add("reaction-chip-mine");
             }
+            String names = messageContext.reactorNames(message.getId(), emoji);
+            String shown = MessageTexts.displayEmoji(emoji);
+            chip.setTooltip(new Tooltip((names.isEmpty() ? shown : shown + " " + names)
+                    + (own ? "\nBấm để bỏ cảm xúc của bạn" : "\nBấm để thả cùng")));
             chip.setStyle("-fx-cursor: hand;");
             chip.setOnMouseClicked(event -> messageContext.toggleReaction(message, emoji));
             chips.getChildren().add(chip);
@@ -405,7 +425,27 @@ class TranscriptCell extends ListCell<TranscriptEntry> {
         return chips;
     }
 
-    /** Chuot phai vao bong bong: Tra loi, tha cam xuc, sao chep. */
+    /** Dai 5 cam xuc (anh mau) canh bong bong: bam 1 lan la tha, bam lai cam xuc da tha la bo. */
+    private HBox quickReactions(ChatMessage message) {
+        HBox bar = new HBox(2);
+        bar.setAlignment(Pos.CENTER);
+        bar.getStyleClass().add("quick-reactions");
+        for (String emoji : com.datn.chatp2p.common.protocol.ReactionPayload.ALLOWED) {
+            boolean own = messageContext.reactedBySelf(message.getId(), emoji);
+            Button pick = new Button(null, EmojiImages.node(emoji, 20));
+            pick.getStyleClass().add("reaction-pick");
+            if (own) {
+                pick.getStyleClass().add("reaction-pick-mine");
+            }
+            pick.setFocusTraversable(false);
+            pick.setTooltip(new Tooltip(own ? "Bỏ cảm xúc này" : "Thả cảm xúc"));
+            pick.setOnAction(event -> messageContext.toggleReaction(message, emoji));
+            bar.getChildren().add(pick);
+        }
+        return bar;
+    }
+
+    /** Chuot phai vao bong bong: Tra loi, sao chep, sua / xoa tin cua minh. */
     private void installMessageMenu(Node bubble, ChatMessage message, boolean mine) {
         javafx.scene.control.ContextMenu menu = new javafx.scene.control.ContextMenu();
         javafx.scene.control.MenuItem reply = new javafx.scene.control.MenuItem("Trả lời", new FontIcon(Feather.CORNER_UP_LEFT));
@@ -424,14 +464,6 @@ class TranscriptCell extends ListCell<TranscriptEntry> {
             javafx.scene.control.MenuItem delete = new javafx.scene.control.MenuItem("Xoá", new FontIcon(Feather.TRASH_2));
             delete.setOnAction(event -> messageContext.delete(message));
             menu.getItems().addAll(edit, delete);
-        }
-        menu.getItems().add(new javafx.scene.control.SeparatorMenuItem());
-        for (String emoji : com.datn.chatp2p.common.protocol.ReactionPayload.ALLOWED) {
-            boolean already = messageContext.reactedBySelf(message.getId(), emoji);
-            javafx.scene.control.MenuItem item = new javafx.scene.control.MenuItem(
-                    (already ? "Bỏ " : "") + emoji);
-            item.setOnAction(event -> messageContext.toggleReaction(message, emoji));
-            menu.getItems().add(item);
         }
         bubble.setOnContextMenuRequested(event -> menu.show(bubble, event.getScreenX(), event.getScreenY()));
     }

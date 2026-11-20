@@ -53,26 +53,34 @@ final class SettingsDialog {
         }
     }
 
-    /** Nhap khoa tu file sao luu, thay danh tinh tren may nay (giu ban cu), can khoi dong lai app. */
-    private static void importIdentity(Window owner) {
+    /**
+     * Nhap khoa tu file sao luu, thay danh tinh tren may nay (giu ban cu). Goi tu Cai dat hoac tu man
+     * hinh dang nhap khi bao "khoa khong khop tai khoan" (dang nhap tren may moi).
+     *
+     * @return {@code true} neu da thay danh tinh.
+     */
+    static boolean importIdentity(Window owner) {
         javafx.stage.FileChooser chooser = new javafx.stage.FileChooser();
         chooser.setTitle("Chọn file khoá danh tính");
         java.io.File source = chooser.showOpenDialog(owner);
         if (source == null) {
-            return;
+            return false;
         }
         java.util.Optional<char[]> password = askPassword(owner, "Mật khẩu của file khoá", false);
         if (password.isEmpty()) {
-            return;
+            return false;
         }
         try {
             java.security.KeyPair imported = com.datn.chatp2p.crypto.IdentityBackup.importBackup(
                     java.nio.file.Files.readAllBytes(source.toPath()), password.get());
             java.nio.file.Path old = com.datn.chatp2p.client.session.PeerIdentityService.replaceIdentity(imported);
-            info(owner, "Đã nhập khoá", "Danh tính đã được thay. Hãy THOÁT và mở lại ứng dụng để dùng danh tính mới."
+            info(owner, "Đã nhập khoá", "Danh tính đã được thay. Nếu đang ở trong phòng, hãy thoát và mở lại "
+                    + "ứng dụng để dùng danh tính mới."
                     + (old == null ? "" : "\nDanh tính cũ được giữ lại ở " + old + "."));
+            return true;
         } catch (RuntimeException | java.io.IOException e) {
             info(owner, "Không nhập được khoá", e.getMessage());
+            return false;
         } finally {
             com.datn.chatp2p.crypto.IdentityBackup.wipe(password.get());
         }

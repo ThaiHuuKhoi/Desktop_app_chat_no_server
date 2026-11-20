@@ -80,4 +80,39 @@ class MessageExtrasTest {
         assertFalse(MessageTexts.isImage("png"));
         assertFalse(MessageTexts.isImage(null));
     }
+
+    @Test
+    void snippetDropsSimpleMarkdownMarkers() {
+        assertEquals("Mất 1% gói mà vẫn lên được 18 MB/s.", MessageTexts.snippet("Mất 1% gói mà vẫn lên được **18 MB/s**."));
+        assertEquals("chạy lệnh mvn test nhé", MessageTexts.snippet("chạy lệnh `mvn test` nhé"));
+        assertEquals("rất quan trọng, bỏ cái này", MessageTexts.snippet("*rất* quan trọng, ~~bỏ~~ cái này"));
+        assertEquals("2 * 3 = 6", MessageTexts.snippet("2 * 3 = 6"), "dau * don le giu nguyen");
+    }
+
+    @Test
+    void displayEmojiDropsVariationSelector() {
+        assertEquals("❤", MessageTexts.displayEmoji("❤️"));
+        assertEquals("👍", MessageTexts.displayEmoji("👍"));
+    }
+
+    @Test
+    void everyAllowedReactionHasAColorImage() {
+        assertEquals("2764.png", EmojiImages.fileName("❤️"));
+        assertEquals("1f44d.png", EmojiImages.fileName("👍"));
+        for (String emoji : com.datn.chatp2p.common.protocol.ReactionPayload.ALLOWED) {
+            assertTrue(EmojiImages.class.getResource("/emoji/" + EmojiImages.fileName(emoji)) != null,
+                    "Thieu anh mau cho cam xuc " + emoji);
+        }
+    }
+
+    @Test
+    void reactorNamesReadNaturally() {
+        assertEquals("", MessageTexts.joinNames(java.util.List.of()));
+        assertEquals("Bạn", MessageTexts.joinNames(java.util.List.of("Bạn")));
+        assertEquals("Bạn và Lan", MessageTexts.joinNames(java.util.List.of("Bạn", "Lan")));
+        assertEquals("Bạn, Lan và Tuấn", MessageTexts.joinNames(java.util.List.of("Bạn", "Lan", "Tuấn")));
+        assertEquals("A, B, C và D", MessageTexts.joinNames(java.util.List.of("A", "B", "C", "D")));
+        assertEquals("A, B, C và 3 người khác",
+                MessageTexts.joinNames(java.util.List.of("A", "B", "C", "D", "E", "F")));
+    }
 }

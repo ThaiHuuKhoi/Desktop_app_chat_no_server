@@ -8,54 +8,114 @@
 <?import javafx.scene.control.ScrollPane?>
 <?import javafx.scene.control.TextField?>
 <?import javafx.scene.control.TitledPane?>
+<?import javafx.scene.control.ToggleButton?>
 <?import javafx.scene.layout.HBox?>
 <?import javafx.scene.layout.StackPane?>
 <?import javafx.scene.layout.VBox?>
 <?import org.kordamp.ikonli.javafx.FontIcon?>
 
-<!-- Khung dang nhap / dang ky: cao vua noi dung, can giua, cach vien cua so 24px;
-     cua so nho hon noi dung thi cuon duoc thay vi khung dinh sat / tran ra ngoai vien. -->
+<!-- Man hinh dau tien: tiep tuc nhanh voi tai khoan dung lan truoc tren may (chi nho TEN), hoac form
+     dang nhap / dang ky, hoac vao voi tu cach khach. Cua so thap thi cuon. -->
 <StackPane xmlns="http://javafx.com/javafx"
            xmlns:fx="http://javafx.com/fxml"
            fx:controller="com.datn.chatp2p.client.view.AuthController"
-           styleClass="home-root">
+           styleClass="home-root, login-root">
     <ScrollPane fitToWidth="true" fitToHeight="true" styleClass="auth-scroll">
-        <!-- minHeight = USE_PREF_SIZE: khong bi ep co nho hon noi dung -> cua so thap thi cuon -->
         <StackPane minHeight="-Infinity">
             <padding>
-                <Insets top="24" right="24" bottom="24" left="24"/>
+                <Insets top="32" right="24" bottom="32" left="24"/>
             </padding>
-            <VBox styleClass="home-card" spacing="14" maxWidth="440" maxHeight="-Infinity">
-                <padding>
-                    <Insets top="32" right="32" bottom="28" left="32"/>
-                </padding>
-                <HBox spacing="12" alignment="CENTER_LEFT">
-                    <FontIcon iconLiteral="fth-send" styleClass="app-logo"/>
-                    <Label text="Chat P2P Java" styleClass="app-title"/>
-                </HBox>
-                <Label fx:id="formTitle" styleClass="auth-form-title"/>
-                <VBox spacing="6">
-                    <Label text="Tên tài khoản" styleClass="field-label"/>
-                    <TextField fx:id="accountField" promptText="Nhập tên tài khoản"/>
+            <VBox spacing="20" maxWidth="440" maxHeight="-Infinity">
+                <VBox spacing="10" alignment="CENTER">
+                    <StackPane styleClass="app-badge, app-badge-large">
+                        <FontIcon iconLiteral="fth-message-square"/>
+                    </StackPane>
+                    <Label fx:id="headline" styleClass="login-title"/>
                 </VBox>
-                <VBox spacing="6">
-                    <Label text="Mật khẩu" styleClass="field-label"/>
-                    <PasswordField fx:id="passwordField" promptText="Tối thiểu 8 ký tự"/>
+
+                <!-- Tiep tuc nhanh voi tai khoan da nho -->
+                <VBox fx:id="quickPane" styleClass="login-card" spacing="16">
+                    <HBox spacing="14" alignment="CENTER_LEFT">
+                        <StackPane fx:id="quickAvatar"/>
+                        <VBox spacing="3" minWidth="0" HBox.hgrow="ALWAYS">
+                            <Label fx:id="quickName" styleClass="login-account-name"/>
+                            <Label text="Khoá danh tính có trên máy này" styleClass="login-account-handle"/>
+                            <Label fx:id="quickFingerprint" styleClass="login-fingerprint">
+                                <graphic><FontIcon iconLiteral="fth-shield"/></graphic>
+                            </Label>
+                        </VBox>
+                    </HBox>
+                    <VBox spacing="6">
+                        <Label text="Mật khẩu" styleClass="field-label"/>
+                        <PasswordField fx:id="quickPasswordField"/>
+                    </VBox>
+                    <Button fx:id="quickSubmit" onAction="#onQuickSubmit" styleClass="accent, login-submit"
+                            maxWidth="Infinity"/>
                 </VBox>
-                <Label fx:id="statusLabel" styleClass="error-label" wrapText="true"/>
-                <Button fx:id="submitButton" onAction="#onSubmit" defaultButton="true"
-                        styleClass="accent, join-button" maxWidth="Infinity"/>
-                <Hyperlink fx:id="switchButton" onAction="#onSwitchMode" styleClass="auth-switch"/>
+
+                <!-- Form day du: dang nhap / dang ky -->
+                <VBox fx:id="fullPane" styleClass="login-card" spacing="14">
+                    <HBox styleClass="login-tabs" spacing="4">
+                        <ToggleButton fx:id="loginTab" text="Đăng nhập" onAction="#onLoginTab"
+                                      maxWidth="Infinity" HBox.hgrow="ALWAYS" styleClass="login-tab"/>
+                        <ToggleButton fx:id="registerTab" text="Đăng ký" onAction="#onRegisterTab"
+                                      maxWidth="Infinity" HBox.hgrow="ALWAYS" styleClass="login-tab"/>
+                    </HBox>
+                    <VBox spacing="6">
+                        <Label text="Tên tài khoản" styleClass="field-label"/>
+                        <TextField fx:id="accountField" promptText="Nhập tên tài khoản"/>
+                    </VBox>
+                    <VBox spacing="6">
+                        <Label text="Mật khẩu" styleClass="field-label"/>
+                        <PasswordField fx:id="passwordField" promptText="Tối thiểu 8 ký tự"/>
+                    </VBox>
+                    <VBox fx:id="confirmBox" spacing="6">
+                        <Label text="Nhập lại mật khẩu" styleClass="field-label"/>
+                        <PasswordField fx:id="confirmPasswordField"/>
+                    </VBox>
+                    <Button fx:id="submitButton" onAction="#onSubmit" styleClass="accent, login-submit"
+                            maxWidth="Infinity"/>
+                </VBox>
+
+                <Label fx:id="statusLabel" styleClass="error-label" wrapText="true" minHeight="-Infinity"/>
+
+                <!-- Loi hay gap nhat: dang nhap tren may moi, khoa danh tinh khac tai khoan -->
+                <VBox fx:id="keyMismatchBox" styleClass="login-warning" spacing="8" visible="false" managed="false">
+                    <Label text="Tài khoản này đang gắn với khoá của máy khác" styleClass="login-warning-title">
+                        <graphic><FontIcon iconLiteral="fth-alert-triangle"/></graphic>
+                    </Label>
+                    <Label text="Có vẻ bạn đang dùng máy mới. Trên máy cũ, vào Cài đặt → Danh tính → Xuất khoá, rồi nhập file đó vào đây."
+                           styleClass="login-warning-text" wrapText="true" minHeight="-Infinity"/>
+                    <Button text="Nhập khoá từ máy cũ…" onAction="#onImportKey" styleClass="login-warning-button"/>
+                </VBox>
+
+                <VBox spacing="8">
+                    <Button fx:id="otherAccountButton" text="Đăng nhập tài khoản khác hoặc đăng ký"
+                            onAction="#onOtherAccount" styleClass="login-option" maxWidth="Infinity">
+                        <graphic><FontIcon iconLiteral="fth-user-plus"/></graphic>
+                    </Button>
+                    <Button fx:id="backToQuickButton" onAction="#onBackToQuick" styleClass="login-option"
+                            maxWidth="Infinity">
+                        <graphic><FontIcon iconLiteral="fth-arrow-left"/></graphic>
+                    </Button>
+                    <Button text="Vào với tư cách khách" onAction="#onGuest" styleClass="login-option" maxWidth="Infinity">
+                        <graphic><FontIcon iconLiteral="fth-user"/></graphic>
+                    </Button>
+                </VBox>
+
                 <TitledPane text="Tuỳ chọn kết nối" expanded="false" styleClass="advanced-pane">
                     <VBox spacing="6">
                         <Label text="Địa chỉ signaling server" styleClass="field-label"/>
                         <TextField fx:id="serverField"/>
                     </VBox>
                 </TitledPane>
-                <Button text="Tiếp tục với tư cách khách" onAction="#onGuest"
-                        styleClass="flat" maxWidth="Infinity">
-                    <graphic><FontIcon iconLiteral="fth-user"/></graphic>
-                </Button>
+
+                <VBox spacing="2" alignment="CENTER">
+                    <Hyperlink fx:id="forgetLink" text="Không phải bạn? Quên tài khoản này trên máy"
+                               onAction="#onForgetAccount" styleClass="login-forget"/>
+                    <Label text="Máy chủ chỉ giúp mọi người tìm thấy nhau, không lưu và không đọc được tin nhắn"
+                           styleClass="login-footnote" wrapText="true" minHeight="-Infinity"/>
+                </VBox>
             </VBox>
         </StackPane>
     </ScrollPane>

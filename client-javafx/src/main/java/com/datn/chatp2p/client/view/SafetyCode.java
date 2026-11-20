@@ -27,6 +27,33 @@ final class SafetyCode {
         return a.compareTo(b) <= 0 ? "chatp2p-safety:" + a + ":" + b : "chatp2p-safety:" + b + ":" + a;
     }
 
+    /** So nhom 5 chu so trong ma an toan dang so. */
+    static final int NUMBER_GROUPS = 12;
+
+    /**
+     * Ma an toan dang SO de doc to cho nhau: 12 nhom x 5 chu so (kieu "safety number" cua Signal).
+     * SHA-512 cua {@code combined} (ket qua {@link #combine}, giong het tren 2 may) chia thanh 12 khoi
+     * 5 byte, moi khoi lay phan du cho 100000 - tong cong ~199 bit, de doc hon 2 day hex 64 ky tu.
+     */
+    static java.util.List<String> numberGroups(String combined) {
+        byte[] hash;
+        try {
+            hash = java.security.MessageDigest.getInstance("SHA-512")
+                    .digest(combined.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-512 khong kha dung", e);
+        }
+        java.util.List<String> groups = new java.util.ArrayList<>(NUMBER_GROUPS);
+        for (int i = 0; i < NUMBER_GROUPS; i++) {
+            long chunk = 0;
+            for (int b = 0; b < 5; b++) {
+                chunk = (chunk << 8) | (hash[i * 5 + b] & 0xFF);
+            }
+            groups.add(String.format(Locale.ROOT, "%05d", chunk % 100_000));
+        }
+        return groups;
+    }
+
     /** Ma tran QR (true = o den) cua chuoi {@code text}. */
     static boolean[][] qrMatrix(String text) {
         try {

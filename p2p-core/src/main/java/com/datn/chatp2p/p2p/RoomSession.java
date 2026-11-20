@@ -309,6 +309,17 @@ public final class RoomSession {
         return peers.get(peerId);
     }
 
+    /**
+     * Ket noi voi {@code peerId} co di qua TURN relay khong ({@code IceConnectionStats.usingRelay()}).
+     * Rong neu chua ket noi xong qua ICE that (vd kenh loopback trong test).
+     */
+    public java.util.Optional<Boolean> isRelayed(String peerId) {
+        IceP2pConnectionEstablisher establisher = connectedEstablishers.get(peerId);
+        return establisher == null
+                ? java.util.Optional.empty()
+                : establisher.getStats().map(com.datn.chatp2p.p2p.ice.IceConnectionStats::usingRelay);
+    }
+
     private void handlePeerList(SignalMessage message) {
         for (SignalMessage.PeerInfo info : message.getPeers()) {
             try {

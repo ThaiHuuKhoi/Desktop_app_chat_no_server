@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<?import javafx.geometry.Insets?>
 <?import javafx.scene.control.Button?>
 <?import javafx.scene.control.Label?>
 <?import javafx.scene.control.ListView?>
@@ -15,37 +14,31 @@
 <?import javafx.scene.layout.VBox?>
 <?import org.kordamp.ikonli.javafx.FontIcon?>
 
+<!-- Bo cuc 3 cot: hoi thoai (trai) · khung chat (giua) · nguoi trong phong (phai). -->
 <BorderPane xmlns="http://javafx.com/javafx"
             xmlns:fx="http://javafx.com/fxml"
             fx:controller="com.datn.chatp2p.client.view.RoomController"
             styleClass="room-root">
+
+    <!-- ============ COT TRAI: phong + hoi thoai ============ -->
     <left>
-        <VBox styleClass="sidebar" prefWidth="290" minWidth="240">
-            <VBox styleClass="sidebar-header" spacing="10">
-                <HBox spacing="10" alignment="CENTER_LEFT">
-                    <FontIcon iconLiteral="fth-hash" styleClass="room-icon"/>
-                    <VBox spacing="2" HBox.hgrow="ALWAYS" minWidth="0">
-                        <Label fx:id="roomNameLabel" styleClass="room-name"/>
-                        <HBox spacing="4" alignment="CENTER_LEFT">
-                            <FontIcon iconLiteral="fth-lock" styleClass="room-subtitle-icon"/>
-                            <Label fx:id="roomSubtitleLabel" styleClass="room-subtitle"/>
-                        </HBox>
-                    </VBox>
-                    <Button onAction="#onCopyRoomName" styleClass="button-icon, flat">
-                        <graphic><FontIcon iconLiteral="fth-copy"/></graphic>
-                        <tooltip><Tooltip text="Sao chép tên phòng để mời người khác"/></tooltip>
-                    </Button>
+        <VBox styleClass="sidebar" prefWidth="260" minWidth="220">
+            <VBox styleClass="sidebar-header" spacing="8">
+                <HBox spacing="8" alignment="CENTER_LEFT">
+                    <FontIcon fx:id="roomIcon" iconLiteral="fth-hash" styleClass="room-icon"/>
+                    <Label fx:id="roomNameLabel" styleClass="room-name" maxWidth="Infinity" HBox.hgrow="ALWAYS"/>
                 </HBox>
                 <Label fx:id="roomDescriptionLabel" styleClass="room-description" wrapText="true"/>
+                <Button text="Mời bạn bè" onAction="#onCopyRoomName" styleClass="invite-button">
+                    <graphic><FontIcon iconLiteral="fth-copy"/></graphic>
+                    <tooltip><Tooltip text="Sao chép tên phòng để gửi cho bạn bè qua một kênh khác"/></tooltip>
+                </Button>
             </VBox>
 
-            <HBox spacing="6" alignment="CENTER_LEFT" styleClass="section-header">
-                <FontIcon iconLiteral="fth-users" styleClass="section-title-icon"/>
-                <Label fx:id="peerSectionLabel" styleClass="section-title"/>
-            </HBox>
-            <ListView fx:id="peerListView" styleClass="peer-list, edge-to-edge" VBox.vgrow="ALWAYS"/>
+            <Label text="TRÒ CHUYỆN" styleClass="section-title, sidebar-section"/>
+            <ListView fx:id="conversationListView" styleClass="conversation-list, edge-to-edge" VBox.vgrow="ALWAYS"/>
 
-            <HBox styleClass="self-card" spacing="10" alignment="CENTER_LEFT">
+            <HBox styleClass="self-card" spacing="8" alignment="CENTER_LEFT">
                 <StackPane fx:id="selfAvatarHolder"/>
                 <VBox spacing="1" HBox.hgrow="ALWAYS" minWidth="0">
                     <Label fx:id="selfNameLabel" styleClass="self-name"/>
@@ -53,7 +46,7 @@
                 </VBox>
                 <Button onAction="#onOpenSettings" styleClass="button-icon, flat">
                     <graphic><FontIcon iconLiteral="fth-settings"/></graphic>
-                    <tooltip><Tooltip text="Cài đặt: giao diện, âm báo, thông báo"/></tooltip>
+                    <tooltip><Tooltip text="Cài đặt: giao diện, âm báo, thông báo, danh tính"/></tooltip>
                 </Button>
                 <Button fx:id="themeToggleButton" styleClass="button-icon, flat"/>
                 <Button onAction="#onLeaveRoom" styleClass="button-icon, flat, danger">
@@ -64,16 +57,20 @@
         </VBox>
     </left>
 
+    <!-- ============ COT GIUA: khung chat ============ -->
     <center>
         <BorderPane styleClass="chat-panel">
             <top>
-                <VBox styleClass="chat-header" spacing="6">
-                    <Label text="Trò chuyện nhóm" styleClass="chat-title"/>
-                    <HBox fx:id="statusChips" spacing="6" alignment="CENTER_LEFT"/>
-                </VBox>
+                <HBox styleClass="chat-header" spacing="10" alignment="CENTER_LEFT">
+                    <FontIcon fx:id="chatTitleIcon" iconLiteral="fth-users" styleClass="chat-title-icon"/>
+                    <Label fx:id="chatTitleLabel" text="Nhóm" styleClass="chat-title" minWidth="0"/>
+                    <Region HBox.hgrow="ALWAYS"/>
+                    <HBox fx:id="statusChips" spacing="6" alignment="CENTER_RIGHT"/>
+                </HBox>
             </top>
             <center>
-                <TabPane fx:id="chatTabs" tabClosingPolicy="UNAVAILABLE">
+                <!-- Thanh tab bi an: danh sach hoi thoai ben trai chon tab -->
+                <TabPane fx:id="chatTabs" tabClosingPolicy="UNAVAILABLE" styleClass="conversation-tabs">
                     <Tab text="Nhóm">
                         <content>
                             <StackPane>
@@ -96,15 +93,15 @@
                 </TabPane>
             </center>
             <bottom>
-                <VBox styleClass="message-input-bar" spacing="4">
+                <VBox styleClass="message-input-bar" spacing="6">
                     <Label fx:id="typingLabel" styleClass="typing-indicator" visible="false" managed="false"/>
-                    <HBox spacing="8" alignment="BOTTOM_CENTER">
+                    <HBox spacing="6" alignment="BOTTOM_CENTER" styleClass="composer">
                         <Button onAction="#onAttachFile" styleClass="button-icon, flat, attach-button">
                             <graphic><FontIcon iconLiteral="fth-paperclip"/></graphic>
                             <tooltip><Tooltip text="Gửi tệp (tối đa 100 MB) — hoặc kéo thả tệp vào khung chat"/></tooltip>
                         </Button>
-                        <TextArea fx:id="messageArea" promptText="Nhập tin nhắn…" HBox.hgrow="ALWAYS"
-                                  wrapText="true" prefRowCount="2" styleClass="message-area"/>
+                        <TextArea fx:id="messageArea" promptText="Nhắn tới Nhóm…" HBox.hgrow="ALWAYS"
+                                  wrapText="true" prefRowCount="1" styleClass="message-area"/>
                         <Button onAction="#onSendMessage" styleClass="accent, button-icon, send-button">
                             <graphic><FontIcon iconLiteral="fth-send"/></graphic>
                             <tooltip><Tooltip text="Gửi (Enter)"/></tooltip>
@@ -112,12 +109,34 @@
                     </HBox>
                     <HBox spacing="4" alignment="CENTER_LEFT">
                         <FontIcon iconLiteral="fth-lock" styleClass="input-hint-icon"/>
-                        <Label text="Tin nhắn và tệp được mã hoá trước khi rời máy bạn  ·  Enter gửi, Shift+Enter xuống dòng  ·  **đậm** *nghiêng* `code`"
+                        <Label text="Mã hoá trước khi rời máy  ·  Enter gửi, Shift+Enter xuống dòng  ·  **đậm** *nghiêng* `code`"
                                styleClass="input-hint"/>
-                        <Region HBox.hgrow="ALWAYS"/>
                     </HBox>
                 </VBox>
             </bottom>
         </BorderPane>
     </center>
+
+    <!-- ============ COT PHAI: nguoi trong phong + bao mat ============ -->
+    <right>
+        <VBox styleClass="members-panel" prefWidth="270" minWidth="230">
+            <Label fx:id="peerSectionLabel" styleClass="section-title, members-title"/>
+            <ListView fx:id="peerListView" styleClass="peer-list, edge-to-edge" VBox.vgrow="ALWAYS"/>
+            <VBox styleClass="security-card" spacing="7">
+                <Label text="Bảo mật phòng" styleClass="security-card-title"/>
+                <Label text="ECDH + AES-256-GCM, khoá riêng cho từng người" styleClass="security-line" wrapText="true">
+                    <graphic><FontIcon iconLiteral="fth-lock"/></graphic>
+                </Label>
+                <Label fx:id="roomPasswordNote" styleClass="security-line" wrapText="true">
+                    <graphic><FontIcon iconLiteral="fth-key"/></graphic>
+                </Label>
+                <Label text="Máy chủ chỉ giới thiệu, không thấy nội dung" styleClass="security-line" wrapText="true">
+                    <graphic><FontIcon iconLiteral="fth-server"/></graphic>
+                </Label>
+                <Label text="Qua relay vẫn mã hoá đầu-cuối" styleClass="security-line" wrapText="true">
+                    <graphic><FontIcon iconLiteral="fth-shuffle"/></graphic>
+                </Label>
+            </VBox>
+        </VBox>
+    </right>
 </BorderPane>
