@@ -23,6 +23,11 @@ interface MessageContext {
     /** Bat / tat cam xuc {@code emoji} cua minh tren tin. */
     void toggleReaction(ChatMessage message, String emoji);
 
+    /** Ten nhung nguoi da tha {@code emoji} (vd "Bạn, Lan và Tuấn"), rong neu khong ro. */
+    default String reactorNames(String messageId, String emoji) {
+        return "";
+    }
+
     /** Tin da bi tac gia sua. */
     default boolean isEdited(String messageId) {
         return false;

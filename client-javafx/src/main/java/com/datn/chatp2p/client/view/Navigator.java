@@ -19,8 +19,9 @@ public final class Navigator {
 
     static final double HOME_WIDTH = 760;
     static final double HOME_HEIGHT = 680;
-    static final double ROOM_WIDTH = 1040;
-    static final double ROOM_HEIGHT = 680;
+    /** 3 cot: hoi thoai 260 + khung chat + nguoi trong phong 270. */
+    static final double ROOM_WIDTH = 1240;
+    static final double ROOM_HEIGHT = 720;
 
     private static final String STYLESHEET = "/css/app.css";
 

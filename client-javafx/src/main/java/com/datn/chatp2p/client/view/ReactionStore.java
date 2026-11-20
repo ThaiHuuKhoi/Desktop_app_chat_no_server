@@ -45,6 +45,12 @@ final class ReactionStore {
         return result;
     }
 
+    /** Nhung ai da tha {@code emoji} tren tin, theo thu tu tha (de hien tooltip). */
+    java.util.List<String> who(String messageId, String emoji) {
+        Set<String> people = byMessage.getOrDefault(messageId, Map.of()).get(emoji);
+        return people == null ? java.util.List.of() : java.util.List.copyOf(people);
+    }
+
     /** Nguoi roi phong: bo cam xuc cua ho. @return {@code true} neu co thay doi. */
     boolean peerLeft(String peerId) {
         boolean changed = false;

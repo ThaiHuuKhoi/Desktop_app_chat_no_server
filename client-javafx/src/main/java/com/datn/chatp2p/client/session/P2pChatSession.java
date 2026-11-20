@@ -405,6 +405,8 @@ public final class P2pChatSession implements ChatSession {
             return;
         }
         String remoteFingerprint = verifiedRemoteFingerprints.get(peerId);
+        boolean relayed = roomSession.isRelayed(peerId).orElse(false);
+        LOG.info(() -> "Duong truyen toi " + who(peerId) + ": " + (relayed ? "qua TURN relay" : "truc tiep"));
         SessionPeer peer = new SessionPeer(
                 peerId,
                 connection.getCustomUsername() == null
@@ -412,7 +414,7 @@ public final class P2pChatSession implements ChatSession {
                         : connection.getCustomUsername(),
                 identityService.localFingerprint(),
                 remoteFingerprint,
-                SessionPeer.ConnectionKind.DIRECT,
+                relayed ? SessionPeer.ConnectionKind.RELAY : SessionPeer.ConnectionKind.DIRECT,
                 remoteFingerprint == null
                         ? PeerVerificationState.VERIFYING
                         : PeerVerificationState.VERIFIED);

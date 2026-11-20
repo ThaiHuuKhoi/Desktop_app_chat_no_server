@@ -80,4 +80,29 @@ class MessageExtrasTest {
         assertFalse(MessageTexts.isImage("png"));
         assertFalse(MessageTexts.isImage(null));
     }
+
+    @Test
+    void snippetDropsSimpleMarkdownMarkers() {
+        assertEquals("Mất 1% gói mà vẫn lên được 18 MB/s.", MessageTexts.snippet("Mất 1% gói mà vẫn lên được **18 MB/s**."));
+        assertEquals("chạy lệnh mvn test nhé", MessageTexts.snippet("chạy lệnh `mvn test` nhé"));
+        assertEquals("rất quan trọng, bỏ cái này", MessageTexts.snippet("*rất* quan trọng, ~~bỏ~~ cái này"));
+        assertEquals("2 * 3 = 6", MessageTexts.snippet("2 * 3 = 6"), "dau * don le giu nguyen");
+    }
+
+    @Test
+    void displayEmojiDropsVariationSelector() {
+        assertEquals("❤", MessageTexts.displayEmoji("❤️"));
+        assertEquals("👍", MessageTexts.displayEmoji("👍"));
+    }
+
+    @Test
+    void reactorNamesReadNaturally() {
+        assertEquals("", MessageTexts.joinNames(java.util.List.of()));
+        assertEquals("Bạn", MessageTexts.joinNames(java.util.List.of("Bạn")));
+        assertEquals("Bạn và Lan", MessageTexts.joinNames(java.util.List.of("Bạn", "Lan")));
+        assertEquals("Bạn, Lan và Tuấn", MessageTexts.joinNames(java.util.List.of("Bạn", "Lan", "Tuấn")));
+        assertEquals("A, B, C và D", MessageTexts.joinNames(java.util.List.of("A", "B", "C", "D")));
+        assertEquals("A, B, C và 3 người khác",
+                MessageTexts.joinNames(java.util.List.of("A", "B", "C", "D", "E", "F")));
+    }
 }

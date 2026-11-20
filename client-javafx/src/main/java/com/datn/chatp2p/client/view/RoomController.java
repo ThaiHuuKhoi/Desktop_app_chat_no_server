@@ -60,8 +60,10 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * Man hinh phong chat (De-cuong-Chat-P2P-Java.md muc 5): cot trai la phong +
- * nguoi trong phong, ben phai la khung chat voi dong trang thai bao mat.
+ * Man hinh phong chat (De-cuong-Chat-P2P-Java.md muc 5), bo cuc 3 cot: trai la phong + danh sach
+ * hoi thoai (nhom / tin rieng), giua la khung chat, phai la nguoi trong phong (xac minh, duong
+ * truyen) va tom tat bao mat. Moi hoi thoai la 1 tab cua {@code chatTabs} (thanh tab bi an,
+ * danh sach ben trai chon tab) - logic tin rieng trong {@link ChatTranscriptManager} giu nguyen.
  *
  * <p>Chi noi chuyen voi tang mang qua {@link ChatSession} - khong goi truc
  * tiep ma hoa hay DataChannel. Khi tich hop {@code RoomSession} cua p2p-core,
@@ -75,10 +77,22 @@ public class RoomController implements ChatSessionListener {
     private Label roomNameLabel;
 
     @FXML
-    private Label roomSubtitleLabel;
+    private FontIcon roomIcon;
 
     @FXML
     private Label roomDescriptionLabel;
+
+    @FXML
+    private ListView<ConversationItem> conversationListView;
+
+    @FXML
+    private FontIcon chatTitleIcon;
+
+    @FXML
+    private Label chatTitleLabel;
+
+    @FXML
+    private Label roomPasswordNote;
 
     @FXML
     private Label peerSectionLabel;
@@ -141,6 +155,10 @@ public class RoomController implements ChatSessionListener {
             new javafx.animation.PauseTransition(Duration.seconds(ALONE_HINT_SECONDS));
     private final Map<String, String> displayNames = new HashMap<>();
     private final Map<String, SessionPeer> pendingPeerUpdates = new HashMap<>();
+    /** Danh sach hoi thoai ben trai, cung thu tu voi cac tab cua chatTabs. */
+    private final ObservableList<ConversationItem> conversations = FXCollections.observableArrayList();
+    /** Dang dong bo lua chon giua danh sach hoi thoai va tab (tranh vong lap listener). */
+    private boolean syncingConversation;
 
     private Stage stage;
     private RoomConfig config;
@@ -163,8 +181,12 @@ public class RoomController implements ChatSessionListener {
         displayNames.put(session.selfPeerId(), config.userName());
         roomNameLabel.setText(config.roomName());
         roomDescriptionLabel.setText(config.isPasswordProtected()
-                ? "Phòng có mật khẩu · chỉ người nhập đúng mật khẩu mới thấy nhau"
+                ? "Phòng có mật khẩu · máy chủ không biết mật khẩu"
                 : "Phòng công khai · ai biết tên phòng đều vào được");
+        roomIcon.setIconLiteral(config.isPasswordProtected() ? "fth-lock" : "fth-hash");
+        roomPasswordNote.setText(config.isPasswordProtected()
+                ? "Mật khẩu phòng không rời khỏi máy"
+                : "Phòng công khai: ai biết tên đều vào được");
         emptyStateRoomLabel.setText(config.roomName());
         selfNameLabel.setText(config.userName());
         selfAvatarHolder.getChildren().setAll(Avatars.create(config.userName(), 16));
@@ -180,6 +202,7 @@ public class RoomController implements ChatSessionListener {
                 new FileCardActions(),
                 new RoomMessageContext());
         transcriptManager.configure(chatTabs, transcriptListView);
+        installConversationList();
         loadLocalHistory();
         installFileDrop();
 
@@ -190,6 +213,8 @@ public class RoomController implements ChatSessionListener {
             typingNotifier.stop(); // dang go o tab cu -> bao ngung truoc khi sang tab moi
             refreshTypingLabel();
             flushReadReceipts(); // vua mo tab -> nhung tin trong tab nay coi nhu da xem
+            refreshConversations();
+            refreshChatHeader();
         });
         // Quay lai cua so app -> bao da xem cac tin dang hien
         stage.focusedProperty().addListener((obs, was, focused) -> {
@@ -487,6 +512,7 @@ public class RoomController implements ChatSessionListener {
     private void queueReadReceipt(String directPeerId, ChatMessage message) {
         unreadByTab.computeIfAbsent(directPeerId, key -> new java.util.ArrayList<>()).add(message);
         flushReadReceipts();
+        refreshConversations(); // so tin chua doc o danh sach hoi thoai
     }
 
     /**
@@ -502,6 +528,7 @@ public class RoomController implements ChatSessionListener {
         if (unread == null || unread.isEmpty()) {
             return;
         }
+        refreshConversations();
         Map<String, List<String>> idsByAuthor = new HashMap<>();
         for (ChatMessage message : unread) {
             idsByAuthor.computeIfAbsent(message.getAuthorId(), key -> new java.util.ArrayList<>()).add(message.getId());
@@ -559,6 +586,19 @@ public class RoomController implements ChatSessionListener {
         @Override
         public boolean reactedBySelf(String messageId, String emoji) {
             return reactions.hasReacted(messageId, session.selfPeerId(), emoji);
+        }
+
+        @Override
+        public String reactorNames(String messageId, String emoji) {
+            List<String> names = new java.util.ArrayList<>();
+            for (String peerId : reactions.who(messageId, emoji)) {
+                if (peerId.equals(session.selfPeerId())) {
+                    names.add(0, "Bạn");
+                } else {
+                    names.add(displayNames.getOrDefault(peerId, "Người lạ"));
+                }
+            }
+            return MessageTexts.joinNames(names);
         }
 
         @Override
@@ -953,36 +993,92 @@ public class RoomController implements ChatSessionListener {
     }
 
     private void refreshRoomState() {
-        int total = peers.size() + 1;
-        roomSubtitleLabel.setText(total + " người · mã hoá đầu-cuối");
-        peerSectionLabel.setText("NGƯỜI KHÁC TRONG PHÒNG (" + peers.size() + ")");
+        peerSectionLabel.setText("NGƯỜI KHÁC TRONG PHÒNG · " + peers.size());
 
         boolean hasUserMessages = transcriptManager.hasGroupUserMessages();
         emptyState.setVisible(peers.isEmpty() && !hasUserMessages);
 
         statusChips.getChildren().setAll(buildStatusChips());
+        refreshConversations();
     }
 
-    /** Dong trang thai tren header: duong truyen, xac thuc, ma hoa - doi theo trang thai that. */
+    /** Dong trang thai tren header: ma hoa, so nguoi, co ai di qua relay - doi theo trang thai that. */
     private List<Label> buildStatusChips() {
+        Label encryption = chip(Feather.SHIELD, "Mã hoá đầu-cuối", "chip-success");
+        encryption.setTooltip(new javafx.scene.control.Tooltip(
+                "ECDH + AES-256-GCM, mỗi người một khoá riêng; máy chủ không đọc được nội dung"));
         if (peers.isEmpty()) {
-            return List.of(chip(Feather.CLOCK, "Đang chờ người khác vào phòng", "chip-neutral"));
+            return List.of(encryption, chip(Feather.CLOCK, "Đang chờ người khác vào phòng", "chip-neutral"));
         }
+        Label count = chip(Feather.USERS, (peers.size() + 1) + "/8 người · mesh", "chip-neutral");
+        long relayed = peers.stream().filter(p -> p.peer.connectionKind() == ConnectionKind.RELAY).count();
+        if (relayed == 0) {
+            return List.of(encryption, count);
+        }
+        Label relay = chip(Feather.SHUFFLE, relayed + " kết nối qua relay", "chip-warning");
+        relay.setTooltip(new javafx.scene.control.Tooltip(
+                "Không đi thẳng được nên đi vòng qua máy chủ TURN. Vẫn mã hoá đầu-cuối."));
+        return List.of(encryption, count, relay);
+    }
 
-        Label connection;
-        if (peers.stream().anyMatch(p -> p.peer.connectionKind() == ConnectionKind.RELAY)) {
-            connection = chip(Feather.SHUFFLE, "Có kết nối qua relay", "chip-warning");
+    // ---------- Danh sach hoi thoai (thay cho thanh tab) ----------
+
+    /** Danh sach hoi thoai ben trai dieu khien tab dang chon; tab them / bot thi danh sach theo. */
+    private void installConversationList() {
+        conversationListView.setItems(conversations);
+        conversationListView.setCellFactory(list -> new ConversationCell());
+        conversationListView.getSelectionModel().selectedIndexProperty().addListener((obs, old, index) -> {
+            int i = index.intValue();
+            if (!syncingConversation && i >= 0 && i < chatTabs.getTabs().size()) {
+                chatTabs.getSelectionModel().select(i);
+                Platform.runLater(messageArea::requestFocus);
+            }
+        });
+        chatTabs.getTabs().addListener((javafx.collections.ListChangeListener<javafx.scene.control.Tab>) change ->
+                refreshConversations());
+        refreshConversations();
+        refreshChatHeader();
+    }
+
+    /** Dung lai danh sach tu cac tab hien co (ten, so nguoi, so tin chua doc) va giu dong dang chon. */
+    private void refreshConversations() {
+        if (conversationListView == null || transcriptManager == null) {
+            return;
+        }
+        List<ConversationItem> items = new java.util.ArrayList<>();
+        for (javafx.scene.control.Tab tab : chatTabs.getTabs()) {
+            String peerId = (String) tab.getUserData();
+            int unread = unreadByTab.getOrDefault(peerId, List.of()).size();
+            if (peerId == null) {
+                items.add(new ConversationItem(null, "Nhóm", (peers.size() + 1) + " người", unread));
+            } else {
+                boolean present = peers.stream().anyMatch(p -> p.peer.peerId().equals(peerId));
+                items.add(new ConversationItem(peerId, displayNames.getOrDefault(peerId, "Người lạ"),
+                        present ? "Tin riêng" : "Đã rời phòng", unread));
+            }
+        }
+        syncingConversation = true;
+        try {
+            conversations.setAll(items);
+            conversationListView.getSelectionModel().select(chatTabs.getSelectionModel().getSelectedIndex());
+        } finally {
+            syncingConversation = false;
+        }
+    }
+
+    /** Tieu de khung chat + goi y o nhap theo hoi thoai dang mo. */
+    private void refreshChatHeader() {
+        String peerId = transcriptManager.selectedDirectPeerId();
+        if (peerId == null) {
+            chatTitleIcon.setIconLiteral("fth-users");
+            chatTitleLabel.setText("Nhóm");
+            messageArea.setPromptText("Nhắn tới Nhóm…");
         } else {
-            connection = chip(Feather.ZAP, "P2P trực tiếp", "chip-success");
+            String name = displayNames.getOrDefault(peerId, "Người lạ");
+            chatTitleIcon.setIconLiteral("fth-message-circle");
+            chatTitleLabel.setText(name);
+            messageArea.setPromptText("Nhắn riêng cho " + name + "…");
         }
-
-        long unverified = peers.stream().filter(p -> !p.isVerified()).count();
-        Label verification = unverified == 0
-                ? chip(Feather.CHECK_CIRCLE, "Đã xác thực", "chip-success")
-                : chip(Feather.ALERT_TRIANGLE, unverified + " người chưa xác thực", "chip-warning");
-
-        Label encryption = chip(Feather.LOCK, "Mã hoá đầu-cuối · AES-256-GCM", "chip-success");
-        return List.of(connection, verification, encryption);
     }
 
     private static Label chip(Feather icon, String text, String variant) {
