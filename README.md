@@ -193,9 +193,46 @@ P2P that; danh sach peer hien trang thai xac thuc va fingerprint.
 Da co: ket noi P2P that qua ice4j (STUN, TURN fallback), signaling + tai
 khoan, ma hoa dau-cuoi, xac thuc danh tinh gan voi phien ECDH, tin nhan nhom
 va tin nhan rieng co ACK/gui lai, trang thai dang go, Markdown, am bao va thong
-bao man hinh, chon theme, phong co mat khau, lich su chat cho nguoi moi vao.
-
-Dang lam: truyen file (phia gui tin cay da xong; phia nhan + giao dien do B lam).
+bao man hinh, chon theme, phong co mat khau, lich su chat cho nguoi moi vao,
+truyen file (xem duoi), da nhan / da xem, tra loi, tha cam xuc, sua / xoa tin
+cua minh, xem truoc anh, ma QR so van tay, ghi nho van tay + canh bao khi khoa
+doi, lich su tren may (tuy chon, mac dinh tat, ma hoa DPAPI), xuat / nhap khoa
+danh tinh sang may khac (PBKDF2 + AES-GCM).
 
 Chua co (theo De-cuong): audio/video/screen share - cac `EnvelopeType` tuong
-ung moi chi khai bao.
+ung moi chi khai bao; gui tiep file sau khi mat ket noi.
+
+### Truyen file
+
+`FILE_OFFER` -> nguoi nhan bam Nhan (`FILE_ANSWER`) -> `FILE_CHUNK` (chunk 4 KB,
+cua so truot 8 chunk) <-> `FILE_ACK` (`contiguousUpTo` + danh sach chunk nhan le)
+-> ben nhan kiem SHA-256 ca file roi gui ACK `verified`. Toi da 100 MB.
+
+- `P2pDataChannel` chia moi ban tin thanh manh <= 1150 byte (ice4j cat goi UDP
+  > 1500 byte) va ghep lai o ben nhan.
+- Ben gui **gui lai nhanh** (kieu TCP RACK): chunk duoc coi la mat khi da co 3
+  chunk gui sau no toi noi - khong doi het hen gio 500 ms.
+- Ben nhan liet ke chunk vua toi + cac chunk moi nhat trong ACK, ACK moi 4 KB.
+
+Do toc do (4 MB qua ICE that tren localhost, trung vi 3 lan, mat goi gia lap
+theo tung datagram):
+
+```powershell
+mvn -pl common,crypto,signaling-server,p2p-core,client-javafx test `
+  "-Dtest=FileTransferBenchmarkTest" "-Dsurefire.failIfNoSpecifiedTests=false" "-Dchatp2p.benchmark=true"
+```
+
+| Mat goi | Truoc (chunk 512 B, cua so 64) | Sau (chunk 4 KB, cua so 8, gui lai nhanh) |
+|---|---|---|
+| 0% | 6,4 MB/s | 17,9 MB/s |
+| 1% | 0,20 MB/s | 18,1 MB/s |
+| 3% | 0,12 MB/s | 18,0 MB/s (lan cham nhat 4,7) |
+| 5% | 0,09 MB/s | 5,5 MB/s (lan cham nhat 2,2) |
+
+Chi tang chunk ma khong gui lai nhanh thi gan nhu khong giup: code cu voi chunk
+4 KB o muc mat 1% chi dat 0,37 MB/s. Chunk 8-16 KB nhanh ngang 4 KB khi mang sach
+nhung sup manh khi mat goi (1 chunk 16 KB ~26 manh). So do tren localhost - chua
+do tren Internet that / qua TURN.
+
+> **Tuong thich:** dinh dang datagram cua `P2pDataChannel` (chia manh) khac ban
+> cu - client moi va client cu khong ket noi duoc voi nhau, can cap nhat tat ca.

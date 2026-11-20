@@ -238,4 +238,37 @@ class ReliableChunkSenderTest {
         FileOfferPayload wrongCount = new FileOfferPayload("id", "a", 10_000, "x", 4096, 2, "0".repeat(64));
         assertEquals("totalChunks khong khop ceil(fileSize / chunkSize)", FileTransferLimits.validate(wrongCount));
     }
+
+    /**
+     * Gui lai nhanh: hen gio de 10 s, nen moi lan gui lai trong test deu phai do ACK kich hoat
+     * (nguong {@value ReliableChunkSender#FAST_RETRANSMIT_THRESHOLD} chunk gui sau).
+     * Chunk 0 mat; ben nhan bao da co 1, 2 -&gt; chua du nguong (co the chi la dao thu tu); them 3
+     * -&gt; chunk 0 duoc gui lai NGAY, dung 1 lan, va khong chunk nao khac bi gui lai.
+     */
+    @Test
+    void lostChunkIsRetransmittedAsSoonAsLaterChunksAreAcknowledged() {
+        InMemoryChunkSource source = InMemoryChunkSource.random(10 * 1024, 1024, 5);
+        java.util.List<Integer> sends = new java.util.concurrent.CopyOnWriteArrayList<>();
+        Harness listener = new Harness(source, perfect(), perfect(), FAST, true);
+        ReliableChunkSender sender = new ReliableChunkSender(source, offer -> { },
+                chunk -> sends.add(chunk.index()), listener, scheduler,
+                new ReliableTransferConfig(8, 10_000, 20_000, 10, 10_000, 60_000));
+        String id = source.offer().fileId();
+
+        sender.start();
+        sender.onAnswer(new com.datn.chatp2p.common.protocol.FileAnswerPayload(id, true, null));
+        assertEquals(java.util.List.of(0, 1, 2, 3, 4, 5, 6, 7), sends);
+
+        sender.onAck(new FileAckPayload(id, 0, java.util.List.of(1, 2), false));
+        assertEquals(java.util.List.of(0, 1, 2, 3, 4, 5, 6, 7, 8, 9), sends,
+                "Moi 2 chunk sau duoc xac nhan: chua gui lai chunk 0 (chiu dao thu tu)");
+
+        sender.onAck(new FileAckPayload(id, 0, java.util.List.of(1, 2, 3), false));
+        assertEquals(java.util.List.of(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0), sends,
+                "Chunk 0 phai duoc gui lai ngay, chi 1 lan");
+
+        sender.onAck(new FileAckPayload(id, 0, java.util.List.of(1, 2, 3, 4), false));
+        assertEquals(11, sends.size(), "Ban gui lai cua chunk 0 moi bay - chua duoc gui lai lan nua");
+        sender.cancel();
+    }
 }
