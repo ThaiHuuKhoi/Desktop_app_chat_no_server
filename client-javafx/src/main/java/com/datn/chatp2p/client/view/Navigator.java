@@ -19,6 +19,9 @@ public final class Navigator {
 
     static final double HOME_WIDTH = 760;
     static final double HOME_HEIGHT = 680;
+    /** Sanh cho: thanh ben danh sach phong 290 + khung xem truoc phong. */
+    static final double LOBBY_WIDTH = 1100;
+    static final double LOBBY_HEIGHT = 700;
     /** 3 cot: hoi thoai 260 + khung chat + nguoi trong phong 270. */
     static final double ROOM_WIDTH = 1240;
     static final double ROOM_HEIGHT = 720;
@@ -66,7 +69,7 @@ public final class Navigator {
         }
         stage.setOnCloseRequest(null);
         stage.setTitle(ChatApplication.APP_TITLE);
-        stage.setScene(styledScene(root, HOME_WIDTH, HOME_HEIGHT));
+        stage.setScene(styledScene(root, LOBBY_WIDTH, LOBBY_HEIGHT));
         controller.showJoinRejected(config, reason);
     }
 
@@ -107,7 +110,7 @@ public final class Navigator {
 
         stage.setOnCloseRequest(null);
         stage.setTitle(ChatApplication.APP_TITLE);
-        stage.setScene(styledScene(root, HOME_WIDTH, HOME_HEIGHT));
+        stage.setScene(styledScene(root, LOBBY_WIDTH, LOBBY_HEIGHT));
     }
 
     /**

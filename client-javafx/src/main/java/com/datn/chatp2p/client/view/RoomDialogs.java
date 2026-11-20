@@ -6,7 +6,6 @@ import com.datn.chatp2p.client.util.RoomNameGenerator;
 import javafx.application.Platform;
 import javafx.event.ActionEvent;
 import javafx.scene.Node;
-import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
@@ -97,46 +96,8 @@ final class RoomDialogs {
         return dialog.showAndWait();
     }
 
-    // ------------------------------------------------------------ vao phong tu danh sach
-
-    /** Hop xac nhan khi chon 1 phong trong danh sach. */
-    static boolean confirmJoin(Window owner, RoomSummary room) {
-        ButtonType next = new ButtonType(room.passwordProtected() ? "Tiếp tục" : "Vào phòng", ButtonBar.ButtonData.OK_DONE);
-        ButtonType cancel = new ButtonType("Huỷ", ButtonBar.ButtonData.CANCEL_CLOSE);
-        Alert alert = new Alert(Alert.AlertType.CONFIRMATION, LobbyRules.confirmJoinText(room), next, cancel);
-        alert.initOwner(owner);
-        alert.setTitle("Xác nhận vào phòng");
-        alert.setHeaderText("Vào phòng \"" + room.roomId() + "\"?");
-        alert.setGraphic(new FontIcon(room.passwordProtected() ? Feather.LOCK : Feather.USERS));
-        Navigator.style(alert.getDialogPane());
-        return alert.showAndWait().orElse(cancel) == next;
-    }
-
-    /** Hop nhap mat khau cho phong co mat khau. */
-    static Optional<String> askPassword(Window owner, String roomName) {
-        return askPassword(owner, roomName, "");
-    }
-
-    /** Nhu {@link #askPassword(Window, String)} nhung hien san 1 dong loi (vd. "Sai mat khau" do server bao). */
-    static Optional<String> askPassword(Window owner, String roomName, String initialError) {
-        PasswordField password = new PasswordField();
-        password.setPromptText("Mật khẩu phòng");
-        Label error = errorLabel();
-        error.setText(initialError == null ? "" : initialError);
-        VBox content = new VBox(10,
-                hint("Nhập mật khẩu mà người tạo phòng đã gửi cho bạn (phân biệt hoa thường)."),
-                password, error);
-        content.setPrefWidth(380);
-
-        ButtonType join = new ButtonType("Vào phòng", ButtonBar.ButtonData.OK_DONE);
-        Dialog<String> dialog = dialog(owner, "Mật khẩu phòng", "Phòng \"" + roomName + "\" có mật khẩu", content, join);
-        dialog.setGraphic(new FontIcon(Feather.LOCK));
-        validateOnOk(dialog, join, error,
-                () -> LobbyRules.validateJoinPassword(LobbyRules.normalizePassword(password.getText())));
-        dialog.setResultConverter(button -> button == join ? LobbyRules.normalizePassword(password.getText()) : null);
-        Platform.runLater(password::requestFocus);
-        return dialog.showAndWait();
-    }
+    // Vao phong tu danh sach: khung xem truoc o sanh cho (HomeController) - nhap mat khau ngay tai cho,
+    // khong con hop xac nhan / hop mat khau rieng.
 
     // ------------------------------------------------------------ vao phong bang ten
 
