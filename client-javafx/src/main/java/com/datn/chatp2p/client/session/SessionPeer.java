@@ -12,6 +12,7 @@ import com.datn.chatp2p.common.model.PeerVerificationState;
  *                          {@code null} neu tang mang chua cung cap.
  * @param remoteFingerprint van tay khoa cua PEER NAY; {@code null} neu chua co.
  * @param verificationState ket qua xac minh chu ky identity tu dong.
+ * @param account           server bao nguoi nay la tai khoan da dang nhap hay khach tu dat ten.
  */
 public record SessionPeer(
         String peerId,
@@ -19,7 +20,28 @@ public record SessionPeer(
         String localFingerprint,
         String remoteFingerprint,
         ConnectionKind connectionKind,
-        PeerVerificationState verificationState) {
+        PeerVerificationState verificationState,
+        AccountKind account) {
+
+    public SessionPeer(String peerId, String displayName, String localFingerprint, String remoteFingerprint,
+                       ConnectionKind connectionKind, PeerVerificationState verificationState) {
+        this(peerId, displayName, localFingerprint, remoteFingerprint, connectionKind, verificationState,
+                AccountKind.UNKNOWN);
+    }
+
+    /** Nguoi nay vao phong bang tai khoan hay la khach - do signaling server xac nhan. */
+    public enum AccountKind {
+        /** Vao bang token tai khoan hop le: ten hien thi do server ep bang ten tai khoan. */
+        ACCOUNT,
+        /** Khach: ten tu dat, server khong xac nhan. */
+        GUEST,
+        /** Server cu khong bao thong tin nay. */
+        UNKNOWN;
+
+        public static AccountKind of(Boolean authenticated) {
+            return authenticated == null ? UNKNOWN : authenticated ? ACCOUNT : GUEST;
+        }
+    }
 
     /** Duong truyen dang dung voi peer - hien tren header de nguoi dung biet. */
     public enum ConnectionKind {

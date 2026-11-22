@@ -57,7 +57,12 @@ public final class WebSocketSignalingClient implements SignalingClient {
         DISCONNECTED
     }
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    /**
+     * Bo qua truong la: server moi hon co the gui them truong (vd {@code authenticated}) - client khong
+     * duoc vi the ma loi parse, mat ca ban tin PEER_LIST / PEER_JOINED.
+     */
+    private final ObjectMapper objectMapper = new ObjectMapper()
+            .configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     private final SignalMessageDispatcher dispatcher = new SignalMessageDispatcher();
     private final StringBuilder incomingTextBuffer = new StringBuilder();
     private final ScheduledExecutorService reconnectExecutor = Executors.newSingleThreadScheduledExecutor(runnable -> {

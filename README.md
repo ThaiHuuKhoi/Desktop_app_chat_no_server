@@ -3,6 +3,8 @@
 Ung dung chat ngang hang (P2P), ma hoa dau-cuoi, tren nen tang Java. Xem dinh
 huong day du trong [docs/De-cuong-Chat-P2P-Java.md](docs/De-cuong-Chat-P2P-Java.md)
 va phan cong cong viec trong [docs/Phan-cong-cong-viec.md](docs/Phan-cong-cong-viec.md).
+Tai lieu ky thuat day du (kien truc, chuc nang, kiem thu, van hanh, rui ro, bao
+mat) gop trong 1 file: [docs/Tai-lieu-ky-thuat.md](docs/Tai-lieu-ky-thuat.md).
 
 Kien truc va UX (phong chat, danh sach peer, khung chat, xac thuc fingerprint)
 lay cam hung tu [chitchatter](https://github.com/jeremyckahn/chitchatter) - mot
@@ -72,6 +74,7 @@ mvn -q -DskipTests package
 
 # Chay toan bo test (test p2p-core can module signaling-server, nen chay tu goc repo)
 mvn test
+# (22/11/2026: 283 test pass, chay trong Docker co lap - lenh o muc "Chay test trong Docker" ben duoi)
 
 # Chay signaling server that (mac dinh cong 8080, can MySQL - xem ben duoi)
 java -jar signaling-server/target/signaling-server.jar
@@ -201,6 +204,42 @@ danh tinh sang may khac (PBKDF2 + AES-GCM).
 
 Chua co (theo De-cuong): audio/video/screen share - cac `EnvelopeType` tuong
 ung moi chi khai bao; gui tiep file sau khi mat ket noi.
+
+### Bao mat va gioi han cua signaling server (cap nhat 22/11/2026)
+
+Sau dot kiem dinh ma nguon, 13 van de bao mat da duoc sua (chi tiet:
+[docs/Tai-lieu-ky-thuat.md](docs/Tai-lieu-ky-thuat.md), muc J.3). Nhung gi
+nguoi van hanh can biet:
+
+- Server **khong relay `authToken`** cua nguoi gui sang peer khac nua, va chi
+  relay tu ket noi dang thuc su o trong phong.
+- Ket noi WebSocket phai `JOIN` trong 30 s; moi IP toi da 32 ket noi dong thoi
+  (doi bang `CHAT_P2P_WS_MAX_CONNECTIONS_PER_ADDRESS`); `/auth/login` va
+  `/auth/register` toi da 10 lan/phut/IP; `/turn-credentials` 20 lan/phut/IP.
+  IPv6 tinh theo dai /64.
+- Ten phong toi da 200 ky tu, `peerId` 100, ten khach 64; toi da 5.000 phong
+  (vuot thi tra `SERVER_BUSY`).
+- Cac gioi han theo IP dua vao IP that cua client: reverse proxy **phai** gui
+  `X-Forwarded-For` (Caddy gui mac dinh). Neu khong, moi nguoi dung bi tinh
+  chung 1 IP.
+- Client: o chon server bi khoa theo server da dang nhap (token chi gui toi
+  dung server cap no); ket noi thay the cung `peerId` phai xac thuc lai.
+
+### Chay test trong Docker (co lap, khong ra Internet)
+
+```bash
+# Mang noi bo: co IP rieng de ICE chay duoc, nhung khong ra Internet
+docker network create --internal chatp2p-isolated
+docker run --rm --network chatp2p-isolated \
+  -v <ban sao ma nguon>:/work -v <~/.m2/repository>:/m2:ro -w /work \
+  maven:3.9.9-eclipse-temurin-17 \
+  mvn -o -B -Dmaven.repo.local=/m2 -Djavafx.platform=win \
+  -pl common,crypto,signaling-server,p2p-core,client-javafx test
+```
+
+Khong dung `--network none`: khi do chi con dia chi loopback, ma ice4j bo qua
+loopback nen test ICE khong tao duoc ket noi. `-Djavafx.platform=win` vi kho
+Maven tren may phat trien chi co jar JavaFX ban Windows.
 
 ### Truyen file
 

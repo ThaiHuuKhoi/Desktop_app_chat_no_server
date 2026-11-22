@@ -196,7 +196,8 @@ public class RoomController implements ChatSessionListener {
         peerListView.setItems(peers);
         peerListView.setCellFactory(list -> new PeerListCell(this::openDirectMessage, this::verifyFingerprint,
                 item -> TrustedPeers.get().status(item.peer.displayName(), item.peer.remoteFingerprint()),
-                item -> mismatchedPeers.contains(item.peer.peerId())));
+                item -> mismatchedPeers.contains(item.peer.peerId()),
+                this::isGuestNameClash));
         peerListView.setPlaceholder(new Label("Chưa có ai khác"));
 
         transcriptManager = new ChatTranscriptManager(
@@ -262,10 +263,46 @@ public class RoomController implements ChatSessionListener {
             displayNames.put(effectivePeer.peerId(), effectivePeer.displayName());
             peers.add(new PeerItem(effectivePeer));
             notice(NoticeKind.JOINED, effectivePeer.displayName() + " đã vào phòng");
+            warnIfGuestNameClash(effectivePeer);
             notice(NoticeKind.SECURE, "Đã thiết lập kênh mã hoá đầu-cuối với " + effectivePeer.displayName()
                     + ".");
             refreshRoomState();
         });
+    }
+
+    /**
+     * Khach dat trung ten mot TAI KHOAN dang co trong phong (ke ca chinh minh neu minh dang nhap): ten khach
+     * do tu dat nen co the la mao danh. Tai khoan thi server da ep dung ten nen khong the trung nhau.
+     */
+    private boolean isGuestNameClash(PeerItem item) {
+        if (item.peer.account() != SessionPeer.AccountKind.GUEST) {
+            return false;
+        }
+        String name = normalizedName(item.peer.displayName());
+        boolean selfIsAccount = config.authToken() != null && !config.authToken().isBlank();
+        if (selfIsAccount && name.equals(normalizedName(config.userName()))) {
+            return true;
+        }
+        return peers.stream().anyMatch(other -> other.peer.account() == SessionPeer.AccountKind.ACCOUNT
+                && name.equals(normalizedName(other.peer.displayName())));
+    }
+
+    private static String normalizedName(String name) {
+        return name == null ? "" : name.strip().toLowerCase(java.util.Locale.ROOT);
+    }
+
+    /** Ai vua vao (khach hoac tai khoan) lam xuat hien cap "khach trung ten tai khoan" -&gt; canh bao ro. */
+    private void warnIfGuestNameClash(SessionPeer joined) {
+        String name = normalizedName(joined.displayName());
+        for (PeerItem item : peers) {
+            if (normalizedName(item.peer.displayName()).equals(name) && isGuestNameClash(item)) {
+                notice(NoticeKind.WARNING, "\"" + item.peer.displayName() + "\" là KHÁCH nhưng trùng tên một tài khoản "
+                        + "trong phòng. Người khách này không phải chủ tài khoản đó - xem nhãn \"Tài khoản\" / "
+                        + "\"Khách\" cạnh tên.");
+                break;
+            }
+        }
+        peerListView.refresh();
     }
 
     @Override

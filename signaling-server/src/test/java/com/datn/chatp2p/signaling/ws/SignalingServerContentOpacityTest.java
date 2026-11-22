@@ -50,7 +50,7 @@ class SignalingServerContentOpacityTest {
         FakeWebSocketSession senderSession = new FakeWebSocketSession("sender-session");
         // Server chi relay tu session DA JOIN dung phong/peerId (isAuthorized) - mo phong da JOIN.
         // Nguoi gui phai THAT SU o trong phong (so phong), khong chi co thuoc tinh session - isAuthorized
-        // kiem tra ca RoomRegistry.isMember (sua van de 4 trong docs/Bao-cao-bao-mat-13-van-de.md).
+        // kiem tra ca RoomRegistry.isMember (sua van de 4 trong docs/Tai-lieu-ky-thuat.md, muc J.3).
         roomRegistry.join(new PeerSession(senderSession, "room-1", "sender-peer", "Sender"));
         senderSession.getAttributes().put("roomId", "room-1");
         senderSession.getAttributes().put("peerId", "sender-peer");
@@ -91,7 +91,7 @@ class SignalingServerContentOpacityTest {
         FakeWebSocketSession senderSession = new FakeWebSocketSession("sender-session");
         // Server chi relay tu session DA JOIN dung phong/peerId (isAuthorized) - mo phong da JOIN.
         // Nguoi gui phai THAT SU o trong phong (so phong), khong chi co thuoc tinh session - isAuthorized
-        // kiem tra ca RoomRegistry.isMember (sua van de 4 trong docs/Bao-cao-bao-mat-13-van-de.md).
+        // kiem tra ca RoomRegistry.isMember (sua van de 4 trong docs/Tai-lieu-ky-thuat.md, muc J.3).
         roomRegistry.join(new PeerSession(senderSession, "room-1", "sender-peer", "Sender"));
         senderSession.getAttributes().put("roomId", "room-1");
         senderSession.getAttributes().put("peerId", "sender-peer");
@@ -133,7 +133,7 @@ class SignalingServerContentOpacityTest {
         FakeWebSocketSession senderSession = new FakeWebSocketSession("sender-session");
         // Server chi relay tu session DA JOIN dung phong/peerId (isAuthorized) - mo phong da JOIN.
         // Nguoi gui phai THAT SU o trong phong (so phong), khong chi co thuoc tinh session - isAuthorized
-        // kiem tra ca RoomRegistry.isMember (sua van de 4 trong docs/Bao-cao-bao-mat-13-van-de.md).
+        // kiem tra ca RoomRegistry.isMember (sua van de 4 trong docs/Tai-lieu-ky-thuat.md, muc J.3).
         roomRegistry.join(new PeerSession(senderSession, "room-1", "sender-peer", "Sender"));
         senderSession.getAttributes().put("roomId", "room-1");
         senderSession.getAttributes().put("peerId", "sender-peer");

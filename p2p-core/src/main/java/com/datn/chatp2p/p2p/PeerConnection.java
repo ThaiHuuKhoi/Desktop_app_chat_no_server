@@ -111,6 +111,10 @@ public final class PeerConnection {
     private volatile byte[] remoteEcdhPublicKey;
     private volatile PeerVerificationState verificationState = PeerVerificationState.UNVERIFIED;
     private volatile String customUsername;
+    /** Server bao qua PEER_LIST / PEER_JOINED: true = tai khoan, false = khach, null = server khong bao. */
+    private volatile Boolean serverAuthenticated;
+    /** Khoa danh tinh (Base64 X.509) server bao la da dang ky cho tai khoan nay; null neu khong co. */
+    private volatile String registeredIdentityKey;
     private volatile ScheduledFuture<?> handshakeRetryTask;
 
     /**
@@ -197,6 +201,20 @@ public final class PeerConnection {
 
     public void setCustomUsername(String customUsername) {
         this.customUsername = customUsername;
+    }
+
+    public Boolean getServerAuthenticated() {
+        return serverAuthenticated;
+    }
+
+    public String getRegisteredIdentityKey() {
+        return registeredIdentityKey;
+    }
+
+    /** Gan thong tin tai khoan do signaling server bao (chi tu PEER_LIST / PEER_JOINED, khong tu OFFER). */
+    public void setServerAccountInfo(Boolean authenticated, String identityKey) {
+        this.serverAuthenticated = authenticated;
+        this.registeredIdentityKey = Boolean.TRUE.equals(authenticated) ? identityKey : null;
     }
 
     public PeerVerificationState getVerificationState() {

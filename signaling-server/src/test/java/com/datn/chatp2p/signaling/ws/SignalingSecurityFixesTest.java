@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Hoi quy cho cac loi bao mat phia signaling server trong bao cao audit
- * (docs/Bao-cao-bao-mat-13-van-de.md): token bi relay, rang buoc session sau LEAVE, do dai truong JOIN.
+ * (docs/Tai-lieu-ky-thuat.md, muc J.3): token bi relay, rang buoc session sau LEAVE, do dai truong JOIN.
  */
 class SignalingSecurityFixesTest {
 

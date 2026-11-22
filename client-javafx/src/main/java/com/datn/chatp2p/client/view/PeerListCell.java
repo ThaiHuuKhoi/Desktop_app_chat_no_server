@@ -28,19 +28,23 @@ class PeerListCell extends ListCell<PeerItem> {
     private final Consumer<PeerItem> onVerifyRequested;
     private final Function<PeerItem, TrustedPeers.Status> trustStatus;
     private final java.util.function.Predicate<PeerItem> mismatched;
+    private final java.util.function.Predicate<PeerItem> guestNameClash;
 
     /**
      * @param onVerifyRequested bam "So vân tay" -&gt; mo hop so van tay.
      * @param trustStatus       nguoi nay da duoc xac minh van tay truoc do chua ({@link TrustedPeers}).
      * @param mismatched        nguoi dung da bam "Không khớp" khi so van tay voi nguoi nay trong phien.
+     * @param guestNameClash    khach nay dat trung ten mot tai khoan dang co trong phong (ke ca minh).
      */
     PeerListCell(Consumer<PeerItem> onDirectMessageRequested, Consumer<PeerItem> onVerifyRequested,
                  Function<PeerItem, TrustedPeers.Status> trustStatus,
-                 java.util.function.Predicate<PeerItem> mismatched) {
+                 java.util.function.Predicate<PeerItem> mismatched,
+                 java.util.function.Predicate<PeerItem> guestNameClash) {
         this.onDirectMessageRequested = onDirectMessageRequested;
         this.onVerifyRequested = onVerifyRequested;
         this.trustStatus = trustStatus;
         this.mismatched = mismatched;
+        this.guestNameClash = guestNameClash;
         // Vua khit chieu rong cot, ten dai thi rut gon "..." thay vi hien thanh cuon ngang
         setPrefWidth(0);
     }
@@ -71,6 +75,10 @@ class PeerListCell extends ListCell<PeerItem> {
         Label verification = isMismatched ? mismatchLabel() : verificationLabel(item, trust);
         Label connection = connectionLabel(item.peer.connectionKind());
         FlowPane statusLine = new FlowPane(6, 2, verification, connection);
+        Label account = accountLabel(item.peer.account(), guestNameClash.test(item));
+        if (account != null) {
+            statusLine.getChildren().add(account);
+        }
 
         VBox text = new VBox(3, nameRow, statusLine);
         text.setMinWidth(0);
@@ -132,6 +140,27 @@ class PeerListCell extends ListCell<PeerItem> {
         label.setTooltip(new Tooltip("Bạn đã đánh dấu vân tay KHÔNG khớp. Đừng gửi thông tin nhạy cảm; "
                 + "nên rời phòng và tạo phòng mới."));
         return label;
+    }
+
+    /** "· Tài khoản" / "· Khách" theo xac nhan cua server; null neu server khong bao (server cu). */
+    static Label accountLabel(SessionPeer.AccountKind kind, boolean nameClash) {
+        if (kind == SessionPeer.AccountKind.ACCOUNT) {
+            Label label = new Label("· Tài khoản");
+            label.getStyleClass().add("peer-account-badge");
+            label.setTooltip(new Tooltip("Đã đăng nhập: server xác nhận tên này là tên tài khoản. Khoá danh tính "
+                    + "của người này được tự đối chiếu với khoá đã đăng ký của tài khoản."));
+            return label;
+        }
+        if (kind == SessionPeer.AccountKind.GUEST) {
+            Label label = new Label(nameClash ? "· Khách trùng tên tài khoản" : "· Khách");
+            label.getStyleClass().add(nameClash ? "peer-guest-badge-clash" : "peer-guest-badge");
+            label.setTooltip(new Tooltip(nameClash
+                    ? "Người này vào với tư cách khách nhưng đặt trùng tên một tài khoản trong phòng. "
+                    + "Đây KHÔNG phải tài khoản đó - đừng tin chỉ vì cái tên."
+                    : "Vào với tư cách khách: tên do người này tự đặt, server không xác nhận."));
+            return label;
+        }
+        return null;
     }
 
     private static Label connectionLabel(SessionPeer.ConnectionKind kind) {

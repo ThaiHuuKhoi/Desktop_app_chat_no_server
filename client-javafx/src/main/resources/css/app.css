@@ -341,6 +341,24 @@
     -fx-text-fill: -color-warning-fg;
 }
 
+/* Tai khoan (server xac nhan ten) / khach (ten tu dat) */
+.peer-account-badge,
+.peer-guest-badge {
+    -fx-font-size: 11px;
+}
+
+.peer-account-badge {
+    -fx-text-fill: -color-success-fg;
+}
+
+.peer-guest-badge {
+    -fx-text-fill: -color-fg-muted;
+}
+
+.peer-guest-badge-clash {
+    -fx-text-fill: -color-danger-fg;
+}
+
 .peer-compare-button {
     -fx-font-size: 11.5px;
 }

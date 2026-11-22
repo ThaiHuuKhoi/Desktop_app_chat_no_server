@@ -69,6 +69,11 @@
                     <graphic><FontIcon iconLiteral="fth-log-in"/></graphic>
                     <tooltip><Tooltip text="Quay lại màn hình đăng nhập"/></tooltip>
                 </Button>
+                <!-- Tai khoan: dang xuat (server thu hoi token) roi ve man hinh dang nhap -->
+                <Button fx:id="logoutButton" onAction="#onLogout" styleClass="small, flat">
+                    <graphic><FontIcon iconLiteral="fth-log-out"/></graphic>
+                    <tooltip><Tooltip text="Đăng xuất"/></tooltip>
+                </Button>
             </HBox>
         </VBox>
     </left>

@@ -83,6 +83,12 @@ public final class RoomSession {
     private final Map<String, IceP2pConnectionEstablisher> connectedEstablishers = new ConcurrentHashMap<>();
     /** userName cua peer bao qua PEER_JOINED, giu tam de gan vao PeerConnection khi ICE xong (chi dung khi minh la ben tra loi). */
     private final Map<String, String> pendingUserNames = new ConcurrentHashMap<>();
+    /**
+     * Thong tin tai khoan server bao qua PEER_LIST / PEER_JOINED (tai khoan hay khach, khoa da dang ky),
+     * gan vao PeerConnection khi ICE xong. Chi lay tu 2 ban tin do server tu tao, khong tu OFFER do
+     * peer khac gui (server da xoa cac truong nay khi chuyen tiep).
+     */
+    private final Map<String, SignalMessage.PeerInfo> announcedPeers = new ConcurrentHashMap<>();
 
     private final Map<EnvelopeType, List<BiConsumer<String, Envelope>>> envelopeHandlers =
             new EnumMap<>(EnvelopeType.class);
@@ -322,6 +328,9 @@ public final class RoomSession {
 
     private void handlePeerList(SignalMessage message) {
         for (SignalMessage.PeerInfo info : message.getPeers()) {
+            if (info.getPeerId() != null) {
+                announcedPeers.put(info.getPeerId(), info);
+            }
             try {
                 connectAsOfferer(info.getPeerId(), info.getUserName());
             } catch (RuntimeException e) {
@@ -339,11 +348,16 @@ public final class RoomSession {
         // minh qua PEER_LIST cua chinh ho), minh chi ghi nho ten hien thi de gan
         // vao PeerConnection luc handleOffer/onIceConnected, KHONG tu goi offer o day.
         pendingUserNames.put(message.getFromPeerId(), message.getUserName());
+        if (message.getFromPeerId() != null) {
+            announcedPeers.put(message.getFromPeerId(), new SignalMessage.PeerInfo(message.getFromPeerId(),
+                    message.getUserName(), message.getAuthenticated(), message.getIdentityKey()));
+        }
     }
 
     private void handlePeerLeftNotice(SignalMessage message) {
         String peerId = message.getFromPeerId();
         pendingUserNames.remove(peerId);
+        announcedPeers.remove(peerId);
 
         IceP2pConnectionEstablisher pendingEstablisher = pendingEstablishers.remove(peerId);
         if (pendingEstablisher != null) {
@@ -496,6 +510,10 @@ public final class RoomSession {
                 this::dispatchEnvelope,
                 () -> notifyPeerJoined(peerId));
         connection.setCustomUsername(userName);
+        SignalMessage.PeerInfo announced = announcedPeers.get(peerId);
+        if (announced != null) {
+            connection.setServerAccountInfo(announced.getAuthenticated(), announced.getIdentityKey());
+        }
 
         // QUAN TRONG (bao mat - cung 1 lop lo hong voi createEstablisherFor(), xem
         // javadoc cua no): peers.put() tra ve GIA TRI CU neu peerId nay DA co san 1

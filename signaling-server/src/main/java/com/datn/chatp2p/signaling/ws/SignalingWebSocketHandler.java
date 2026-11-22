@@ -67,6 +67,7 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
     private static final String AUTH_TOKEN_ATTR = "authToken";
     private static final String JOINED_ONCE_ATTR = "joinedOnce";
     private static final String ADDRESS_ATTR = "clientAddress";
+    private static final String ACCOUNT_INFO_ATTR = "accountInfo";
 
     /** Do dai toi da cac truong JOIN (truoc day khong gioi han, chi bi chan boi khung 64 KB). */
     static final int MAX_ROOM_ID_LENGTH = 200;
@@ -105,7 +106,7 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
                                      @Value("${chat-p2p.ws.max-connections-per-address:" + MAX_CONNECTIONS_PER_ADDRESS + "}")
                                      int maxConnectionsPerAddress) {
         this.roomRegistry = roomRegistry;
-        this.objectMapper = objectMapper;
+        this.objectMapper = omitNulls(objectMapper);
         this.authService = authService;
         this.authenticationRequired = authenticationRequired;
         this.maxConnectionsPerAddress = maxConnectionsPerAddress;
@@ -114,10 +115,24 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
     /** Compatibility constructor for low-level relay tests that do not boot auth storage. */
     public SignalingWebSocketHandler(RoomRegistry roomRegistry, ObjectMapper objectMapper) {
         this.roomRegistry = roomRegistry;
-        this.objectMapper = objectMapper;
+        this.objectMapper = omitNulls(objectMapper);
         this.authService = null;
         this.authenticationRequired = false;
         this.maxConnectionsPerAddress = MAX_CONNECTIONS_PER_ADDRESS;
+    }
+
+    /**
+     * Tuong thich client cu: khong ghi truong null ra JSON. Client cu doc bang ObjectMapper mac dinh (gap
+     * truong la la loi parse), nen cac truong moi them vao SignalMessage chi duoc xuat hien khi co gia tri -
+     * va chi gui cho client da khai bao hieu chung (xem {@link #supportsAccountInfo}).
+     */
+    private static ObjectMapper omitNulls(ObjectMapper mapper) {
+        return mapper.copy().setSerializationInclusion(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL);
+    }
+
+    /** Client nay da gui {@code protocolVersion} du moi trong JOIN - hieu {@code authenticated}/{@code identityKey}. */
+    private static boolean supportsAccountInfo(WebSocketSession session) {
+        return Boolean.TRUE.equals(session.getAttributes().get(ACCOUNT_INFO_ATTR));
     }
 
     /**
@@ -231,7 +246,11 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
             removeAndNotify(session);
         }
 
-        PeerSession self = new PeerSession(session, signal.getRoomId(), signal.getFromPeerId(), signal.getUserName());
+        // Tai khoan: ghi nhan da xac thuc + khoa danh tinh da dang ky de bao cho nguoi trong phong (khach
+        // co the tu dat trung ten tai khoan - nguoi khac can phan biet duoc).
+        PeerSession self = new PeerSession(session, signal.getRoomId(), signal.getFromPeerId(), signal.getUserName(),
+                authenticatedUser.isPresent(),
+                authenticatedUser.map(com.datn.chatp2p.signaling.auth.AuthUser::publicKey).orElse(null));
         RoomRegistry.JoinResult joined = roomRegistry.tryJoin(self);
         if (!joined.accepted()) {
             if (JoinRejectReason.WRONG_PASSWORD.equals(joined.rejectReason())) {
@@ -248,16 +267,20 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
             session.getAttributes().put(AUTH_TOKEN_ATTR, signal.getAuthToken());
         }
 
+        boolean accountInfo = signal.getProtocolVersion() != null
+                && signal.getProtocolVersion() >= SignalMessage.ACCOUNT_INFO_PROTOCOL_VERSION;
+        session.getAttributes().put(ACCOUNT_INFO_ATTR, accountInfo);
+
         List<PeerSession> existingPeers = joined.existingPeers();
 
-        send(session, peerListMessage(self.getRoomId(), existingPeers));
+        send(session, peerListMessage(self.getRoomId(), existingPeers, accountInfo));
 
-        SignalMessage peerJoined = new SignalMessage();
-        peerJoined.setType(SignalType.PEER_JOINED);
-        peerJoined.setRoomId(self.getRoomId());
-        peerJoined.setFromPeerId(self.getPeerId());
-        peerJoined.setUserName(self.getUserName());
-        broadcastToOthers(self.getRoomId(), self.getPeerId(), peerJoined);
+        // Client moi: kem tai khoan/khach + khoa da dang ky. Client cu: ban tin y nhu truoc (khong truong moi).
+        for (PeerSession peer : roomRegistry.peersInRoom(self.getRoomId())) {
+            if (!peer.getPeerId().equals(self.getPeerId())) {
+                send(peer.getWebSocketSession(), peerJoinedMessage(self, supportsAccountInfo(peer.getWebSocketSession())));
+            }
+        }
 
         log.info("Peer {} ({}) da vao phong {}", self.getPeerId(), self.getUserName(), self.getRoomId());
     }
@@ -320,6 +343,13 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
         // ban tin de server kiem tra lai; truoc day server relay nguyen object nen peer dich nhan duoc
         // token con han 12 gio cua nguoi gui va co the dung no de vao phong / dang xuat thay ho.
         signal.setAuthToken(null);
+        // Cac truong nay chi server duoc dat (PEER_LIST / PEER_JOINED) - khong chuyen tiep gia tri do
+        // nguoi gui tu dien vao OFFER/ANSWER, tranh khach tu nhan la "tai khoan". protocolVersion cung bo:
+        // client cu nhan duoc truong la se loi parse.
+        signal.setAuthenticated(null);
+        signal.setIdentityKey(null);
+        signal.setProtocolVersion(null);
+        signal.setPeers(new java.util.ArrayList<>());
         send(target.get().getWebSocketSession(), signal);
     }
 
@@ -374,13 +404,29 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
         }
     }
 
-    private SignalMessage peerListMessage(String roomId, List<PeerSession> peers) {
+    /** @param accountInfo nguoi nhan la client moi - kem tai khoan/khach + khoa da dang ky cua tung nguoi. */
+    private SignalMessage peerListMessage(String roomId, List<PeerSession> peers, boolean accountInfo) {
         SignalMessage message = new SignalMessage();
         message.setType(SignalType.PEER_LIST);
         message.setRoomId(roomId);
         message.setPeers(peers.stream()
-                .map(p -> new SignalMessage.PeerInfo(p.getPeerId(), p.getUserName()))
+                .map(p -> accountInfo
+                        ? new SignalMessage.PeerInfo(p.getPeerId(), p.getUserName(), p.isAuthenticated(), p.getIdentityKey())
+                        : new SignalMessage.PeerInfo(p.getPeerId(), p.getUserName()))
                 .collect(Collectors.toList()));
+        return message;
+    }
+
+    private static SignalMessage peerJoinedMessage(PeerSession joined, boolean accountInfo) {
+        SignalMessage message = new SignalMessage();
+        message.setType(SignalType.PEER_JOINED);
+        message.setRoomId(joined.getRoomId());
+        message.setFromPeerId(joined.getPeerId());
+        message.setUserName(joined.getUserName());
+        if (accountInfo) {
+            message.setAuthenticated(joined.isAuthenticated());
+            message.setIdentityKey(joined.getIdentityKey());
+        }
         return message;
     }
 

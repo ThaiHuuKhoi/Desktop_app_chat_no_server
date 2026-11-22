@@ -59,6 +59,7 @@ public class HomeController {
     @FXML private Label modeLabel;
     @FXML private Button loginButton;
     @FXML private Button backToLoginButton;
+    @FXML private Button logoutButton;
     @FXML private TextField userNameField;
     @FXML private VBox nameBox;
     @FXML private Button createRoomButton;
@@ -146,6 +147,8 @@ public class HomeController {
         loginButton.setManaged(!accountMode);
         backToLoginButton.setVisible(!accountMode);
         backToLoginButton.setManaged(!accountMode);
+        logoutButton.setVisible(accountMode);
+        logoutButton.setManaged(accountMode);
         roomListView.setPlaceholder(placeholder(accountMode
                 ? "Chưa có phòng nào đang hoạt động.\nTạo phòng mới hoặc nhập tên phòng ở ô trên."
                 : "Khách không xem được danh sách phòng.\nGõ tên phòng bạn bè đã gửi ở ô trên rồi nhấn Enter."));
@@ -229,6 +232,31 @@ public class HomeController {
         if (!joining) {
             Navigator.showAuth(stage);
         }
+    }
+
+    /**
+     * Che do tai khoan: dang xuat. Bo token tren may ngay (ve man hinh dang nhap), con viec bao server thu
+     * hoi token chay nen - mat mang thi token van het han sau 12 gio, khong giu nguoi dung o lai Home.
+     */
+    @FXML
+    private void onLogout() {
+        if (joining || authToken == null || authToken.isBlank()) {
+            return;
+        }
+        String token = authToken;
+        String server = serverField.getText();
+        authToken = null;
+        LOG.info("Dang xuat khoi " + hostOf(server));
+        Thread logout = new Thread(() -> {
+            try {
+                new AuthClient().logout(server, token);
+            } catch (RuntimeException error) {
+                LOG.warning("Khong bao duoc server thu hoi token (token tu het han sau 12 gio): " + error.getMessage());
+            }
+        }, "auth-logout");
+        logout.setDaemon(true);
+        logout.start();
+        Navigator.showAuth(stage);
     }
 
     @FXML

@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 /**
- * Hoi quy van de 8 (docs/Bao-cao-bao-mat-13-van-de.md): chuoi nhieu dau mo nghieng khong co dau dong
+ * Hoi quy van de 8 (docs/Tai-lieu-ky-thuat.md, muc J.3): chuoi nhieu dau mo nghieng khong co dau dong
  * truoc day lam findClosing quet lai ca dong cho MOI dau mo (O(n^2)) tren luong JavaFX.
  */
 class MarkdownParserComplexityTest {

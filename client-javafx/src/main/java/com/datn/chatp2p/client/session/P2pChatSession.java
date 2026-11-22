@@ -80,6 +80,8 @@ public final class P2pChatSession implements ChatSession {
     private final Map<String, String> verifiedRemoteFingerprints = new ConcurrentHashMap<>();
     private final Set<String> admittedPeers = ConcurrentHashMap.newKeySet();
     private final Set<String> rejectedPeers = ConcurrentHashMap.newKeySet();
+    /** Da canh bao "khoa khong khop khoa tai khoan" cho peer nay (PEER_IDENTITY duoc gui lai nhieu lan). */
+    private final Set<String> accountKeyMismatchWarned = ConcurrentHashMap.newKeySet();
     private final Set<String> historySentTo = ConcurrentHashMap.newKeySet();
     private final Map<String, Integer> historyAcceptedFrom = new ConcurrentHashMap<>();
     private final GroupHistory history = new GroupHistory();
@@ -417,7 +419,8 @@ public final class P2pChatSession implements ChatSession {
                 relayed ? SessionPeer.ConnectionKind.RELAY : SessionPeer.ConnectionKind.DIRECT,
                 remoteFingerprint == null
                         ? PeerVerificationState.VERIFYING
-                        : PeerVerificationState.VERIFIED);
+                        : PeerVerificationState.VERIFIED,
+                SessionPeer.AccountKind.of(connection.getServerAuthenticated()));
         knownPeers.put(peerId, peer);
         LOG.info(() -> "Nguoi moi trong phong: " + who(peerId) + " - hien len giao dien, gui PEER_IDENTITY");
         currentListener.onPeerJoined(peer);
@@ -781,6 +784,24 @@ public final class P2pChatSession implements ChatSession {
         }
     }
 
+    /**
+     * {@code true} neu khong co gi de doi chieu (khach, hoac tai khoan chua gan khoa, hoac server cu), hoac
+     * khoa trong PEER_IDENTITY trung khoa server bao la da dang ky cho tai khoan. So theo byte sau giai ma
+     * Base64 de khong lech vi dinh dang chuoi.
+     */
+    static boolean matchesRegisteredKey(Boolean serverAuthenticated, String registered, String presentedKeyBase64) {
+        if (!Boolean.TRUE.equals(serverAuthenticated) || registered == null || registered.isBlank()) {
+            return true;
+        }
+        try {
+            return presentedKeyBase64 != null && java.security.MessageDigest.isEqual(
+                    Base64.getDecoder().decode(registered.trim()),
+                    Base64.getDecoder().decode(presentedKeyBase64.trim()));
+        } catch (IllegalArgumentException malformed) {
+            return false;
+        }
+    }
+
     private void handlePeerIdentity(String peerId, Envelope envelope) {
         try {
             IdentityPayload payload = OBJECT_MAPPER.readValue(envelope.payload(), IdentityPayload.class);
@@ -795,6 +816,18 @@ public final class P2pChatSession implements ChatSession {
                 LOG.warning("Chu ky PEER_IDENTITY cua " + who(peerId)
                         + " KHONG hop le (gia mao hoac khoa ECDH bi trao - nghi ngo MITM)");
                 notifyConnectionFailed(peerId, new SecurityException("Identity peer khong hop le"));
+                return;
+            }
+            // Tai khoan da dang nhap: khoa ky PEER_IDENTITY phai dung khoa server da gan cho tai khoan do.
+            // Khac -> co nguoi xen giua (hoac server bao sai): KHONG coi la da xac thuc, du chu ky hop le.
+            if (!matchesRegisteredKey(connection.getServerAuthenticated(), connection.getRegisteredIdentityKey(),
+                    payload.publicKey())) {
+                if (accountKeyMismatchWarned.add(peerId)) {
+                    LOG.warning("Khoa danh tinh cua " + who(peerId)
+                            + " KHAC khoa da dang ky cua tai khoan nay tren server - nghi ngo mao danh / MITM");
+                    notifyConnectionFailed(peerId, new SecurityException(
+                            "khoá danh tính không khớp khoá đã đăng ký của tài khoản này - có thể có người mạo danh"));
+                }
                 return;
             }
 
@@ -815,7 +848,8 @@ public final class P2pChatSession implements ChatSession {
                     current.localFingerprint(),
                     remoteFingerprint,
                     current.connectionKind(),
-                    PeerVerificationState.VERIFIED);
+                    PeerVerificationState.VERIFIED,
+                    current.account());
             knownPeers.put(peerId, updated);
             ChatSessionListener currentListener = listener;
             if (currentListener != null && !left) {
@@ -845,6 +879,7 @@ public final class P2pChatSession implements ChatSession {
         historySentTo.remove(peerId);
         historyAcceptedFrom.remove(peerId);
         rejectedPeers.remove(peerId);
+        accountKeyMismatchWarned.remove(peerId);
         boolean wasAdmitted = admittedPeers.remove(peerId);
         ChatSessionListener currentListener = listener;
         if (wasAdmitted && currentListener != null && !left) {

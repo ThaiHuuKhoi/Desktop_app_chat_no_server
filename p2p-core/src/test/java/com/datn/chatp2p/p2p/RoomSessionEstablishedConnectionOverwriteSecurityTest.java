@@ -129,7 +129,7 @@ class RoomSessionEstablishedConnectionOverwriteSecurityTest {
             assertNotSame(firstConnection, secondConnection,
                     "2 lan hoan tat ICE+ECDH duoi cung peerId phai tao ra 2 PeerConnection KHAC nhau trong peers - "
                             + "chung minh peers.put() da GHI DE, dung diem mau chot cua lo hong nay");
-            // Van de 1 (docs/Bao-cao-bao-mat-13-van-de.md): khi ket noi bi thay, tang tren PHAI nhan su kien
+            // Van de 1 (docs/Tai-lieu-ky-thuat.md, muc J.3): khi ket noi bi thay, tang tren PHAI nhan su kien
             // "roi phong" cho ket noi cu de xoa trang thai ROOM_PROOF / PEER_IDENTITY - ket noi moi khong
             // duoc thua huong trang thai tin cay.
             assertNotNull(victimSawAttackerLeave.poll(5, TimeUnit.SECONDS),
