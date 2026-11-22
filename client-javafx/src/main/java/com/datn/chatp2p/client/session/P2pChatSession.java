@@ -473,6 +473,13 @@ public final class P2pChatSession implements ChatSession {
         }
         // Luon ACK (ca ban trung) - ACK truoc co the da bi mat tren duong truyen.
         sendQuietly(peerId, EnvelopeType.MESSAGE_ACK, null, new MessageAckPayload(payload.id()));
+        // Bao mat: gioi han do dai nhu duong sua tin / lich su. Truoc day tin truc tiep chi bi chan o
+        // 1 MiB cua kenh UDP; 1 tin ~750k ky tu kieu "*a *a ..." lam bo dung Markdown chay O(n^2) tren
+        // luong JavaFX va treo cua so nguoi nhan. (Van ACK de ben gui khong gui lai mai.)
+        if (payload.text().length() > GroupHistory.MAX_TEXT_CHARS) {
+            LOG.warning(() -> "Bo qua tin qua dai (" + payload.text().length() + " ky tu) tu " + who(peerId));
+            return;
+        }
         if (!deliveryTracker.markReceived(peerId, payload.id())) {
             LOG.fine(() -> "Bo qua ban trung id=" + shortId(payload.id()) + " tu " + who(peerId) + " (da ACK lai)");
             return; // ban gui lai cua tin nhan da hien thi
@@ -726,6 +733,13 @@ public final class P2pChatSession implements ChatSession {
                 break;
             }
             if (!GroupHistory.isAcceptable(incoming)) {
+                continue;
+            }
+            // Bao mat: nguoi chia se khong duoc gan tin cho CHINH MINH (nguoi nhan). Lich su chia se
+            // khong xac minh duoc tac gia; neu chap nhan authorId == selfPeerId, tin gia se hien nhu tin
+            // minh viet va bi luu lai thanh "tin cua toi" trong lich su tren may. Tin that cua minh da
+            // co san trong history nen khong mat gi.
+            if (selfPeerId.equals(incoming.authorId())) {
                 continue;
             }
             HistoryMessage normalized = new HistoryMessage(incoming.id(), incoming.authorId(),

@@ -47,13 +47,31 @@ final class ChatTranscriptManager {
                 .findFirst().orElse(null);
     }
 
-    /** Thay noi dung tin {@code updated.getId()} o moi khung (sau khi tac gia sua / xoa). */
+    /**
+     * Tim tin theo CAP (id, tac gia). Id do nguoi gui tu dat nen 2 tac gia co the trung id - moi thao
+     * tac sua / xoa phai dung ham nay, khong dung {@link #findMessage(String)}.
+     */
+    ChatMessage findMessage(String messageId, String authorId) {
+        java.util.stream.Stream<TranscriptEntry> all = java.util.stream.Stream.concat(
+                groupTranscript.stream(), directTranscripts.values().stream().flatMap(java.util.List::stream));
+        return all.filter(entry -> entry instanceof TranscriptEntry.UserMessage user
+                        && user.message().getId().equals(messageId)
+                        && user.message().getAuthorId().equals(authorId))
+                .map(entry -> ((TranscriptEntry.UserMessage) entry).message())
+                .findFirst().orElse(null);
+    }
+
+    /**
+     * Thay noi dung tin {@code updated} o moi khung (sau khi tac gia sua / xoa). Chi thay tin cung id
+     * VA cung tac gia - khong dung den tin trung id cua nguoi khac.
+     */
     void replaceMessage(ChatMessage updated) {
         java.util.List<ObservableList<TranscriptEntry>> lists = new java.util.ArrayList<>(directTranscripts.values());
         lists.add(groupTranscript);
         for (ObservableList<TranscriptEntry> list : lists) {
             for (int i = 0; i < list.size(); i++) {
-                if (list.get(i) instanceof TranscriptEntry.UserMessage user && user.message().getId().equals(updated.getId())) {
+                if (list.get(i) instanceof TranscriptEntry.UserMessage user && user.message().getId().equals(updated.getId())
+                        && user.message().getAuthorId().equals(updated.getAuthorId())) {
                     list.set(i, new TranscriptEntry.UserMessage(updated, user.sharedBy()));
                 }
             }

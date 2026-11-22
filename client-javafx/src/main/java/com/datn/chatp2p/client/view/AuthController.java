@@ -171,10 +171,12 @@ public final class AuthController {
     private void login(String username, String password) {
         clearMessages();
         try {
-            AuthClient.AuthResult result = authClient.login(serverField.getText().trim(), username, password,
+            String loginServer = serverField.getText().trim();
+            AuthClient.AuthResult result = authClient.login(loginServer, username, password,
                     identityService.publicKeyBase64());
             UserSettings.get().setLastAccount(result.username());
-            Navigator.showHome(stage, true, result.username(), result.token());
+            // Truyen kem server da cap token: token chi duoc gui toi dung server nay.
+            Navigator.showHome(stage, true, result.username(), result.token(), loginServer);
         } catch (RuntimeException e) {
             showServerError(e);
         }

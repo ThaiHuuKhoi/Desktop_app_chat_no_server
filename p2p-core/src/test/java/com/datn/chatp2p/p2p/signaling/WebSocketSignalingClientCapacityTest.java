@@ -46,7 +46,9 @@ class WebSocketSignalingClientCapacityTest {
         int roomSize = com.datn.chatp2p.signaling.room.RoomRegistry.MAX_PEERS_PER_ROOM;
 
         ConfigurableApplicationContext serverContext = new SpringApplicationBuilder(SignalingServerApplication.class)
-                .run("--server.port=0", "--chat-p2p.auth.required=false");
+                .run("--server.port=0", "--chat-p2p.auth.required=false",
+                        // 100 peer cung tu 127.0.0.1: noi gioi han ket noi/dia chi (mac dinh 32) cho test tai.
+                        "--chat-p2p.ws.max-connections-per-address=1000");
         int port = ((ServletWebServerApplicationContext) serverContext).getWebServer().getPort();
         String signalingServerUri = "ws://localhost:" + port;
 

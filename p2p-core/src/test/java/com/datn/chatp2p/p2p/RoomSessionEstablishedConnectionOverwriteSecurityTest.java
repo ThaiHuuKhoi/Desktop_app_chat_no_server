@@ -67,6 +67,12 @@ class RoomSessionEstablishedConnectionOverwriteSecurityTest {
                 victimJoinedAttacker.add(connection);
             }
         });
+        BlockingQueue<String> victimSawAttackerLeave = new LinkedBlockingQueue<>();
+        victim.onPeerLeft(peerId -> {
+            if ("attacker".equals(peerId)) {
+                victimSawAttackerLeave.add(peerId);
+            }
+        });
 
         IceP2pConnectionEstablisher attackerEstablisher1 = new IceP2pConnectionEstablisher(List.of());
         IceP2pConnectionEstablisher attackerEstablisher2 = new IceP2pConnectionEstablisher(List.of());
@@ -95,6 +101,7 @@ class RoomSessionEstablishedConnectionOverwriteSecurityTest {
 
             PeerConnection firstConnection = victimJoinedAttacker.poll(10, TimeUnit.SECONDS);
             assertNotNull(firstConnection, "Victim phai thay 'attacker' ket noi xong lan dau (peers da co entry that)");
+            assertTrue(victimSawAttackerLeave.isEmpty(), "Lan ket noi dau tien khong duoc bao roi phong");
 
             int victimPortForFirstConnection = parsePort(answer1.candidates().get(0));
 
@@ -122,6 +129,11 @@ class RoomSessionEstablishedConnectionOverwriteSecurityTest {
             assertNotSame(firstConnection, secondConnection,
                     "2 lan hoan tat ICE+ECDH duoi cung peerId phai tao ra 2 PeerConnection KHAC nhau trong peers - "
                             + "chung minh peers.put() da GHI DE, dung diem mau chot cua lo hong nay");
+            // Van de 1 (docs/Bao-cao-bao-mat-13-van-de.md): khi ket noi bi thay, tang tren PHAI nhan su kien
+            // "roi phong" cho ket noi cu de xoa trang thai ROOM_PROOF / PEER_IDENTITY - ket noi moi khong
+            // duoc thua huong trang thai tin cay.
+            assertNotNull(victimSawAttackerLeave.poll(5, TimeUnit.SECONDS),
+                    "Thay ket noi duoi cung peerId phai phat onPeerLeft cho ket noi cu");
 
             // DIEM MAU CHOT: PeerConnection DAU TIEN (da bi ghi de, khong con trong peers
             // nua) phai duoc dong dung luc bi ghi de - xac nhan bang cach bind lai duoc

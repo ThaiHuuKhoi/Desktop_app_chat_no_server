@@ -161,6 +161,8 @@ final class LobbyRules {
             case JoinRejectReason.AUTH_EXPIRED -> "Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.";
             case JoinRejectReason.RATE_LIMITED -> "Bạn đã nhập sai mật khẩu quá nhiều lần. Vui lòng thử lại sau 1 phút.";
             case JoinRejectReason.DUPLICATE_PEER -> "Không vào được phòng " + room + " (trùng mã phiên). Vui lòng thử lại.";
+            case JoinRejectReason.INVALID_JOIN -> "Tên phòng hoặc tên hiển thị không hợp lệ (có thể quá dài).";
+            case JoinRejectReason.SERVER_BUSY -> "Server đang quá tải, vui lòng thử lại sau ít phút.";
             default -> "Server từ chối cho vào phòng " + room + " (" + reason + ").";
         };
     }

@@ -28,13 +28,13 @@ interface MessageContext {
         return "";
     }
 
-    /** Tin da bi tac gia sua. */
-    default boolean isEdited(String messageId) {
+    /** Tin da bi tac gia sua (theo cap id + tac gia: 2 tac gia trung id khong anh huong nhau). */
+    default boolean isEdited(ChatMessage message) {
         return false;
     }
 
-    /** Tin da bi tac gia xoa. */
-    default boolean isDeleted(String messageId) {
+    /** Tin da bi tac gia xoa (theo cap id + tac gia). */
+    default boolean isDeleted(ChatMessage message) {
         return false;
     }
 

@@ -320,7 +320,12 @@ public class RoomController implements ChatSessionListener {
             case MISMATCH -> {
                 // Giu trang thai do "Khong khop" trong danh sach nguoi cho toi khi so lai va khop.
                 mismatchedPeers.add(item.peer.peerId());
-                TrustedPeers.get().forget(item.peer.displayName());
+                // Bao mat: neu hop thoai mo vi KHOA DA DOI (keyChanged) thi khoa da luu moi la khoa dung,
+                // khoa dang trinh ra moi la khoa sai - PHAI giu pin cu. Truoc day luon forget() nen chon
+                // dung "Khong khop" lai xoa mat pin that, ke gia mao lan sau khong con bi canh bao.
+                if (!keyChanged) {
+                    TrustedPeers.get().forget(item.peer.displayName());
+                }
                 notice(NoticeKind.WARNING, "Vân tay của " + item.peer.displayName()
                         + " KHÔNG khớp: có thể có người đang xen giữa. Đừng gửi thông tin nhạy cảm; "
                         + "nên rời phòng và tạo phòng mới.");
@@ -489,9 +494,11 @@ public class RoomController implements ChatSessionListener {
     @Override
     public void onMessageEdited(String messageId, String peerId, String newText) {
         Platform.runLater(() -> {
-            ChatMessage original = transcriptManager.findMessage(messageId);
-            // Chi tac gia moi duoc sua / xoa tin cua ho.
-            if (original == null || !original.getAuthorId().equals(peerId)) {
+            // Chi tac gia moi duoc sua / xoa tin cua ho. Bao mat: tim theo CAP (id, tac gia) - id do
+            // nguoi gui tu dat, truoc day tim theo id roi ap dung cho MOI tin trung id, nen 1 peer gui
+            // trung id voi tin cua nguoi khac co the sua / xoa tin cua ho tren may minh.
+            ChatMessage original = transcriptManager.findMessage(messageId, peerId);
+            if (original == null) {
                 return;
             }
             applyEdit(original, newText);
@@ -510,12 +517,17 @@ public class RoomController implements ChatSessionListener {
 
     /** {@code newText} null = xoa. */
     private void applyEdit(ChatMessage original, String newText) {
-        editedOrDeleted.put(original.getId(), newText == null);
+        editedOrDeleted.put(editKey(original), newText == null);
         ChatMessage updated = new ChatMessage(original.getId(), original.getAuthorId(),
                 newText == null ? original.getText() : newText, original.getTimeSent(),
                 original.getTimeReceived(), original.getReplyToId());
         transcriptManager.replaceMessage(updated);
         transcriptManager.refreshAll();
+    }
+
+    /** Khoa trang thai sua / xoa: cap (tac gia, id) - id do nguoi gui tu dat nen khong duy nhat giua cac tac gia. */
+    private static String editKey(ChatMessage message) {
+        return message.getAuthorId() + "\u0000" + message.getId();
     }
 
     /** Tin nguoi khac vua toi: ghi nho la chua xem, roi bao "da xem" ngay neu dang mo dung tab do. */
@@ -622,13 +634,13 @@ public class RoomController implements ChatSessionListener {
         }
 
         @Override
-        public boolean isEdited(String messageId) {
-            return Boolean.FALSE.equals(editedOrDeleted.get(messageId));
+        public boolean isEdited(ChatMessage message) {
+            return Boolean.FALSE.equals(editedOrDeleted.get(editKey(message)));
         }
 
         @Override
-        public boolean isDeleted(String messageId) {
-            return Boolean.TRUE.equals(editedOrDeleted.get(messageId));
+        public boolean isDeleted(ChatMessage message) {
+            return Boolean.TRUE.equals(editedOrDeleted.get(editKey(message)));
         }
 
         @Override
@@ -930,9 +942,14 @@ public class RoomController implements ChatSessionListener {
         }
         List<LocalHistoryStore.SavedMessage> toSave = new java.util.ArrayList<>();
         for (TranscriptEntry entry : transcriptManager.groupTranscript()) {
-            if (entry instanceof UserMessage user && !Boolean.TRUE.equals(editedOrDeleted.get(user.message().getId()))) {
+            if (entry instanceof UserMessage user && !Boolean.TRUE.equals(editedOrDeleted.get(editKey(user.message())))) {
                 ChatMessage m = user.message();
-                boolean mine = session.selfPeerId().equals(m.getAuthorId());
+                // Bao mat: tin lay tu lich su nguoi khac chia se (sharedBy != null) KHONG BAO GIO la "tin
+                // cua toi" - tac gia cua no khong xac minh duoc. Truoc day chi so authorId, nen 1 tin
+                // chia se gia mao authorId cua minh bi luu thanh tin minh viet, mat nhan "khong xac minh".
+                // (Tin nap lai tu chinh file luu tren may - SAVED_ON_DEVICE - thi giu nguyen nhu cu.)
+                boolean trustedSource = user.sharedBy() == null || UserMessage.SAVED_ON_DEVICE.equals(user.sharedBy());
+                boolean mine = trustedSource && session.selfPeerId().equals(m.getAuthorId());
                 toSave.add(new LocalHistoryStore.SavedMessage(m.getId(), mine,
                         mine ? config.userName() : displayNames.getOrDefault(m.getAuthorId(), "Người lạ"),
                         m.getText(), m.getTimeSent(), m.getReplyToId()));

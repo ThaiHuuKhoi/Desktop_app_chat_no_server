@@ -20,6 +20,8 @@ public final class JoinRejectReason {
     public static final String RATE_LIMITED = "RATE_LIMITED";
     /** JOIN thieu roomId / peerId / ten hien thi. */
     public static final String INVALID_JOIN = "INVALID_JOIN";
+    /** Server da dat gioi han tong so phong / so ket noi - thu lai sau. */
+    public static final String SERVER_BUSY = "SERVER_BUSY";
 
     private JoinRejectReason() {
     }

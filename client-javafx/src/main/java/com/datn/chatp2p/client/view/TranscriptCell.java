@@ -249,7 +249,7 @@ class TranscriptCell extends ListCell<TranscriptEntry> {
     private Node messageRow(ChatMessage message, boolean continuation, String sharedBy) {
         boolean mine = selfPeerId.equals(message.getAuthorId());
 
-        boolean deleted = messageContext.isDeleted(message.getId());
+        boolean deleted = messageContext.isDeleted(message);
         // Markdown (dam/nghieng/code/link...) - MarkdownView tu dat min height = pref de khong bi cat.
         Node textLabel;
         if (deleted) {
@@ -262,7 +262,7 @@ class TranscriptCell extends ListCell<TranscriptEntry> {
         textLabel.getStyleClass().add("message-text");
 
         Label timeLabel = new Label(TIME_FORMATTER.format(Instant.ofEpochMilli(message.getTimeSent()))
-                + (!deleted && messageContext.isEdited(message.getId()) ? " · đã sửa" : ""));
+                + (!deleted && messageContext.isEdited(message) ? " · đã sửa" : ""));
         timeLabel.getStyleClass().add("message-time");
         if (mine) {
             DeliveryStatuses.Status delivery = messageContext.delivery(message.getId());

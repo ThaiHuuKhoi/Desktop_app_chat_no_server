@@ -38,7 +38,7 @@ public final class Navigator {
      */
     static void showHomeAfterLeaving(Stage stage, RoomConfig config) {
         boolean accountMode = config.authToken() != null && !config.authToken().isBlank();
-        showHome(stage, accountMode, config.userName(), config.authToken());
+        showHome(stage, accountMode, config.userName(), config.authToken(), config.serverUri());
     }
 
     /**
@@ -63,9 +63,10 @@ public final class Navigator {
         controller.setStage(stage);
         controller.setAccountMode(accountMode);
         if (accountMode) {
-            controller.setAuthenticatedUser(config.userName(), config.authToken());
+            controller.setAuthenticatedUser(config.userName(), config.authToken(), config.serverUri());
         } else {
             controller.setUserName(config.userName());
+            controller.setServerUri(config.serverUri());
         }
         stage.setOnCloseRequest(null);
         stage.setTitle(ChatApplication.APP_TITLE);
@@ -89,19 +90,24 @@ public final class Navigator {
     }
 
     static void showHome(Stage stage, boolean accountMode) {
-        showHome(stage, accountMode, null, null);
+        showHome(stage, accountMode, null, null, null);
     }
 
-    static void showHome(Stage stage, boolean accountMode, String username, String authToken) {
+    /**
+     * @param serverUri server da cap {@code authToken} (che do tai khoan) - token chi bao gio duoc gui
+     *                  toi server nay; voi khach la server dang dung (null = mac dinh).
+     */
+    static void showHome(Stage stage, boolean accountMode, String username, String authToken, String serverUri) {
         FXMLLoader loader = new FXMLLoader(Navigator.class.getResource("/view/home.fxml"));
         Parent root = load(loader);
         HomeController controller = loader.getController();
         controller.setStage(stage);
         controller.setAccountMode(accountMode);
         if (accountMode) {
-            controller.setAuthenticatedUser(username, authToken);
+            controller.setAuthenticatedUser(username, authToken, serverUri);
         } else {
             controller.setUserName(username);
+            controller.setServerUri(serverUri);
         }
 
         stage.setOnCloseRequest(null);

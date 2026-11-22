@@ -8,10 +8,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.util.ArrayDeque;
-import java.util.Deque;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import com.datn.chatp2p.signaling.limit.RequestRateLimiter;
 
 /**
  * {@code GET /turn-credentials}: cap tai khoan TURN tam thoi cho client (ca khach lan nguoi da dang
@@ -25,7 +22,10 @@ public class TurnController {
     private static final Logger log = LoggerFactory.getLogger(TurnController.class);
 
     private final TurnCredentialService service;
-    private final Map<String, Deque<Long>> requestsByIp = new ConcurrentHashMap<>();
+    // Bao mat: ban cu dung 1 map theo IP khong bao gio xoa khoa - xoay vong dia chi (vd ca dai IPv6)
+    // lam phinh bo nho server vinh vien va moi dia chi moi lai co han muc moi. RequestRateLimiter xoa
+    // khoa het han, chan tong so khoa va gop IPv6 theo /64.
+    private final RequestRateLimiter limiter = new RequestRateLimiter(MAX_REQUESTS_PER_MINUTE, WINDOW_MILLIS);
 
     public TurnController(TurnCredentialService service) {
         this.service = service;
@@ -43,17 +43,16 @@ public class TurnController {
     }
 
     boolean allow(String ip) {
-        long now = System.currentTimeMillis();
-        Deque<Long> times = requestsByIp.computeIfAbsent(ip, ignored -> new ArrayDeque<>());
-        synchronized (times) {
-            while (!times.isEmpty() && times.peekFirst() <= now - WINDOW_MILLIS) {
-                times.removeFirst();
-            }
-            if (times.size() >= MAX_REQUESTS_PER_MINUTE) {
-                return false;
-            }
-            times.addLast(now);
-            return true;
-        }
+        return limiter.tryAcquire(RequestRateLimiter.networkKey(ip));
+    }
+
+    /** So khoa IP dang duoc theo doi (cho test). */
+    int trackedKeys() {
+        return limiter.trackedKeys();
+    }
+
+    /** Xoa khoa het han ngay (cho test). */
+    void evictIdle() {
+        limiter.evictIdle();
     }
 }

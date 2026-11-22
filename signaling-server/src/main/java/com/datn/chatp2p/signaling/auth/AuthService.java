@@ -83,9 +83,14 @@ public class AuthService {
                 throw new AuthException("Khóa identity không khớp tài khoản này");
             }
             if (user.publicKey == null) {
-                jdbc.update("UPDATE users SET public_key = ? WHERE id = ?", publicKey, user.id);
+                // "AND public_key IS NULL": 2 lan dang nhap dau tien dong thoi khong ghi de khoa cua nhau.
+                jdbc.update("UPDATE users SET public_key = ? WHERE id = ? AND public_key IS NULL", publicKey, user.id);
             }
         }
+        // Don cac phien da het han / da dang xuat cua tai khoan nay - truoc day bang sessions chi tang
+        // ma khong bao gio xoa (moi lan dang nhap them 1 dong).
+        jdbc.update("DELETE FROM sessions WHERE user_id = ? AND (revoked_at IS NOT NULL OR expires_at <= CURRENT_TIMESTAMP)",
+                user.id);
         String token = newToken();
         jdbc.update("INSERT INTO sessions (user_id, token_hash, expires_at) VALUES (?, ?, ?)",
                 user.id, hash(token), java.sql.Timestamp.from(Instant.now().plus(SESSION_LIFETIME)));

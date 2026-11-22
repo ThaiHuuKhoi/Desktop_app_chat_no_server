@@ -521,6 +521,19 @@ public final class RoomSession {
         if (previousEstablisher != null) {
             previousEstablisher.dispose();
         }
+        if (previous != null) {
+            // BAO MAT: ket noi moi duoi CUNG peerId la 1 phien ECDH MOI, chua chung minh gi ca. Tang tren
+            // (P2pChatSession) giu trang thai "da qua ROOM_PROOF" va "da xac thuc PEER_IDENTITY" theo
+            // peerId va chi xoa khi nhan su kien roi phong - neu khong bao, ket noi thay the (vd do
+            // signaling server gia mao OFFER) se THUA HUONG trang thai tin cay cua ket noi cu, UI van
+            // hien VERIFIED trong khi tin nhan duoc ma hoa toi 1 khoa ECDH chua xac thuc. Bao "peer da
+            // roi phong" cho ket noi CU de tang tren xoa sach trang thai; ket noi moi phai chung minh lai
+            // tu dau (ROOM_PROOF + PEER_IDENTITY) khi trao khoa xong.
+            Consumer<String> leftHandler = onPeerLeftHandler;
+            if (leftHandler != null) {
+                leftHandler.accept(peerId);
+            }
+        }
         connection.sendEcdhPublicKey();
     }
 

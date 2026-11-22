@@ -23,9 +23,16 @@ import java.util.concurrent.ConcurrentHashMap;
 public class RoomRegistry {
 
     public static final int MAX_PEERS_PER_ROOM = 8;
+    /**
+     * Tran tong so phong dang mo. Truoc day chi gioi han so nguoi MOI phong - 1 tai khoan mo nhieu
+     * ket noi, moi ket noi 1 phong khac ten, lam so phong (va bo nho, thoi gian quet) tang khong gioi han.
+     */
+    public static final int MAX_ROOMS = 5_000;
     /** Ky tu ngan cach ten phong va "the" mat khau trong roomId cua phong co mat khau (khop RoomConfig o client). */
     static final char PRIVATE_ROOM_SEPARATOR = '~';
     private final Map<String, Map<String, PeerSession>> roomsByRoomId = new ConcurrentHashMap<>();
+    /** Chi muc sessionId -> peer: leaveBySession() O(1) thay vi quet moi phong moi lan dong ket noi. */
+    private final Map<String, PeerSession> peersBySessionId = new ConcurrentHashMap<>();
     private final Object privateRoomLock = new Object();
 
     /**
@@ -75,6 +82,9 @@ public class RoomRegistry {
     }
 
     private JoinResult joinRoom(PeerSession newPeer) {
+        if (!roomsByRoomId.containsKey(newPeer.getRoomId()) && roomsByRoomId.size() >= MAX_ROOMS) {
+            return JoinResult.rejected(JoinRejectReason.SERVER_BUSY);
+        }
         Map<String, PeerSession> room =
                 roomsByRoomId.computeIfAbsent(newPeer.getRoomId(), roomId -> new ConcurrentHashMap<>());
         synchronized (room) {
@@ -89,6 +99,7 @@ public class RoomRegistry {
             }
             List<PeerSession> existingPeers = List.copyOf(room.values());
             room.put(newPeer.getPeerId(), newPeer);
+            peersBySessionId.put(newPeer.getWebSocketSession().getId(), newPeer);
             return JoinResult.accepted(existingPeers);
         }
     }
@@ -120,6 +131,9 @@ public class RoomRegistry {
             PeerSession removed = room.remove(peerId);
             if (room.isEmpty()) {
                 roomsByRoomId.remove(roomId, room);
+            }
+            if (removed != null) {
+                peersBySessionId.remove(removed.getWebSocketSession().getId(), removed);
             }
             return Optional.ofNullable(removed);
         }
@@ -158,15 +172,15 @@ public class RoomRegistry {
     public record RoomSnapshot(String roomId, int peerCount, String ownerUserName, boolean passwordProtected) {
     }
 
-    /** Tim va xoa peer gan voi mot WebSocketSession bi dong (duyet tat ca phong). */
+    /** Tim va xoa peer gan voi mot WebSocketSession bi dong (tra chi muc theo sessionId). */
     public Optional<PeerSession> leaveBySession(WebSocketSession session) {
-        for (Map<String, PeerSession> room : roomsByRoomId.values()) {
-            for (PeerSession peer : room.values()) {
-                if (peer.getWebSocketSession().getId().equals(session.getId())) {
-                    return leave(peer.getRoomId(), peer.getPeerId());
-                }
-            }
-        }
-        return Optional.empty();
+        PeerSession peer = peersBySessionId.get(session.getId());
+        return peer == null ? Optional.empty() : leave(peer.getRoomId(), peer.getPeerId());
+    }
+
+    /** {@code true} neu {@code session} dang thuc su la peer {@code peerId} trong phong {@code roomId}. */
+    public boolean isMember(WebSocketSession session, String roomId, String peerId) {
+        PeerSession peer = peersBySessionId.get(session.getId());
+        return peer != null && peer.getRoomId().equals(roomId) && peer.getPeerId().equals(peerId);
     }
 }

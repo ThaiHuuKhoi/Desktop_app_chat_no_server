@@ -154,10 +154,29 @@ public class HomeController {
         refreshIdentity();
     }
 
-    public void setAuthenticatedUser(String username, String authToken) {
+    /**
+     * Che do tai khoan: gan token voi DUNG server da cap no. Bao mat: truoc day Home tu dat lai o server
+     * ve mac dinh (wss://chat.zingme.fun) va gui ngay GET /rooms kem token toi do - nguoi dang nhap vao
+     * server tu host bi lo token cho server mac dinh (hoac bat ky server nao go vao o sau do). Nay o
+     * server bi khoa vao {@code serverUri}; muon doi server thi dang xuat va dang nhap lai.
+     */
+    public void setAuthenticatedUser(String username, String authToken, String serverUri) {
         this.authToken = authToken;
+        if (serverUri != null && !serverUri.isBlank()) {
+            serverField.setText(serverUri);
+        }
+        serverField.setEditable(false);
+        serverField.setTooltip(new javafx.scene.control.Tooltip(
+                "Đã đăng nhập vào server này. Muốn đổi server, hãy đăng xuất rồi đăng nhập lại."));
         setUserName(username);
         loadRooms();
+    }
+
+    /** Khach quay lai Home: giu server dang dung (khach khong co token nen van duoc sua o server). */
+    public void setServerUri(String serverUri) {
+        if (serverUri != null && !serverUri.isBlank()) {
+            serverField.setText(serverUri);
+        }
     }
 
     /** Dien lai ten hien thi (vd. khach quay ve Home sau khi roi phong); bo qua neu rong. */

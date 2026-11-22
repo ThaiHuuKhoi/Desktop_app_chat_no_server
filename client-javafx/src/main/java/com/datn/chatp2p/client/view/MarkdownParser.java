@@ -101,6 +101,10 @@ final class MarkdownParser {
 
     private static void parseInline(String s, EnumSet<Style> active, List<Inline> out) {
         StringBuilder plain = new StringBuilder();
+        // Bao mat (chong treo UI): nho vi tri nho nhat ma tu do KHONG con dau dong hop le cho tung
+        // marker. Thieu cai nay, moi dau mo khong co cap lai quet het phan con lai cua dong -> O(n^2)
+        // voi chuoi kieu "*a *a *a ..." va 1 tin dai lam dung luong JavaFX.
+        java.util.Map<String, Integer> noCloserFrom = new java.util.HashMap<>();
         int i = 0;
         while (i < s.length()) {
             char c = s.charAt(i);
@@ -125,7 +129,7 @@ final class MarkdownParser {
 
             if (s.startsWith("**", i) || s.startsWith("~~", i)) {
                 String marker = s.substring(i, i + 2);
-                int close = findClosing(s, marker, i + 2);
+                int close = findClosing(s, marker, i + 2, noCloserFrom);
                 if (close > 0) {
                     flush(plain, active, out);
                     EnumSet<Style> nested = EnumSet.copyOf(active);
@@ -137,7 +141,7 @@ final class MarkdownParser {
             }
 
             if ((c == '*' || c == '_') && canOpenEmphasis(s, i)) {
-                int close = findClosing(s, String.valueOf(c), i + 1);
+                int close = findClosing(s, String.valueOf(c), i + 1, noCloserFrom);
                 if (close > 0 && (c == '*' || isWordBoundary(s, close + 1))) {
                     flush(plain, active, out);
                     EnumSet<Style> nested = EnumSet.copyOf(active);
@@ -177,6 +181,22 @@ final class MarkdownParser {
             return false;
         }
         return s.charAt(i) == '*' || isWordBoundary(s, i - 1);
+    }
+
+    /**
+     * Nhu {@link #findClosing(String, String, int)} nhung dung {@code memo}: neu tu vi tri f da biet
+     * khong co dau dong thi moi {@code from >= f} cung khong co (tap ung vien chi thu hep lai).
+     */
+    private static int findClosing(String s, String marker, int from, java.util.Map<String, Integer> memo) {
+        Integer known = memo.get(marker);
+        if (known != null && from >= known) {
+            return -1;
+        }
+        int close = findClosing(s, marker, from);
+        if (close < 0) {
+            memo.merge(marker, from, Math::min);
+        }
+        return close;
     }
 
     /** Vi tri dau dong hop le dau tien sau {@code from}: khong rong, ky tu truoc no khong phai khoang trang. */
