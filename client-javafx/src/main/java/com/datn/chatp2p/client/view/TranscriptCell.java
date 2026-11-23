@@ -9,6 +9,8 @@ import com.datn.chatp2p.client.view.TranscriptEntry.NoticeKind;
 import com.datn.chatp2p.client.view.TranscriptEntry.SystemNotice;
 import com.datn.chatp2p.client.view.TranscriptEntry.UserMessage;
 import com.datn.chatp2p.common.model.ChatMessage;
+import javafx.beans.binding.Bindings;
+import javafx.beans.binding.DoubleBinding;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -16,6 +18,7 @@ import javafx.scene.control.Button;
 import javafx.scene.control.ContentDisplay;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
+import javafx.scene.control.ListView;
 import javafx.scene.control.OverrunStyle;
 import javafx.scene.control.ProgressBar;
 import javafx.scene.control.Tooltip;
@@ -45,6 +48,9 @@ class TranscriptCell extends ListCell<TranscriptEntry> {
             DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault());
     private static final long GROUPING_WINDOW_MILLIS = 3 * 60 * 1000;
     private static final double MAX_BUBBLE_WIDTH = 480;
+    /** Bong bong chiem toi da ty le nay cua khung chat (phan con lai cho avatar, le, nut reaction). */
+    private static final double BUBBLE_WIDTH_RATIO = 0.72;
+    private static final double MIN_BUBBLE_WIDTH = 160;
     private static final double AVATAR_RADIUS = 15;
 
     private final String selfPeerId;
@@ -60,6 +66,22 @@ class TranscriptCell extends ListCell<TranscriptEntry> {
         this.messageContext = messageContext;
         // De ListView tu co theo chieu rong, khong hien thanh cuon ngang khi tin dai
         setPrefWidth(0);
+    }
+
+    /**
+     * Be rong toi da co gian theo khung chat: {@code min(cap, 72% be rong ListView)} - cua so hep thi
+     * bong bong hep theo thay vi bi cat chu / hien thanh cuon ngang. Binding giu listener yeu toi
+     * ListView nen node cu bi thay khi cell cap nhat van duoc GC don.
+     */
+    private DoubleBinding widthCap(double cap) {
+        ListView<TranscriptEntry> list = getListView();
+        if (list == null) {
+            return Bindings.createDoubleBinding(() -> cap);
+        }
+        return Bindings.createDoubleBinding(
+                () -> list.getWidth() <= 0 ? cap
+                        : Math.min(cap, Math.max(MIN_BUBBLE_WIDTH, list.getWidth() * BUBBLE_WIDTH_RATIO)),
+                list.widthProperty());
     }
 
     @Override
@@ -113,7 +135,7 @@ class TranscriptCell extends ListCell<TranscriptEntry> {
             card.getChildren().add(preview);
         }
         card.getStyleClass().add("file-card");
-        card.setMaxWidth(MAX_BUBBLE_WIDTH - 80);
+        card.maxWidthProperty().bind(widthCap(MAX_BUBBLE_WIDTH - 80));
         card.setPrefWidth(340);
 
         if (status.state() == State.IN_PROGRESS || status.state() == State.VERIFYING) {
@@ -326,7 +348,7 @@ class TranscriptCell extends ListCell<TranscriptEntry> {
         if (quote != null) {
             bubble.getChildren().add(0, quote);
         }
-        bubble.setMaxWidth(MAX_BUBBLE_WIDTH);
+        bubble.maxWidthProperty().bind(widthCap(MAX_BUBBLE_WIDTH));
         bubble.getStyleClass().add(mine ? "bubble-mine" : "bubble-other");
         if (!deleted) {
             installMessageMenu(bubble, message, mine);

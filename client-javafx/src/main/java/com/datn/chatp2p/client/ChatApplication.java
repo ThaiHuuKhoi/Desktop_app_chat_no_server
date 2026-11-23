@@ -38,8 +38,7 @@ public class ChatApplication extends Application {
         WindowsIceFirewallPermission.requestIfNeeded();
         LinkOpener.init(getHostServices());
         ThemeManager.applyCurrentTheme();
-        primaryStage.setMinWidth(560);
-        primaryStage.setMinHeight(560);
+        Navigator.applyMinSize(primaryStage);
         Navigator.showEntry(primaryStage);
         primaryStage.show();
     }

@@ -1423,3 +1423,11 @@
 .lobby-back-button .ikonli-font-icon {
     -fx-icon-color: -color-fg-muted;
 }
+
+/* Nut hien/an cot ben tren header phong (RoomLayout) - dang mo thi to mau nhan */
+.panel-toggle:selected {
+    -fx-background-color: -color-accent-subtle;
+}
+.panel-toggle:selected .ikonli-font-icon {
+    -fx-icon-color: -color-accent-fg;
+}

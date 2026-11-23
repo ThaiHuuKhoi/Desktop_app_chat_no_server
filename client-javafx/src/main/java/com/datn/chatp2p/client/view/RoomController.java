@@ -41,6 +41,8 @@ import javafx.scene.input.Dragboard;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.input.TransferMode;
+import javafx.css.PseudoClass;
+import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
@@ -116,6 +118,25 @@ public class RoomController implements ChatSessionListener {
     private HBox statusChips;
 
     @FXML
+    private BorderPane roomRoot;
+
+    @FXML
+    private VBox sidebarPanel;
+
+    @FXML
+    private VBox membersPanel;
+
+    @FXML
+    private Button sidebarToggleButton;
+
+    @FXML
+    private Button membersToggleButton;
+
+    /** Tao o lan do dau tien co chieu rong that (truoc do root chua duoc layout, rong = 0). */
+    private RoomLayout roomLayout;
+    private static final PseudoClass SELECTED = PseudoClass.getPseudoClass("selected");
+
+    @FXML
     private ListView<TranscriptEntry> transcriptListView;
 
     @FXML
@@ -173,6 +194,50 @@ public class RoomController implements ChatSessionListener {
         // TextArea khong co onAction nhu TextField - tu bat phim: Enter gui,
         // Shift+Enter xuong dong (Tai-lieu-ky-thuat.md muc E.8.1).
         messageArea.addEventFilter(KeyEvent.KEY_PRESSED, this::onMessageAreaKeyPressed);
+        roomRoot.widthProperty().addListener((obs, old, width) -> onRoomWidthChanged(width.doubleValue()));
+    }
+
+    // ---------- Bo cuc theo chieu rong cua so (RoomLayout) ----------
+
+    private void onRoomWidthChanged(double width) {
+        if (width <= 0) {
+            return;
+        }
+        if (roomLayout == null) {
+            roomLayout = new RoomLayout(width);
+            applyRoomLayout();
+        } else if (roomLayout.resize(width)) {
+            applyRoomLayout();
+        }
+    }
+
+    @FXML
+    private void onToggleSidebar() {
+        if (roomLayout != null) {
+            roomLayout.toggleSidebar();
+            applyRoomLayout();
+        }
+    }
+
+    @FXML
+    private void onToggleMembers() {
+        if (roomLayout != null) {
+            roomLayout.toggleMembers();
+            applyRoomLayout();
+        }
+    }
+
+    /** Go han cot khoi BorderPane (setLeft/setRight null) - chac chan khung chat nhan lai toan bo cho trong. */
+    private void applyRoomLayout() {
+        roomRoot.setLeft(roomLayout.sidebarVisible() ? sidebarPanel : null);
+        roomRoot.setRight(roomLayout.membersVisible() ? membersPanel : null);
+        boolean sidebarToggle = roomLayout.sidebarToggleVisible();
+        sidebarToggleButton.setVisible(sidebarToggle);
+        sidebarToggleButton.setManaged(sidebarToggle);
+        sidebarToggleButton.pseudoClassStateChanged(SELECTED, roomLayout.sidebarVisible());
+        membersToggleButton.pseudoClassStateChanged(SELECTED, roomLayout.membersVisible());
+        statusChips.setVisible(roomLayout.statusChipsVisible());
+        statusChips.setManaged(roomLayout.statusChipsVisible());
     }
 
     public void start(Stage stage, RoomConfig config, ChatSession session) {

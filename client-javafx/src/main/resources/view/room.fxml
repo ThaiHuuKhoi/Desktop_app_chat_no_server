@@ -14,15 +14,17 @@
 <?import javafx.scene.layout.VBox?>
 <?import org.kordamp.ikonli.javafx.FontIcon?>
 
-<!-- Bo cuc 3 cot: hoi thoai (trai) · khung chat (giua) · nguoi trong phong (phai). -->
-<BorderPane xmlns="http://javafx.com/javafx"
+<!-- Bo cuc 3 cot: hoi thoai (trai) · khung chat (giua) · nguoi trong phong (phai).
+     Cua so hep thi 2 cot ben tu an dan (RoomLayout) - khung chat luon giu cho; nut tren header mo lai. -->
+<BorderPane fx:id="roomRoot"
+            xmlns="http://javafx.com/javafx"
             xmlns:fx="http://javafx.com/fxml"
             fx:controller="com.datn.chatp2p.client.view.RoomController"
             styleClass="room-root">
 
     <!-- ============ COT TRAI: phong + hoi thoai ============ -->
     <left>
-        <VBox styleClass="sidebar" prefWidth="260" minWidth="220">
+        <VBox fx:id="sidebarPanel" styleClass="sidebar" prefWidth="260" minWidth="220">
             <VBox styleClass="sidebar-header" spacing="8">
                 <HBox spacing="8" alignment="CENTER_LEFT">
                     <FontIcon fx:id="roomIcon" iconLiteral="fth-hash" styleClass="room-icon"/>
@@ -62,10 +64,20 @@
         <BorderPane styleClass="chat-panel">
             <top>
                 <HBox styleClass="chat-header" spacing="10" alignment="CENTER_LEFT">
+                    <Button fx:id="sidebarToggleButton" onAction="#onToggleSidebar"
+                            styleClass="button-icon, flat, panel-toggle" visible="false" managed="false">
+                        <graphic><FontIcon iconLiteral="fth-menu"/></graphic>
+                        <tooltip><Tooltip text="Hiện / ẩn danh sách trò chuyện"/></tooltip>
+                    </Button>
                     <FontIcon fx:id="chatTitleIcon" iconLiteral="fth-users" styleClass="chat-title-icon"/>
                     <Label fx:id="chatTitleLabel" text="Nhóm" styleClass="chat-title" minWidth="0"/>
                     <Region HBox.hgrow="ALWAYS"/>
                     <HBox fx:id="statusChips" spacing="6" alignment="CENTER_RIGHT"/>
+                    <Button fx:id="membersToggleButton" onAction="#onToggleMembers"
+                            styleClass="button-icon, flat, panel-toggle">
+                        <graphic><FontIcon iconLiteral="fth-sidebar"/></graphic>
+                        <tooltip><Tooltip text="Hiện / ẩn người trong phòng"/></tooltip>
+                    </Button>
                 </HBox>
             </top>
             <center>
@@ -119,7 +131,7 @@
 
     <!-- ============ COT PHAI: nguoi trong phong + bao mat ============ -->
     <right>
-        <VBox styleClass="members-panel" prefWidth="270" minWidth="230">
+        <VBox fx:id="membersPanel" styleClass="members-panel" prefWidth="270" minWidth="230">
             <Label fx:id="peerSectionLabel" styleClass="section-title, members-title"/>
             <ListView fx:id="peerListView" styleClass="peer-list, edge-to-edge" VBox.vgrow="ALWAYS"/>
             <VBox styleClass="security-card" spacing="7">
