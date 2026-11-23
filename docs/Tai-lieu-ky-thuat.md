@@ -381,14 +381,14 @@ Mesh đầy đủ: băng thông và CPU mỗi máy tăng tuyến tính theo số
 
 ### F.5.1 Test tự động
 
-Lần chạy gần nhất: **22/11/2026, commit `a0ee278`, 283 test, 0 lỗi, 3 bỏ qua**. Chạy trong **Docker cô lập** (image `maven:3.9.9-eclipse-temurin-17`, mạng nội bộ không ra được Internet, Maven offline, kho thư viện gắn chỉ-đọc).
+Lần chạy gần nhất: **22/11/2026, commit `36ccc20`, 291 test, 0 lỗi, 2 bỏ qua** (chạy trên máy Windows; trước đó, commit `a0ee278`: 283 test, 0 lỗi, 3 bỏ qua trong Docker). Chi tiết chuỗi kiểm thử: [Co-che-kiem-thu.md](Co-che-kiem-thu.md). Bản `a0ee278` được chạy trong **Docker cô lập** (image `maven:3.9.9-eclipse-temurin-17`, mạng nội bộ không ra được Internet, Maven offline, kho thư viện gắn chỉ-đọc).
 
 | Module | Số test | Nội dung chính |
 |---|---|---|
 | `crypto` | 42 | Mã hoá khoá danh tính khi lưu (version 2, tự chuyển file cũ, không ghi đè khi sai khoá), sao lưu danh tính, ECDH, AES-GCM, HKDF (vector RFC 5869), khoá riêng mỗi chiều, chữ ký danh tính gắn ECDH (kịch bản MITM), khoá phòng có mật khẩu |
-| `signaling-server` | 32 | Cấp TURN tạm thời (HMAC-SHA1 theo vector RFC 2202, giới hạn theo IP), chuyển tiếp không đọc nội dung, xử lý lỗi, danh sách phòng không lộ thẻ, `JOIN_REJECTED` từng lý do, giới hạn thử sai mật khẩu. **Mới 22/11:** không chuyển tiếp token; người đã rời phòng không chuyển tiếp được; từ chối trường `JOIN` quá dài; bộ giới hạn tốc độ tự dọn và gộp IPv6 /64 |
-| `p2p-core` | 121 (1 bỏ qua: mesh 8 người, bật bằng cờ) | Mesh 3 người, mất gói, chống replay (gói cũ sau 2000 gói, gói giả, reflection), rò rỉ cổng, kết nối lại, TURN dự phòng, chia / ghép mảnh UDP, truyền file tin cậy và gửi lại nhanh, 1 MB qua kênh mã hoá trên mạng giả lập xấu. **Mới 22/11:** thay kết nối cùng `peerId` phải phát `onPeerLeft` |
-| `client-javafx` | 88 (2 bỏ qua: benchmark; DPAPI chỉ chạy trên Windows) | Gửi lại tin, trạng thái giao tin và đã xem, cảm xúc, trả lời, sửa / xoá, nhận diện ảnh, DPAPI, vân tay tin cậy, đang gõ, Markdown, cài đặt, lịch sử, quy tắc sảnh chờ, thông báo khi bị từ chối, điều phối truyền file (16 test), 2 test tích hợp nhiều client thật. **Mới 22/11:** Markdown với chuỗi xấu 600.000 ký tự xong dưới 5 giây |
+| `signaling-server` | 36 | Cấp TURN tạm thời (HMAC-SHA1 theo vector RFC 2202, giới hạn theo IP), chuyển tiếp không đọc nội dung, xử lý lỗi, danh sách phòng không lộ thẻ, `JOIN_REJECTED` từng lý do, giới hạn thử sai mật khẩu. **Mới 22/11:** không chuyển tiếp token; người đã rời phòng không chuyển tiếp được; từ chối trường `JOIN` quá dài; bộ giới hạn tốc độ tự dọn và gộp IPv6 /64 |
+| `p2p-core` | 121 (1 bỏ qua: mesh 8 người đang `@Disabled` vì 56 Agent chung 1 JVM không xong trong 60 s, phải sửa code mới bật được) | Mesh 3 người, mất gói, chống replay (gói cũ sau 2000 gói, gói giả, reflection), rò rỉ cổng, kết nối lại, TURN dự phòng, chia / ghép mảnh UDP, truyền file tin cậy và gửi lại nhanh, 1 MB qua kênh mã hoá trên mạng giả lập xấu. **Mới 22/11:** thay kết nối cùng `peerId` phải phát `onPeerLeft` |
+| `client-javafx` | 92 (1 bỏ qua: benchmark; trong Docker Linux thêm 1 bỏ qua vì DPAPI chỉ chạy trên Windows) | Gửi lại tin, trạng thái giao tin và đã xem, cảm xúc, trả lời, sửa / xoá, nhận diện ảnh, DPAPI, vân tay tin cậy, đang gõ, Markdown, cài đặt, lịch sử, quy tắc sảnh chờ, thông báo khi bị từ chối, điều phối truyền file (16 test), 2 test tích hợp nhiều client thật. **Mới 22/11:** Markdown với chuỗi xấu 600.000 ký tự xong dưới 5 giây |
 
 **Test cũ được chỉnh theo hành vi mới (22/11):**
 - `SignalingServerContentOpacityTest`: người gửi phải thật sự `JOIN` phòng.

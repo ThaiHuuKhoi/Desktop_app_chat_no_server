@@ -1,6 +1,6 @@
 # GIẢI THÍCH CƠ CHẾ MÃ HOÁ CHAT P2P BẰNG VÍ DỤ ĐỜI THƯỜNG — KÈM ĐỐI CHIẾU CODE
 
-**Ngày:** 22/11/2026 · **Phiên bản code:** nhánh `main`, commit `a0ee278` (số dòng bên dưới đúng với bản này)
+**Ngày:** 23/11/2026 · **Phiên bản code:** nhánh `main`, commit `9a616b4` (số dòng bên dưới đúng với bản này)
 
 Tài liệu này giải thích, bằng ví dụ dễ hiểu, cách ứng dụng mã hoá tin nhắn giữa hai người, theo dạng **chuỗi thiết kế**: mỗi bước được phân tích để tìm lỗ hổng, và lỗ hổng đó sinh ra bước tiếp theo để vá. Mỗi bước có mục **"Trong code"** chỉ ra lớp và dòng code đang làm đúng việc được kể trong ví dụ. Chi tiết kỹ thuật đầy đủ nằm trong [Tai-lieu-ky-thuat.md](Tai-lieu-ky-thuat.md), mục E.3.4 (mã hoá) và E.5 (xác thực danh tính).
 
@@ -131,7 +131,7 @@ Kết quả chung này chính là **"chìa chung" mà Bước 1 cần, nhưng m�
 **Trong code:**
 - `p2p-core/…/RoomSession.java:505`: `KeyExchangeService.generateKeyPair()` (`crypto/…/KeyExchangeService.java:40`) sinh bí mật riêng (và mẩu công khai) mới cho riêng kết nối này.
 - `p2p-core/…/PeerConnection.java:154` (`sendEcdhPublicKey`): gửi mẩu công khai (public key). Đây là **gói duy nhất không mã hoá**. Vì UDP có thể làm mất gói, nó được gửi lại tối đa 5 lần (`HANDSHAKE_RETRY_ATTEMPTS`, dòng 84), mỗi lần cách 300 ms (dòng 86).
-- `p2p-core/…/PeerConnection.java:247, 253–256`: gói đầu tiên nhận được là mẩu công khai của bên kia; `crypto/…/KeyExchangeService.java:94` (`generateSecret`) tính bí mật chung.
+- `p2p-core/…/PeerConnection.java:247–249` (`handleIncoming`): chưa có chìa thì gói nhận được là mẩu công khai của bên kia, chuyển sang `completeHandshake` (dòng 270–274); ở đó `deriveSessionKeys` gọi `crypto/…/KeyExchangeService.java:94` (`generateSecret`) để tính bí mật chung.
 
 **Đáp ứng yêu cầu của Bước 1:**
 - **R1:** `a·(b·G) = b·(a·G)`, nên hai bên ra cùng một giá trị.
@@ -333,8 +333,8 @@ TLS (HTTPS) cũng tách chìa theo chiều như vậy (`client_write_key` / `ser
 **Về kỹ thuật:** chữ ký số ECDSA P-256 bằng khoá danh tính lâu dài. Nội dung được ký là `phòng | peerId | SHA-256(public key ECDH của mình) | SHA-256(public key ECDH của bên kia)`; người nhận kiểm tra bằng đúng các public key mà máy mình nhận được trong phiên.
 
 **Trong code:**
-- Ký: `client/…/session/P2pChatSession.java:776` (`sendIdentity`) → `client/…/session/PeerIdentityService.java:58` → `crypto/…/IdentitySignatureService.java:76` (`handshakeChallengeFor`), `:93` (`sign`).
-- Kiểm tra: `client/…/session/P2pChatSession.java:805` (`handlePeerIdentity`) → `PeerIdentityService.java:73` → `IdentitySignatureService.verify` (dòng 114). Gửi lại sau 0,4 s, 1,2 s và 2,5 s nếu mất gói.
+- Ký: `client/…/session/P2pChatSession.java:776` (`sendIdentity`) → `client/…/session/PeerIdentityService.java:52` (`createPayload`) → `crypto/…/IdentitySignatureService.java:76` (`handshakeChallengeFor`), `:93` (`sign`).
+- Kiểm tra: `client/…/session/P2pChatSession.java:805` (`handlePeerIdentity`) → `PeerIdentityService.java:66` (`verify`) → `IdentitySignatureService.verify` (dòng 114). Gửi lại sau 0,4 s, 1,2 s và 2,5 s nếu mất gói (`P2pChatSession.java:71`).
 
 **Đáp ứng yêu cầu của Bước 7b:**
 - **R1:** khoá danh tính sinh một lần cho mỗi máy, lưu ở `~/.chat-p2p-java/identity.properties` (mã hoá DPAPI trên Windows).
@@ -367,16 +367,50 @@ TLS (HTTPS) cũng tách chìa theo chiều như vậy (`client_write_key` / `ser
 
 **Trong code:**
 - Vân tay: `crypto/…/Fingerprint.java:24` (SHA-256 của khoá danh tính); mã an toàn 60 chữ số và mã QR ở `client/…/view/SafetyCode.java:24, 38, 58`; hộp thoại ở `client/…/view/FingerprintDialog.java:51`.
-- Ghi nhớ: bấm "Khớp" → `client/…/view/RoomController.java:353` → `client/…/util/TrustedPeers.java:68` (`trust`). Lần sau `TrustedPeers.status` (dòng 56) trả về `CHANGED` và `RoomController.java:329` (`warnIfKeyChanged`) hiện cảnh báo.
+- Ghi nhớ: bấm "Khớp" → `client/…/view/RoomController.java:418` → `client/…/util/TrustedPeers.java:68` (`trust`). Lần sau `TrustedPeers.status` (dòng 56) trả về `CHANGED` và `RoomController.java:394` (`warnIfKeyChanged`) hiện cảnh báo.
 
 **Đáp ứng yêu cầu của Bước 8:** R1 (kênh khác do người dùng tự chọn), R2 (mã 60 chữ số chia nhóm, hoặc quét QR), R3 (`TrustedPeers` ghi nhớ và cảnh báo "Khoá đã đổi"). Nếu người dùng chịu so vân tay, Minh bị lộ ngay lần đầu; nếu đã từng so, lần sau Minh xen vào sẽ bị cảnh báo.
+
+**→ Lỗ hổng:** cả bước này **dựa vào việc người dùng chịu gọi điện so vân tay**. Thực tế phần lớn người dùng bỏ qua.
+
+**Phân tích vấn đề:**
+- Ở lần gặp đầu, nếu An không so, chữ ký tự ký của Minh vẫn hợp lệ và giao diện vẫn hiện "Đã xác thực".
+- Nhưng với người **đã đăng nhập tài khoản**, hệ thống có sẵn một nguồn thông tin mà Bước 9 chưa dùng: lần đăng nhập đầu, tài khoản đã được **gắn với khoá danh tính của máy** người đó (xem [Co-che-dang-nhap.md](Co-che-dang-nhap.md), Bước 6).
+
+**Để giải quyết thì cần gì:**
+- **R1:** với người đăng nhập tài khoản, máy An **tự kiểm tra** khoá danh tính người kia đưa ra có đúng là khoá đã gắn với tài khoản đó không, không cần người dùng làm gì.
+- **R2:** không khớp thì **không được coi là đã xác thực**, dù chữ ký hợp lệ.
+- **R3:** khách và client cũ không có gì để đối chiếu thì vẫn chạy như trước.
+
+**→ Sinh ra Bước 9b.**
+
+---
+
+### Bước 9b — Đối chiếu khoá danh tính với khoá đã đăng ký của tài khoản
+
+**Làm gì:** câu lạc bộ có sổ hội viên, mỗi hội viên đã gửi mẫu chữ ký từ ngày đăng ký. Khi giới thiệu Bình với An, câu lạc bộ nói kèm: *"Bình là hội viên, mẫu chữ ký trong sổ là thế này."* An so chữ ký trên tờ giấy Bình gửi với mẫu trong sổ. Minh tự ký bằng chữ ký của Minh thì không khớp mẫu của Bình, An biết ngay có người mạo danh.
+
+**Về kỹ thuật:** khi báo người mới vào phòng (`PEER_LIST`, `PEER_JOINED`), server gửi kèm cờ "đã đăng nhập tài khoản" và public key danh tính đã đăng ký cho tài khoản đó. Khi nhận `PEER_IDENTITY`, client so public key trong gói với khoá đã đăng ký, theo byte. Không khớp thì cảnh báo và không đưa người đó vào trạng thái "Đã xác thực".
+
+**Trong code:**
+- Server gửi kèm: `signaling-server/…/ws/SignalingWebSocketHandler.java:414, 428` (trường `authenticated`, `identityKey` trong `common/…/signal/SignalMessage.java`).
+- Client ghi lại theo từng kết nối: `p2p-core/…/PeerConnection.java:216–217`.
+- So khoá: `client/…/session/P2pChatSession.java:792` (`matchesRegisteredKey`), gọi ở dòng 823 trong `handlePeerIdentity`, ngay sau khi chữ ký hợp lệ.
+- Kiểm thử: `client-javafx/src/test/…/session/RegisteredIdentityKeyTest.java`, `signaling-server/src/test/…/ws/PeerAccountInfoTest.java`.
+
+**Đáp ứng yêu cầu của Bước 9:**
+- **R1:** tự động, chạy ngay sau khi kiểm tra chữ ký.
+- **R2:** không khớp thì `return` trước khi ghi người đó vào danh sách đã xác thực.
+- **R3:** khách, tài khoản chưa gắn khoá, hoặc server cũ không gửi trường này thì `matchesRegisteredKey` trả `true`, giữ hành vi cũ.
+
+**Giới hạn của bước này:** mẫu chữ ký do **server** cung cấp. Nó chặn được kẻ đứng giữa trên đường mạng, nhưng nếu chính server bị chiếm thì server có thể đưa sai mẫu. Vì vậy so vân tay ở Bước 9 vẫn là cách mạnh nhất, và khách thì chỉ có cách đó.
 
 **→ Lỗ hổng:** vẫn còn hai chỗ hở.
 
 **Phân tích vấn đề thứ nhất — phát hiện được kẻ gian nhưng vẫn gửi thư cho nó:**
-- Khi chữ ký sai (Minh làm vụng), ứng dụng **chỉ hiện cảnh báo** rồi dừng xử lý; người đó **vẫn nằm trong danh sách người nhận**, nên mọi tin nhóm An gửi sau đó vẫn được mã hoá **cho Minh**. Giống bảo vệ hô lên "người này giả danh shipper!" nhưng vẫn đưa bưu kiện.
+- Khi chữ ký sai (Minh làm vụng), hoặc khoá không khớp khoá đã đăng ký (Bước 9b), ứng dụng **chỉ hiện cảnh báo** rồi dừng xử lý; người đó **vẫn nằm trong danh sách người nhận**, nên mọi tin nhóm An gửi sau đó vẫn được mã hoá **cho Minh**. Giống bảo vệ hô lên "người này giả danh shipper!" nhưng vẫn đưa bưu kiện.
 - Trong phòng công khai, người mới được **nhận vào phòng ngay khi trao khoá xong**, *trước khi* kiểm tra chữ ký. Tin gửi đúng lúc đó đi tới người chưa được kiểm tra.
-- *Trong code:* `client/…/session/P2pChatSession.java:358` (nhận vào phòng ngay khi trao khoá xong), `:342` (danh sách người nhận chỉ xét "đã vào phòng", không xét "đã xác thực"), `:797` (chữ ký sai chỉ cảnh báo rồi `return`).
+- *Trong code:* `client/…/session/P2pChatSession.java:358` (nhận vào phòng ngay khi trao khoá xong), `:344` (`admittedPeerIds`: danh sách người nhận chỉ xét "đã vào phòng", không xét "đã xác thực"), `:818` (chữ ký sai chỉ cảnh báo rồi `return`), `:828` (khoá không khớp tài khoản cũng chỉ cảnh báo rồi `return`).
 
 **Phân tích vấn đề thứ hai — một chìa dùng cả buổi:**
 - `EnvelopeCodec` được tạo **một lần** khi trao khoá xong và dùng tới khi kết nối đóng (`p2p-core/…/PeerConnection.java:274`).
@@ -400,7 +434,7 @@ Với vấn đề thứ hai:
 
 **Làm gì:** bảo vệ chung cư chỉ giao bưu kiện cho người **đã đối chiếu giấy tờ xong**. Ai đang chờ đối chiếu thì bưu kiện để tạm ở quầy. Ai bị phát hiện giấy tờ giả thì bị mời ra ngoài và không được giao gì nữa.
 
-**Trong code (dự kiến):** trong `admittedPeerIds()` và `sendDirectMessage`, chỉ gửi cho người đã có trong `verifiedRemoteFingerprints`. Ở nhánh chữ ký sai (`P2pChatSession.java:818`), xoá người đó khỏi danh sách và đóng kết nối. Tin gửi trong lúc chưa xác thực xong thì xếp hàng chờ, hoặc chưa gửi cho người đó.
+**Trong code (dự kiến):** trong `admittedPeerIds()` và `sendDirectMessage`, chỉ gửi cho người đã có trong `verifiedRemoteFingerprints`. Ở nhánh chữ ký sai (`P2pChatSession.java:818`) và nhánh khoá không khớp tài khoản (`:828`), xoá người đó khỏi danh sách và đóng kết nối. Tin gửi trong lúc chưa xác thực xong thì xếp hàng chờ, hoặc chưa gửi cho người đó.
 
 **Đáp ứng yêu cầu của Bước 9:** R1 và R2.
 
@@ -422,6 +456,7 @@ B0 gửi thẳng ──đọc / sửa / giả──► B1 chìa từ server ─�
 ──trùng nonce, phản chiếu, chìa thô──► B5 HKDF tách 2 chìa ──(chọn nonce)──► B6 số thứ tự
 ──phát lại──► B7 cửa sổ 1024 ──đẩy cửa sổ──► B7b đánh dấu sau khi giải mã
 ──kẻ đứng giữa tráo mẩu công khai──► B8 chữ ký gắn phiên ──kẻ gian tự ký──► B9 so vân tay
+──người dùng ít khi so──► B9b đối chiếu khoá đã đăng ký của tài khoản
 ──vẫn gửi cho kẻ gian / một chìa cả buổi──► B10, B11 (đề xuất)
 ```
 
@@ -434,7 +469,7 @@ B0 gửi thẳng ──đọc / sửa / giả──► B1 chìa từ server ─�
 | Phát lại tin cũ | Bước 7 | ✅ |
 | Đẩy cửa sổ chống phát lại | Bước 7b | ✅ |
 | Kẻ đứng giữa giả làm chính Bình | Bước 8 | ✅ |
-| Kẻ đứng giữa tự ký bằng khoá của mình | Bước 9 | ⚠️ Chỉ khi người dùng so vân tay |
+| Kẻ đứng giữa tự ký bằng khoá của mình | Bước 9, 9b | ⚠️ Tài khoản: tự phát hiện, trừ khi server bị chiếm. Khách: chỉ khi người dùng so vân tay |
 | Vẫn gửi tin cho người có chữ ký sai / chưa xác thực | Bước 10 | ❌ Chưa làm |
 | Một chìa dùng cả buổi | Bước 11 | ❌ Chưa làm |
 
@@ -444,7 +479,7 @@ B0 gửi thẳng ──đọc / sửa / giả──► B1 chìa từ server ─�
 
 | # | Ví dụ đời thường | Code thực hiện |
 |---|---|---|
-| 1 | An viết thư | `client/…/view/RoomController.java` → `session.sendGroupMessage` / `sendDirectMessage` (`P2pChatSession.java:196` / `:220`) |
+| 1 | An viết thư | `client/…/view/RoomController.java` → `session.sendGroupMessage` / `sendDirectMessage` (`P2pChatSession.java:196` / `:222`) |
 | 2 | Chọn người nhận | `P2pChatSession.admittedPeerIds()` (dòng 344), hoặc đúng một người với tin riêng |
 | 3 | Ghi sổ "đã gửi, chờ hồi âm" | `MessageDeliveryTracker.track` (gửi lại tối đa 6 lần, mỗi lần 500 ms nếu chưa có ACK) |
 | 4 | Bỏ thư vào phong bì có nhãn loại thư | `RoomSession.sendTo` (dòng 283) tìm đúng kết nối tới người nhận → `PeerConnection.send(type, namespace, payload)` đóng thành `Envelope(MESSAGE, namespace, ...)` |
