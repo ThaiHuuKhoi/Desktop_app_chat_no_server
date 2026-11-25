@@ -280,7 +280,7 @@ PBKDF2-HMAC-SHA256 120.000 vòng trên (tên phòng, mật khẩu) cho ra một 
 
 ### E.6.2 Thiết lập kết nối
 
-`IceP2pConnectionEstablisher` tạo ICE agent với cổng UDP trong dải **10000–11000**. Candidate gồm: địa chỉ IPv4 nội bộ có thể định tuyến (loại link-local, loopback, multicast), địa chỉ public qua STUN `stun.l.google.com:19302`, và relay qua TURN (tài khoản tạm thời từ `/turn-credentials`). ice4j làm connectivity check và chọn cặp địa chỉ. `IceConnectionStats.usingRelay()` cho biết kết nối có đi qua TURN không.
+`IceP2pConnectionEstablisher` tạo ICE agent với cổng UDP trong dải **10000–11000**. Candidate gồm: địa chỉ IPv4 nội bộ có thể định tuyến (loại link-local, loopback, multicast), *(từ 25/11)* địa chỉ **IPv6 công khai** (loại link-local `fe80::`, ULA `fc00::/7`, Teredo `2001:0::/32`, 6to4 `2002::/16`; IPv6 không có NAT nên đi thẳng dễ hơn, và ice4j cho IPv6 độ ưu tiên cao hơn IPv4), địa chỉ public qua STUN `stun.l.google.com:19302`, và relay qua TURN (tài khoản tạm thời từ `/turn-credentials`). ice4j làm connectivity check và chọn cặp địa chỉ. `IceConnectionStats.usingRelay()` cho biết kết nối có đi qua TURN không.
 
 ### E.6.3 Kênh dữ liệu `P2pDataChannel`
 
@@ -704,7 +704,7 @@ Hai laptop, mỗi máy một người, vào cùng phòng qua server thật `wss:
 - 9/9 file tới đủ và đúng SHA-256.
 - Tốc độ truyền file khớp giới hạn **32 KB mỗi vòng khứ hồi** (cửa sổ 8 mảnh × 4 KB): ~0,6 MB/s ở Wi-Fi có RTT ~52 ms, 0,1–0,3 MB/s qua TURN và 4G.
 - Chiều gửi **tới** máy dùng 4G Viettel phải gửi lại 85–108% số mảnh, lặp lại ở cả 3 lần đo. Nghi do thời gian chờ cố định 500 ms ngắn hơn độ trễ khi đường 4G chiều xuống bị nghẽn; chưa kiểm chứng.
-- Vinaphone cấp IPv6 công khai, nhưng app chỉ quảng bá IPv4 nên chưa tận dụng được.
+- Cả 4G Vinaphone (`2001:ee0:…`) lẫn 4G Viettel (`2401:d800:…`) đều cấp **IPv6 công khai** cho laptop qua điểm phát sóng iPhone, và địa chỉ server bên ngoài thấy trùng với địa chỉ trên máy (không có NAT). Lúc đo, app chỉ quảng bá IPv4 nên chưa dùng tới. *(Từ 25/11 app quảng bá cả IPv6 công khai; cần đo lại 4G ↔ 4G để xem ICE có chọn cặp IPv6 đi thẳng không.)*
 
 **Khi nào đi thẳng, khi nào phải qua TURN** (ICE luôn thử theo thứ tự: IP nội bộ → địa chỉ public qua STUN → relay qua TURN):
 
@@ -1351,6 +1351,7 @@ Mỗi vấn đề dưới đây đã được **hai lượt kiểm chứng độ
 
 | Ngày | Thay đổi |
 |---|---|
+| 2026-11-25 | Quảng bá cả địa chỉ IPv6 công khai trong ICE (trước đây chỉ IPv4), vì 4G Vinaphone và Viettel đều cấp IPv6 công khai không qua NAT (mục E.6.2, I.3). |
 | 2026-11-25 | Gửi lại tin chưa tới nơi: thử lại mỗi 5 giây khi người nhận còn trong phòng, chỉ báo "Chưa tới nơi" sau 60 giây, thêm mục "Gửi lại" ở menu tin; giảm thời gian chờ kết nối lại tối đa từ 30 s xuống 10 s (mục I.6, I.2, E.6.4). |
 | 2026-11-25 | Thêm mục "Đã lưu trên máy" ở sảnh để vào lại phòng có lịch sử đã lưu khi phòng đã biến mất khỏi server (mục I.11, E.8.6). |
 | 2026-11-25 | Kiểm thử chức năng trên hai máy thật (bảng ở F.5.3); sửa lỗi khung trích dẫn vẫn hiện nội dung tin đã xoá (mục I.6); hai hạn chế phát hiện khi tắt Wi-Fi và đã sửa cùng ngày: tin chưa tới nơi nay tự gửi lại khi người đó kết nối lại với cùng vân tay (mục I.6); server Ping mỗi 15 s để phát hiện mất kết nối trong ~35 s thay vì ~4–5 phút (mục I.13, G.3). |

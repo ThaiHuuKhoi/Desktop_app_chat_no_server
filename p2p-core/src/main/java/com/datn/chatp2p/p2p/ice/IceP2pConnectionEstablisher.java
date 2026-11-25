@@ -337,16 +337,36 @@ public final class IceP2pConnectionEstablisher {
     }
 
     /**
-     * Public candidates must be routable IPv4 addresses. Link-local, loopback,
-     * multicast, and IPv6 candidates are not useful across the Internet and can
-     * cause ICE to spend its checklist budget on unreachable virtual adapters.
+     * Dia chi duoc quang ba cho ben kia: IPv4 dinh tuyen duoc, va (tu 25/11) IPv6 <b>cong khai</b>.
+     *
+     * <p>IPv6 khong co NAT: dia chi tren may chinh la dia chi ben ngoai thay, khong doi theo diem den. Do 25/11
+     * cho thay 4G Vinaphone va 4G Viettel deu cap IPv6 cong khai cho laptop qua diem phat song, trong khi IPv4
+     * cua ca hai la NAT doi xung (bat buoc qua TURN). Truoc day bo loc bo het IPv6 nen khong bao gio thu duong
+     * IPv6. ice4j cho candidate IPv6 do uu tien cao hon, nen neu cap IPv6 thong thi ICE tu chon no.
+     *
+     * <p>Van loai: link-local ({@code fe80::/10}), loopback, multicast, dia chi noi bo ULA ({@code fc00::/7}),
+     * Teredo ({@code 2001:0::/32}) va 6to4 ({@code 2002::/16}) - hai loai sau la duong ham cu, di qua relay
+     * cong cong, khong on dinh - cung dia chi IPv4 nhung trong IPv6.
      */
-    private static boolean isAdvertisable(InetAddress address) {
-        return address instanceof java.net.Inet4Address
-                && !address.isAnyLocalAddress()
-                && !address.isLoopbackAddress()
-                && !address.isLinkLocalAddress()
-                && !address.isMulticastAddress();
+    static boolean isAdvertisable(InetAddress address) {
+        if (address == null || address.isAnyLocalAddress() || address.isLoopbackAddress()
+                || address.isLinkLocalAddress() || address.isMulticastAddress()) {
+            return false;
+        }
+        if (address instanceof java.net.Inet4Address) {
+            return true;
+        }
+        if (!(address instanceof java.net.Inet6Address) || address.isSiteLocalAddress()) {
+            return false;
+        }
+        byte[] bytes = address.getAddress();
+        int first = bytes[0] & 0xff;
+        int second = bytes[1] & 0xff;
+        boolean uniqueLocal = (first & 0xfe) == 0xfc;                                   // fc00::/7
+        boolean teredo = first == 0x20 && second == 0x01 && bytes[2] == 0 && bytes[3] == 0; // 2001:0::/32
+        boolean sixToFour = first == 0x20 && second == 0x02;                             // 2002::/16
+        boolean globalUnicast = (first & 0xe0) == 0x20;                                  // 2000::/3
+        return globalUnicast && !uniqueLocal && !teredo && !sixToFour;
     }
 
     /** Bat su kien tu Agent, chi quan tam COMPLETED (thanh cong) va FAILED (that bai han). */

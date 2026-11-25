@@ -150,7 +150,9 @@ Cả bốn file đều qua kiểm tra SHA-256.
 
 NAT của Vinaphone giống hệt kết quả đo ngày 20/11 trên cùng loại mạng: mỗi điểm đến thấy một địa chỉ public khác cả IP lẫn cổng.
 
-**Ghi chú IPv6:** Vinaphone cấp cho máy 1 hai địa chỉ **IPv6 công khai** (`2001:ee0:22c:e3c8:…`). Qua IPv6 thì không có NAT. Nhưng app hiện chỉ quảng bá địa chỉ IPv4 (bộ lọc candidate chỉ giữ IPv4), và máy 2 cũng không có IPv6, nên chưa dùng tới. Đây là một hướng phát triển: khi cả hai bên có IPv6, có thể đi thẳng mà không cần TURN.
+**Ghi chú IPv6:** cả hai máy đều có **IPv6 công khai**: máy 1 qua Vinaphone `2001:ee0:22c:e3c8:…`, máy 2 qua Viettel `2401:d800:cbd:e244:…` (kèm một địa chỉ tạm thời). Kiểm tra thêm trên máy 1: ping Google qua IPv6 thông (65–70 ms), và địa chỉ một server bên ngoài nhìn thấy **trùng với địa chỉ trên máy**, tức là **không có NAT**, khác hẳn IPv4 (`172.20.10.2` trên máy, bên ngoài thấy `113.185.x.x` thay đổi theo điểm đến). Ping thẳng từ máy 1 sang máy 2 qua IPv6 không tới, nhưng điều đó chưa kết luận được gì vì Windows mặc định chặn ping từ ngoài vào; ICE thì hai bên cùng gửi một lúc nên tường lửa mỗi bên cho gói trả lời đi vào.
+
+Lúc đo, app chỉ quảng bá địa chỉ IPv4 nên không thử đường IPv6. Một ghi nhận sai cần sửa: địa chỉ `2001:0:…` trong `ipconfig` của máy 2 là **Teredo** (đường hầm cũ của Windows), không phải IPv6 thật; IPv6 thật của máy 2 chỉ có khi dùng 4G, không có khi dùng Wi-Fi trường. **Từ tối 25/11 app quảng bá cả IPv6 công khai** (loại link-local, ULA, Teredo, 6to4) → cần đo lại trường hợp này (xem trường hợp 3b bên dưới).
 
 ### Các lần thử
 
@@ -179,6 +181,24 @@ Cả hai file đều qua kiểm tra SHA-256.
 - Không cần relay ↔ relay: chỉ cần một bên có cổng relay, bên kia gửi thẳng tới cổng đó.
 - **Thời gian ICE 918 ms**, chậm nhất trong ba trường hợp vì phải chờ nhiều cặp đi thẳng thất bại.
 - **Truyền file 0,09–0,30 MB/s.** Chiều gửi tới máy 2 tiếp tục phải gửi lại phần lớn số mảnh.
+
+---
+
+## Trường hợp 3b: 4G Vinaphone ↔ 4G Viettel, có IPv6 *(dự kiến đo tối 25/11/2026)*
+
+**Mục đích:** cùng hai mạng 4G như trường hợp 3, nhưng app đã quảng bá IPv6 công khai. Kiểm tra xem ICE có chọn được cặp **IPv6 ↔ IPv6 đi thẳng** thay cho đường TURN qua IPv4 hay không.
+
+**Dự đoán:** cặp IPv6 có độ ưu tiên cao hơn, và không có NAT, nên nếu tường lửa của nhà mạng cho gói trả lời đi vào thì ICE sẽ chọn `typ host` với địa chỉ `2001:ee0:…` ↔ `2401:d800:…`. Nếu tường lửa nhà mạng chặn hẳn chiều vào, ICE quay lại TURN như trường hợp 3.
+
+**Điều kiện:** cả hai máy chạy bản client từ tối 25/11 trở đi.
+
+| Lần | Đường được chọn | Thời gian ICE | Truyền file |
+|---|---|---|---|
+| 1 | | | |
+| 2 | | | |
+| 3 | | | |
+
+**Kết luận:** *(điền sau khi đo)*
 
 ---
 
