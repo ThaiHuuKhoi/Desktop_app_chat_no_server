@@ -184,21 +184,39 @@ Cả hai file đều qua kiểm tra SHA-256.
 
 ---
 
-## Trường hợp 3b: 4G Vinaphone ↔ 4G Viettel, có IPv6 *(dự kiến đo tối 25/11/2026)*
+## Trường hợp 3b: 4G Vinaphone ↔ 4G Viettel, có IPv6 *(đo tối 25/11/2026)*
 
 **Mục đích:** cùng hai mạng 4G như trường hợp 3, nhưng app đã quảng bá IPv6 công khai. Kiểm tra xem ICE có chọn được cặp **IPv6 ↔ IPv6 đi thẳng** thay cho đường TURN qua IPv4 hay không.
 
 **Dự đoán:** cặp IPv6 có độ ưu tiên cao hơn, và không có NAT, nên nếu tường lửa của nhà mạng cho gói trả lời đi vào thì ICE sẽ chọn `typ host` với địa chỉ `2001:ee0:…` ↔ `2401:d800:…`. Nếu tường lửa nhà mạng chặn hẳn chiều vào, ICE quay lại TURN như trường hợp 3.
 
-**Điều kiện:** cả hai máy chạy bản client từ tối 25/11 trở đi.
+**Điều kiện:** ít nhất một máy chạy bản client từ tối 25/11 trở đi (xem ghi chú lần 1).
 
-| Lần | Đường được chọn | Thời gian ICE | Truyền file |
-|---|---|---|---|
-| 1 | | | |
-| 2 | | | |
-| 3 | | | |
+| Lần | Phòng | Đường được chọn | Kiểm tra kết nối | Từ lúc vào phòng tới lúc thấy nhau | Truyền file |
+|---|---|---|---|---|---|
+| 1 | `linh-hoat-rung-8678`, máy 1 gửi OFFER | **Đi thẳng qua IPv6**: `[2001:ee0:22c:e3c8:c3cb:…]:10000` (`typ host`, máy 1) ↔ `[2401:d800:cbd:e244:ac2e:…]:10000` (`typ prflx`, máy 2) | **298 ms** từ lúc bắt đầu kiểm tra tới lúc chọn cặp; cặp IPv6 đầu tiên thông sau 118 ms; cả 4/4 cặp IPv6 đều thông | ~3,3 s, gồm thời gian ice4j khởi động lần đầu ở cả hai máy | Xem bảng truyền file |
+| 2 | | | | | |
+| 3 | | | | | |
 
-**Kết luận:** *(điền sau khi đo)*
+Log ghi `Duong truyen toi Huy: truc tiep`.
+
+### Truyền file qua IPv6 (lần 1) và so với TURN
+
+| Chiều | Dung lượng | Thời gian | Tốc độ | Mảnh phải gửi lại | Cùng chiều qua TURN (trường hợp 3) |
+|---|---|---|---|---|---|
+| Máy 1 → máy 2 | 0,54 MB, 139 mảnh | 2,25 s | **0,24 MB/s** | **0** | 0,09 MB/s, gửi lại 85% |
+| Máy 2 → máy 1 | 0,54 MB, 139 mảnh | 32,45 s | **0,02 MB/s** | không đo ở bên nhận | 0,30 MB/s |
+
+- Chiều máy 1 → máy 2 nhanh gần **gấp 3** và **không phải gửi lại mảnh nào**, trong khi qua TURN chiều này luôn phải gửi lại 85–108%. Điều này củng cố nhận định ở trường hợp 2–3: hiện tượng gửi lại nhiều đến từ **chặng đi qua TURN**, không phải từ 4G của máy 2.
+- Chiều máy 2 → máy 1 chậm vì **đường tải xuống 4G của máy 1 đang bận**: lúc đo, máy 1 đồng thời nghe nhạc trực tuyến và chơi game. Đây là điều kiện mạng phía nhận, không phải do đường IPv6 hay do app; số này **không dùng để so sánh**. Muốn có số so sánh công bằng thì đo lại khi máy 1 không dùng mạng cho việc khác.
+
+**Ghi chú lần 1:**
+- Máy 2 lúc đó **vẫn chạy bản cũ**: trong ANSWER của máy 2 không có địa chỉ IPv6 nào (bộ lọc cũ bỏ IPv6). Vẫn đi thẳng được vì máy 1 (bản mới) quảng bá IPv6 của mình; ICE bên máy 2 vẫn có sẵn địa chỉ IPv6 cục bộ nên tự ghép với IPv6 của máy 1 và gửi gói kiểm tra từ IPv6 của máy 2; máy 1 nhận gói đó thì biết thêm địa chỉ IPv6 của máy 2 dưới dạng `prflx` (peer-reflexive). Vậy **chỉ cần một bên có bản mới** là đi thẳng được qua IPv6.
+- Tường lửa của cả Vinaphone lẫn Viettel đều cho gói trả lời đi vào khi hai bên cùng gửi, dù ping một chiều trước đó không tới.
+- Cặp IPv4 vẫn được thử song song và thất bại như trường hợp 3 (NAT đối xứng); ICE tự chọn cặp IPv6 vì có độ ưu tiên cao hơn và thông trước.
+- Gói kiểm tra gửi tới `172.20.10.2` bị trả lỗi `401 unknown user`: cả hai máy cùng có IP nội bộ `172.20.10.2` (hai điểm phát sóng iPhone khác nhau), nên gói đó thực ra đi tới chính máy 1. Vô hại.
+
+**Kết luận:** *(điền sau khi đủ số lần đo)* Kết quả lần 1 đã cho thấy: **cùng hai mạng 4G, qua IPv4 bắt buộc đi vòng TURN (trường hợp 3), qua IPv6 thì đi thẳng.**
 
 ---
 
