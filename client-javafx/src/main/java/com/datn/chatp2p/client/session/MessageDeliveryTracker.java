@@ -104,8 +104,24 @@ final class MessageDeliveryTracker {
         return seen.add(messageId);
     }
 
-    /** Peer roi phong - huy moi tin nhan dang cho va quen lich su nhan. */
+    /** {@code true} neu da tung nhan {@code messageId} tu {@code peerId} (con trong cua so nho). */
+    boolean hasReceived(String peerId, String messageId) {
+        Set<String> seen = receivedByPeer.get(peerId);
+        return seen != null && seen.contains(messageId);
+    }
+
+    /** Peer bi ngat han - huy moi tin nhan dang cho va quen lich su nhan. */
     void forgetPeer(String peerId) {
+        cancelPending(peerId);
+        receivedByPeer.remove(peerId);
+    }
+
+    /**
+     * Peer roi phong (co the vao lai voi cung peerId khi app ho tu ket noi lai): chi huy cac lich gui lai
+     * dang chay, GIU so "da nhan" - neu khong, ban gui lai cua mot tin da nhan (ACK bi mat luc mat mang) se
+     * hien lan nua sau khi ho ket noi lai. So bi gioi han {@link #RECEIVED_WINDOW_SIZE} id moi peer.
+     */
+    void cancelPending(String peerId) {
         pending.entrySet().removeIf(entry -> {
             if (entry.getKey().peerId().equals(peerId)) {
                 entry.getValue().cancel(false);
@@ -113,7 +129,6 @@ final class MessageDeliveryTracker {
             }
             return false;
         });
-        receivedByPeer.remove(peerId);
     }
 
     int pendingCount() {

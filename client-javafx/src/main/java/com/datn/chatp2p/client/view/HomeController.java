@@ -5,7 +5,9 @@ import com.datn.chatp2p.client.session.AuthClient.RoomSummary;
 import com.datn.chatp2p.client.session.ChatSession;
 import com.datn.chatp2p.client.session.ChatSessions;
 import com.datn.chatp2p.client.session.RoomConfig;
+import com.datn.chatp2p.client.util.LocalHistoryStore;
 import com.datn.chatp2p.client.util.ThemeManager;
+import com.datn.chatp2p.client.util.UserSettings;
 import com.datn.chatp2p.common.log.SecretLogging;
 import com.datn.chatp2p.common.signal.JoinRejectReason;
 import javafx.application.Platform;
@@ -60,6 +62,7 @@ public class HomeController {
     @FXML private Button loginButton;
     @FXML private Button backToLoginButton;
     @FXML private Button logoutButton;
+    @FXML private Button changePasswordButton;
     @FXML private TextField userNameField;
     @FXML private VBox nameBox;
     @FXML private Button createRoomButton;
@@ -84,6 +87,10 @@ public class HomeController {
     @FXML private PasswordField previewPasswordField;
     @FXML private Button joinButton;
     @FXML private Label previewHint;
+    @FXML private VBox savedRoomsBox;
+    @FXML private Label savedSectionLabel;
+    @FXML private ListView<LocalHistoryStore.SavedRoom> savedRoomListView;
+    @FXML private Button deleteSavedButton;
 
     private String authToken;
     private List<RoomSummary> activeRooms = List.of();
@@ -93,6 +100,8 @@ public class HomeController {
     /** Phong dang xem truoc: ten, va thong tin tu danh sach (null = nhap theo ten, khong biet co mat khau khong). */
     private String previewRoomName;
     private RoomSummary previewRoom;
+    /** Phong dang xem truoc la phong trong muc "Da luu tren may" (null = khong phai). */
+    private LocalHistoryStore.SavedRoom previewSaved;
 
     @FXML
     private void initialize() {
@@ -111,7 +120,15 @@ public class HomeController {
         roomListView.setCellFactory(list -> new RoomCell());
         roomListView.getSelectionModel().selectedItemProperty().addListener((obs, old, room) -> {
             if (room != null && !joining) {
+                savedRoomListView.getSelectionModel().clearSelection();
                 showPreview(room.roomId(), room);
+            }
+        });
+        savedRoomListView.setCellFactory(list -> new SavedRoomCell(() -> activeRooms));
+        savedRoomListView.getSelectionModel().selectedItemProperty().addListener((obs, old, saved) -> {
+            if (saved != null && !joining) {
+                roomListView.getSelectionModel().clearSelection();
+                showSavedPreview(saved);
             }
         });
 
@@ -149,11 +166,14 @@ public class HomeController {
         backToLoginButton.setManaged(!accountMode);
         logoutButton.setVisible(accountMode);
         logoutButton.setManaged(accountMode);
+        changePasswordButton.setVisible(accountMode);
+        changePasswordButton.setManaged(accountMode);
         roomListView.setPlaceholder(placeholder(accountMode
                 ? "Chưa có phòng nào đang hoạt động.\nTạo phòng mới hoặc nhập tên phòng ở ô trên."
                 : "Khách không xem được danh sách phòng.\nGõ tên phòng bạn bè đã gửi ở ô trên rồi nhấn Enter."));
         sidebarHint.setVisible(accountMode);
         sidebarHint.setManaged(accountMode);
+        loadSavedRooms();
         refreshIdentity();
     }
 
@@ -259,6 +279,55 @@ public class HomeController {
         Navigator.showAuth(stage);
     }
 
+    /**
+     * Che do tai khoan: doi mat khau. Goi server tren luong nen; thanh cong thi thay token dang giu bang token
+     * moi server tra ve (token cu da bi thu hoi cung moi token khac cua tai khoan).
+     */
+    @FXML
+    private void onChangePassword() {
+        if (joining || authToken == null || authToken.isBlank()) {
+            return;
+        }
+        java.util.Optional<RoomDialogs.PasswordChange> change = RoomDialogs.showChangePassword(stage);
+        if (change.isEmpty()) {
+            return;
+        }
+        String server = serverField.getText();
+        String token = authToken;
+        changePasswordButton.setDisable(true);
+        Thread worker = new Thread(() -> {
+            try {
+                AuthClient.AuthResult result = new AuthClient().changePassword(server, token,
+                        change.get().currentPassword(), change.get().newPassword());
+                Platform.runLater(() -> {
+                    changePasswordButton.setDisable(false);
+                    if (!token.equals(authToken)) {
+                        return; // da dang xuat trong luc cho server tra loi
+                    }
+                    authToken = result.token();
+                    showAlert(javafx.scene.control.Alert.AlertType.INFORMATION, "Đã đổi mật khẩu",
+                            "Mật khẩu đã được đổi. Tài khoản đã bị đăng xuất trên mọi máy khác; máy này vẫn giữ đăng nhập.");
+                });
+            } catch (RuntimeException error) {
+                Platform.runLater(() -> {
+                    changePasswordButton.setDisable(false);
+                    showAlert(javafx.scene.control.Alert.AlertType.WARNING, "Không đổi được mật khẩu",
+                            error.getMessage());
+                });
+            }
+        }, "auth-change-password");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    private void showAlert(javafx.scene.control.Alert.AlertType type, String header, String message) {
+        javafx.scene.control.Alert alert = new javafx.scene.control.Alert(type, message);
+        alert.initOwner(stage);
+        alert.setHeaderText(header);
+        Navigator.style(alert.getDialogPane());
+        alert.show();
+    }
+
     @FXML
     private void onRefreshRooms() {
         loadRooms();
@@ -268,7 +337,9 @@ public class HomeController {
     private void onBackToWelcome() {
         previewRoomName = null;
         previewRoom = null;
+        previewSaved = null;
         roomListView.getSelectionModel().clearSelection();
+        savedRoomListView.getSelectionModel().clearSelection();
         errorLabel.setText("");
         welcomePane.setVisible(true);
         welcomePane.setManaged(true);
@@ -303,6 +374,9 @@ public class HomeController {
     private void showPreview(String roomName, RoomSummary room) {
         previewRoomName = roomName;
         previewRoom = room;
+        previewSaved = null;
+        deleteSavedButton.setVisible(false);
+        deleteSavedButton.setManaged(false);
         errorLabel.setText("");
         previewName.setText(roomName);
         boolean locked = room == null || room.passwordProtected();
@@ -331,6 +405,63 @@ public class HomeController {
                 joinButton.requestFocus();
             }
         });
+    }
+
+    /**
+     * Xem truoc 1 phong trong muc "Da luu tren may": giong phong trong danh sach (o mat khau neu co, nut Vao
+     * phong), kem so tin da luu, lan luu cuoi, phong hien co ai khong, va nut xoa lich su phong do.
+     */
+    private void showSavedPreview(LocalHistoryStore.SavedRoom saved) {
+        RoomSummary active = LobbyRules.activeMatch(saved, activeRooms);
+        // Phong khong con tren server: dung thong tin da luu (0 nguoi) de khung xem truoc biet co mat khau khong.
+        showPreview(saved.roomName(), active != null ? active
+                : new RoomSummary(saved.roomName(), 0, null, saved.passwordProtected()));
+        previewSaved = saved;
+        previewIcon.setIconLiteral("fth-archive");
+        previewMeta.setText(LobbyRules.savedRoomMeta(saved, active, java.time.ZoneId.systemDefault()));
+        previewHint.setText(LobbyRules.savedRoomHint(saved.passwordProtected(), active != null,
+                UserSettings.get().saveHistory()));
+        previewPasswordField.setPromptText("Mật khẩu đã dùng lần trước");
+        deleteSavedButton.setVisible(true);
+        deleteSavedButton.setManaged(true);
+    }
+
+    /** Nut "Xoa lich su da luu cua phong nay" o khung xem truoc phong da luu. */
+    @FXML
+    private void onDeleteSavedRoom() {
+        LocalHistoryStore.SavedRoom saved = previewSaved;
+        if (saved == null) {
+            return;
+        }
+        javafx.scene.control.Alert confirm = new javafx.scene.control.Alert(
+                javafx.scene.control.Alert.AlertType.CONFIRMATION,
+                "Xoá " + saved.messageCount() + " tin đã lưu của phòng \"" + saved.roomName()
+                        + "\" khỏi máy này? Không khôi phục lại được.",
+                javafx.scene.control.ButtonType.OK, javafx.scene.control.ButtonType.CANCEL);
+        confirm.initOwner(stage);
+        confirm.setHeaderText("Xoá lịch sử đã lưu");
+        Navigator.style(confirm.getDialogPane());
+        if (confirm.showAndWait().orElse(javafx.scene.control.ButtonType.CANCEL) != javafx.scene.control.ButtonType.OK) {
+            return;
+        }
+        LocalHistoryStore.forCurrentUser().delete(saved.roomKey());
+        LOG.info(() -> "Da xoa lich su da luu cua 1 phong");
+        onBackToWelcome();
+        loadSavedRooms();
+    }
+
+    /** Muc "Da luu tren may": chi tai khoan, chi phong luu boi dung tai khoan nay, an neu khong co phong nao. */
+    private void loadSavedRooms() {
+        if (savedRoomListView == null) {
+            return;
+        }
+        List<LocalHistoryStore.SavedRoom> saved = accountMode
+                ? LocalHistoryStore.forCurrentUser().listRooms(LobbyRules.normalizeName(userNameField.getText()))
+                : List.of();
+        savedRoomListView.getItems().setAll(saved);
+        savedSectionLabel.setText("ĐÃ LƯU TRÊN MÁY · " + saved.size());
+        savedRoomsBox.setVisible(!saved.isEmpty());
+        savedRoomsBox.setManaged(!saved.isEmpty());
     }
 
     private RoomSummary findRoom(String name) {
@@ -409,6 +540,7 @@ public class HomeController {
         createRoomButton.setDisable(joining);
         joinButton.setDisable(joining || (previewRoom != null && LobbyRules.isFull(previewRoom)));
         roomListView.setDisable(joining);
+        savedRoomListView.setDisable(joining);
         roomSearchField.setDisable(joining);
         joiningLabel.setText(joining ? "Đang vào phòng \"" + roomName + "\"…" : "");
     }
@@ -425,6 +557,7 @@ public class HomeController {
         } catch (RuntimeException error) {
             errorLabel.setText(error.getMessage());
         }
+        loadSavedRooms(); // cap nhat "dang co N nguoi" cua phong da luu theo danh sach moi
     }
 
     private void filterRooms(String query) {
@@ -461,6 +594,44 @@ public class HomeController {
         label.setWrapText(true);
         label.getStyleClass().add("lobby-placeholder");
         return label;
+    }
+
+    /** 1 dong trong muc "Da luu tren may": icon (khoa / #), ten, "N người" neu phong dang co nguoi, hoac so tin. */
+    private static final class SavedRoomCell extends ListCell<LocalHistoryStore.SavedRoom> {
+        private final java.util.function.Supplier<List<RoomSummary>> activeRooms;
+
+        SavedRoomCell(java.util.function.Supplier<List<RoomSummary>> activeRooms) {
+            this.activeRooms = activeRooms;
+            setPrefWidth(0);
+        }
+
+        @Override
+        protected void updateItem(LocalHistoryStore.SavedRoom saved, boolean empty) {
+            super.updateItem(saved, empty);
+            setText(null);
+            if (empty || saved == null) {
+                setGraphic(null);
+                return;
+            }
+            FontIcon icon = new FontIcon(saved.passwordProtected() ? Feather.LOCK : Feather.HASH);
+            icon.getStyleClass().add(saved.passwordProtected() ? "room-lock-icon" : "room-public-icon");
+            Label name = new Label(saved.roomName());
+            name.getStyleClass().add("room-list-name");
+            name.setMinWidth(0);
+            Region spacer = new Region();
+            HBox.setHgrow(spacer, Priority.ALWAYS);
+            RoomSummary active = LobbyRules.activeMatch(saved, activeRooms.get());
+            Label info = new Label(active != null
+                    ? active.peerCount() + "/" + LobbyRules.MAX_PEERS_PER_ROOM
+                    : saved.messageCount() + " tin");
+            info.getStyleClass().add("room-list-count");
+            setTooltip(new javafx.scene.control.Tooltip(active != null
+                    ? "Phòng đang có người · " + saved.messageCount() + " tin đã lưu"
+                    : "Phòng hiện không có ai · " + saved.messageCount() + " tin đã lưu"));
+            HBox row = new HBox(10, icon, name, spacer, info);
+            row.setAlignment(Pos.CENTER_LEFT);
+            setGraphic(row);
+        }
     }
 
     /** 1 dong trong danh sach phong: icon (khoa / #), ten, so nguoi hoac "Đầy". Chon -&gt; xem truoc. */

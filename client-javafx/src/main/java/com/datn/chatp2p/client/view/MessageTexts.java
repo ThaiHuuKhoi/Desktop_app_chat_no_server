@@ -22,6 +22,25 @@ final class MessageTexts {
         return oneLine.length() <= SNIPPET_LENGTH ? oneLine : oneLine.substring(0, SNIPPET_LENGTH) + "…";
     }
 
+    /** Tin gốc đã bị xoá: không hiện lại nội dung trong khung trích dẫn. */
+    static final String DELETED_QUOTE = "Tin nhắn đã bị xoá";
+    static final String MISSING_QUOTE = "(tin nhắn không còn trong phiên này)";
+
+    /**
+     * Chu hien trong khung trich dan cua tin tra loi. Xoa tin chi danh dau "da xoa", noi dung goc van con
+     * trong bo nho (RoomController.applyEdit) - truoc day khung trich dan doc thang noi dung goc nen tin da
+     * xoa van hien lai o day.
+     *
+     * @param originalText    noi dung tin goc, null neu tin goc khong con trong phien
+     * @param originalDeleted tin goc da bi tac gia xoa
+     */
+    static String quoteSnippet(String originalText, boolean originalDeleted) {
+        if (originalText == null) {
+            return MISSING_QUOTE;
+        }
+        return originalDeleted ? DELETED_QUOTE : snippet(originalText);
+    }
+
     /**
      * Emoji de hien tren JavaFX: bo ky tu bien the U+FE0F (JavaFX tren Windows ve no thanh o vuong,
      * vd "❤️" -&gt; "❤▯"). Chi dung khi hien thi - du lieu gui qua mang giu nguyen.

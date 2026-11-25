@@ -6,11 +6,14 @@ import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
@@ -26,9 +29,23 @@ public class AuthService {
     private final JdbcTemplate jdbc;
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
     private final SecureRandom random = new SecureRandom();
+    private final LoginThrottle throttle;
+    /**
+     * Dau van BCrypt cua 1 mat khau khong ai dung. Ten tai khoan khong ton tai van chay BCrypt voi dau van
+     * nay de thoi gian tra loi giong het tai khoan co that - truoc day tra loi ngay, do thoi gian la biet
+     * ten nao co that.
+     */
+    private final String dummyPasswordHash;
 
+    @Autowired
     public AuthService(JdbcTemplate jdbc) {
+        this(jdbc, Clock.systemUTC());
+    }
+
+    AuthService(JdbcTemplate jdbc, Clock clock) {
         this.jdbc = jdbc;
+        this.throttle = new LoginThrottle(clock);
+        this.dummyPasswordHash = passwordEncoder.encode("dummy-" + new SecureRandom().nextLong());
         if (SecretLogging.enabled()) {
             log.warn(SecretLogging.WARNING_BANNER);
         }
@@ -42,7 +59,7 @@ public class AuthService {
             jdbc.update(connection -> {
                 var statement = connection.prepareStatement(
                         "INSERT INTO users (username, password_hash, public_key) VALUES (?, ?, ?)",
-                        java.sql.Statement.RETURN_GENERATED_KEYS);
+                        new String[] {"id"}); // chi xin cot id (H2 tra ca created_at neu dung RETURN_GENERATED_KEYS)
                 statement.setString(1, username);
                 statement.setString(2, passwordEncoder.encode(password));
                 statement.setString(3, publicKey);
@@ -70,11 +87,19 @@ public class AuthService {
                         rs.getString("password_hash"), rs.getString("public_key"))
                         : null,
                 username);
-        if (user == null || !passwordEncoder.matches(password, user.passwordHash)) {
-            log.warn("Dang nhap that bai cho '{}': {}", username,
-                    user == null ? "tai khoan khong ton tai" : "sai mat khau");
+        String candidate = password == null ? "" : password;
+        if (user == null) {
+            passwordEncoder.matches(candidate, dummyPasswordHash); // giu thoi gian tra loi nhu tai khoan co that
+            log.warn("Dang nhap that bai cho '{}': tai khoan khong ton tai", username);
             throw new AuthException("Tên tài khoản hoặc mật khẩu không đúng");
         }
+        requireNotLocked(user.id, username);
+        if (!passwordEncoder.matches(candidate, user.passwordHash)) {
+            throttle.recordFailure(user.id);
+            log.warn("Dang nhap that bai cho '{}': sai mat khau", username);
+            throw new AuthException("Tên tài khoản hoặc mật khẩu không đúng");
+        }
+        throttle.recordSuccess(user.id);
         if (publicKey != null && !publicKey.isBlank()) {
             if (user.publicKey != null && !MessageDigest.isEqual(
                     user.publicKey.getBytes(StandardCharsets.UTF_8),
@@ -91,14 +116,58 @@ public class AuthService {
         // ma khong bao gio xoa (moi lan dang nhap them 1 dong).
         jdbc.update("DELETE FROM sessions WHERE user_id = ? AND (revoked_at IS NOT NULL OR expires_at <= CURRENT_TIMESTAMP)",
                 user.id);
-        String token = newToken();
-        jdbc.update("INSERT INTO sessions (user_id, token_hash, expires_at) VALUES (?, ?, ?)",
-                user.id, hash(token), java.sql.Timestamp.from(Instant.now().plus(SESSION_LIFETIME)));
+        SessionResult result = issueSession(new AuthUser(user.id, user.username,
+                user.publicKey == null ? publicKey : user.publicKey));
         log.info("Dang nhap thanh cong '{}', cap token phien {} gio, token={}", username,
-                SESSION_LIFETIME.toHours(), SecretLogging.reveal(token));
-        return new SessionResult(token, new AuthUser(user.id, user.username,
-                user.publicKey == null ? publicKey : user.publicKey),
-                Instant.now().plus(SESSION_LIFETIME));
+                SESSION_LIFETIME.toHours(), SecretLogging.reveal(result.token()));
+        return result;
+    }
+
+    /**
+     * Doi mat khau: phai dang co phien hop le VA nhap dung mat khau hien tai (lay duoc ve thoi chua du -
+     * ve bi lo khong duoc dung de chiem han tai khoan). Thanh cong thi thu hoi MOI ve cua tai khoan -
+     * moi may khac, ke ca ke da lay duoc ve, deu bi dang xuat - roi cap ve moi cho may dang doi.
+     * Nhap sai mat khau hien tai tinh vao cung bo dem {@link LoginThrottle} voi dang nhap.
+     */
+    @Transactional
+    public SessionResult changePassword(String token, String currentPassword, String newPassword) {
+        AuthUser user = authenticate(token)
+                .orElseThrow(() -> new AuthException("Phiên đăng nhập đã hết hạn, hãy đăng nhập lại"));
+        validatePassword(newPassword);
+        requireNotLocked(user.id(), user.username());
+        String storedHash = jdbc.queryForObject("SELECT password_hash FROM users WHERE id = ?", String.class, user.id());
+        if (!passwordEncoder.matches(currentPassword == null ? "" : currentPassword, storedHash)) {
+            throttle.recordFailure(user.id());
+            log.warn("Doi mat khau that bai cho '{}': sai mat khau hien tai", user.username());
+            throw new AuthException("Mật khẩu hiện tại không đúng");
+        }
+        throttle.recordSuccess(user.id());
+        if (newPassword.equals(currentPassword)) {
+            throw new AuthException("Mật khẩu mới phải khác mật khẩu hiện tại");
+        }
+        jdbc.update("UPDATE users SET password_hash = ? WHERE id = ?", passwordEncoder.encode(newPassword), user.id());
+        int revoked = jdbc.update(
+                "UPDATE sessions SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL", user.id());
+        SessionResult result = issueSession(user);
+        log.info("Doi mat khau thanh cong '{}': thu hoi {} token cu, cap token moi={}", user.username(), revoked,
+                SecretLogging.reveal(result.token()));
+        return result;
+    }
+
+    private void requireNotLocked(long userId, String username) {
+        Duration lock = throttle.remainingLock(userId);
+        if (!lock.isZero()) {
+            log.warn("Tu choi dang nhap '{}': tai khoan dang bi khoa tam them {} giay", username, lock.toSeconds());
+            throw new AuthLockedException(lock);
+        }
+    }
+
+    private SessionResult issueSession(AuthUser user) {
+        String token = newToken();
+        Instant expiresAt = Instant.now().plus(SESSION_LIFETIME);
+        jdbc.update("INSERT INTO sessions (user_id, token_hash, expires_at) VALUES (?, ?, ?)",
+                user.id(), hash(token), java.sql.Timestamp.from(expiresAt));
+        return new SessionResult(token, user, expiresAt);
     }
 
     public void logout(String token) {
@@ -143,6 +212,10 @@ public class AuthService {
         if (username == null || !username.matches("[A-Za-z0-9_]{3,64}")) {
             throw new AuthException("Tên tài khoản phải dài 3-64 ký tự, chỉ gồm chữ, số và _");
         }
+        validatePassword(password);
+    }
+
+    private static void validatePassword(String password) {
         if (password == null || password.length() < 8 || password.length() > 200) {
             throw new AuthException("Mật khẩu phải dài từ 8 đến 200 ký tự");
         }

@@ -25,6 +25,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -174,7 +175,10 @@ final class FileTransferManager implements AutoCloseable {
             out.sender = new ReliableChunkSender(source,
                     // namespace chi gan vao OFFER de ben nhan biet hien the o tab Nhom hay DM
                     sentOffer -> transport.send(peerId, EnvelopeType.FILE_OFFER, namespace(direct), sentOffer),
-                    chunk -> transport.send(peerId, EnvelopeType.FILE_CHUNK, null, chunk),
+                    chunk -> {
+                        out.chunksSent.incrementAndGet(); // dem ca lan gui lai - de log so manh gui lai
+                        transport.send(peerId, EnvelopeType.FILE_CHUNK, null, chunk);
+                    },
                     new SenderListener(out), executor, senderConfig);
         } catch (RuntimeException e) {
             source.close();
@@ -198,6 +202,7 @@ final class FileTransferManager implements AutoCloseable {
             if (out.status.state() == State.WAITING_ANSWER) {
                 if (answer.accepted()) {
                     out.status = out.status.with(State.IN_PROGRESS, 0, out.status.savedFile(), null);
+                    out.transferStartedNanos = System.nanoTime(); // khong tinh thoi gian nguoi nhan suy nghi
                     accepted = out.status;
                 } else {
                     out.rejected = true;
@@ -291,6 +296,11 @@ final class FileTransferManager implements AutoCloseable {
         outgoing.remove(status.fileId(), out);
         out.sender.cancel(); // khong goi listener; khong lam gi neu sender da ket thuc
         out.source.close();
+        if (state == State.COMPLETED && out.transferStartedNanos != 0) {
+            int totalChunks = out.source.offer().totalChunks();
+            LOG.info(transferSummary("Gui file xong toi", out.peerId, status, totalChunks,
+                    out.transferStartedNanos, Math.max(0, out.chunksSent.get() - totalChunks)));
+        }
         if (notifyPeer) {
             trySend(out.peerId, EnvelopeType.FILE_CANCEL, null, new FileCancelPayload(status.fileId(), reason));
         }
@@ -382,6 +392,7 @@ final class FileTransferManager implements AutoCloseable {
             try {
                 in.receiver = FileReceiver.accept(in.offer, directory, limits);
                 in.lastChunkAt = System.currentTimeMillis();
+                in.transferStartedNanos = System.nanoTime();
                 completeNow = in.receiver.isComplete(); // file rong: khong co chunk nao
                 in.status = in.status.with(completeNow ? State.VERIFYING : State.IN_PROGRESS, 0, null, null);
                 answer = new FileAnswerPayload(fileId, true, null);
@@ -567,6 +578,8 @@ final class FileTransferManager implements AutoCloseable {
             remember(fileId, new ClosedIncoming(in.peerId, in.answer, finalAck, null));
             incoming.remove(fileId, in);
             trySend(in.peerId, EnvelopeType.FILE_ACK, null, finalAck);
+            LOG.info(transferSummary("Nhan file xong tu", in.peerId, status, in.offer.totalChunks(),
+                    in.transferStartedNanos, -1));
         } else {
             remember(fileId, new ClosedIncoming(in.peerId, in.answer, null, status.reason()));
             incoming.remove(fileId, in);
@@ -746,6 +759,26 @@ final class FileTransferManager implements AutoCloseable {
         }
     }
 
+    /**
+     * 1 dong log khi truyen file xong - so lieu cho do hieu nang (docs/Ket-qua-do-xuyen-NAT.md). KHONG ghi ten
+     * file (co the la thong tin rieng tu), chi ghi fileId rut gon, dung luong, so manh, thoi gian, toc do.
+     * Ben gui tinh tu luc nhan FILE_ANSWER chap nhan toi ACK cuoi (da kiem SHA-256); ben nhan tinh tu luc bam
+     * "Nhan" toi luc kiem SHA-256 xong. {@code retransmittedChunks} = -1 neu khong biet (ben nhan).
+     */
+    static String transferSummary(String action, String peerId, FileTransferStatus status, int totalChunks,
+                                  long startedNanos, int retransmittedChunks) {
+        double seconds = Math.max(1, System.nanoTime() - startedNanos) / 1_000_000_000.0;
+        double megabytes = status.fileSize() / (1024.0 * 1024.0);
+        return String.format(Locale.ROOT, "%s %s: %.2f MB, %d manh, %.2f s, %.2f MB/s%s (fileId=%s)",
+                action, shortId(peerId), megabytes, totalChunks, seconds, megabytes / seconds,
+                retransmittedChunks < 0 ? "" : ", gui lai " + retransmittedChunks + " manh",
+                shortId(status.fileId()));
+    }
+
+    private static String shortId(String id) {
+        return id == null ? "?" : id.substring(0, Math.min(8, id.length()));
+    }
+
     private static String namespace(boolean direct) {
         return direct ? EnvelopeNamespace.DIRECT_MESSAGE : EnvelopeNamespace.GROUP;
     }
@@ -765,6 +798,10 @@ final class FileTransferManager implements AutoCloseable {
         boolean rejected;
         boolean cancelledByPeer;
         long lastEmitAt;
+        /** System.nanoTime() luc ben kia chap nhan; 0 = chua bat dau. */
+        long transferStartedNanos;
+        /** So lan gui FILE_CHUNK, ke ca gui lai. */
+        final java.util.concurrent.atomic.AtomicInteger chunksSent = new java.util.concurrent.atomic.AtomicInteger();
 
         Outgoing(String peerId, FileSender source, FileTransferStatus status) {
             this.peerId = peerId;
@@ -784,6 +821,8 @@ final class FileTransferManager implements AutoCloseable {
         long lastChunkAt;
         long lastEmitAt;
         int chunksSinceAck;
+        /** System.nanoTime() luc nguoi dung bam "Nhan". */
+        long transferStartedNanos;
 
         Incoming(String peerId, FileOfferPayload offer, FileTransferStatus status) {
             this.peerId = peerId;

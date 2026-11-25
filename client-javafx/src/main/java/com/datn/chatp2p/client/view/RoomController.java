@@ -1058,7 +1058,11 @@ public class RoomController implements ChatSessionListener {
             }
         }
         if (!toSave.isEmpty()) {
-            LocalHistoryStore.forCurrentUser().save(key, toSave);
+            // Kem ten phong / co mat khau / tai khoan (ben trong file ma hoa, khong kem mat khau) de sanh hien
+            // muc "Phong da luu" - phong bien mat khoi server khi het nguoi, nguoi dung khong phai nho ten.
+            boolean account = config.authToken() != null && !config.authToken().isBlank();
+            LocalHistoryStore.forCurrentUser().save(key, config.roomName(), config.isPasswordProtected(),
+                    account ? config.userName() : "", toSave);
         }
     }
 

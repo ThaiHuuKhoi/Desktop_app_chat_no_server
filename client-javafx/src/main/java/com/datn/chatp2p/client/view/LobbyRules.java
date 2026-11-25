@@ -2,6 +2,7 @@ package com.datn.chatp2p.client.view;
 
 import com.datn.chatp2p.client.session.AuthClient.RoomSummary;
 import com.datn.chatp2p.client.session.RoomConfig;
+import com.datn.chatp2p.client.util.LocalHistoryStore;
 import com.datn.chatp2p.common.signal.JoinRejectReason;
 
 import java.util.List;
@@ -94,6 +95,42 @@ final class LobbyRules {
         }
         text.append(room.passwordProtected() ? " · có mật khẩu" : " · công khai");
         return text.toString();
+    }
+
+    private static final java.time.format.DateTimeFormatter SAVED_AT_FORMAT =
+            java.time.format.DateTimeFormatter.ofPattern("HH:mm dd/MM/yyyy");
+
+    /** Phong dang hoat dong trung voi phong da luu (cung ten, cung loai co / khong mat khau), hoac null. */
+    static RoomSummary activeMatch(LocalHistoryStore.SavedRoom saved, List<RoomSummary> activeRooms) {
+        return activeRooms.stream()
+                .filter(room -> room.roomId().equals(saved.roomName())
+                        && room.passwordProtected() == saved.passwordProtected())
+                .findFirst().orElse(null);
+    }
+
+    /** Dong mo ta duoi ten phong khi xem truoc 1 phong da luu. {@code active} null = phong hien khong co ai. */
+    static String savedRoomMeta(LocalHistoryStore.SavedRoom saved, RoomSummary active, java.time.ZoneId zone) {
+        String when = SAVED_AT_FORMAT.format(java.time.Instant.ofEpochMilli(saved.savedAt()).atZone(zone));
+        return "Đã lưu " + saved.messageCount() + " tin · lần cuối " + when
+                + (saved.passwordProtected() ? " · có mật khẩu" : " · công khai")
+                + (active == null
+                        ? " · hiện không có ai trong phòng"
+                        : " · đang có " + active.peerCount() + "/" + MAX_PEERS_PER_ROOM + " người");
+    }
+
+    /** Goi y duoi nut "Vao phong" khi xem truoc 1 phong da luu. */
+    static String savedRoomHint(boolean passwordProtected, boolean roomActive, boolean saveHistoryEnabled) {
+        StringBuilder hint = new StringBuilder(passwordProtected
+                ? "Nhập đúng mật khẩu đã dùng lần trước để vào lại và hiện lại tin đã lưu. Mật khẩu không được lưu trên máy."
+                : "Bấm Vào phòng để vào lại; tin đã lưu sẽ hiện lại.");
+        if (!roomActive) {
+            hint.append(" Phòng hiện không có ai: vào phòng sẽ mở lại phòng, bạn bè vào cùng tên")
+                    .append(passwordProtected ? " và mật khẩu" : "").append(" là gặp lại nhau.");
+        }
+        if (!saveHistoryEnabled) {
+            hint.append(" Lưu ý: tuỳ chọn lưu lịch sử đang tắt trong Cài đặt, nên vào phòng sẽ không hiện lại tin đã lưu.");
+        }
+        return hint.toString();
     }
 
     /** Goi y duoi nut "Vao phong" khi xem truoc. {@code room == null}: phong nhap theo ten. */

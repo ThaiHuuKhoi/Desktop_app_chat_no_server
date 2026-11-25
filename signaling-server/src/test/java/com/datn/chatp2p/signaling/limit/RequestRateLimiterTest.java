@@ -77,4 +77,16 @@ class RequestRateLimiterTest {
         assertFalse(limiter.tryAcquire(RequestRateLimiter.networkKey("2001:db8::3")),
                 "Xoay vong dia chi trong cung /64 khong duoc nhan han muc");
     }
+
+    @Test
+    void wideKeyGroupsIpv6By48AndIgnoresIpv4() {
+        assertEquals("v6:20010db80001/48", RequestRateLimiter.wideNetworkKey("2001:db8:1:2::1"));
+        assertEquals(RequestRateLimiter.wideNetworkKey("2001:db8:1:2::1"),
+                RequestRateLimiter.wideNetworkKey("2001:db8:1:ffff::1"), "Moi /64 trong cung /48 chung 1 khoa rong");
+        assertFalse(RequestRateLimiter.wideNetworkKey("2001:db8:1::1")
+                .equals(RequestRateLimiter.wideNetworkKey("2001:db8:2::1")));
+        assertEquals(null, RequestRateLimiter.wideNetworkKey("1.2.3.4"), "IPv4 khong co tang rong");
+        assertEquals(null, RequestRateLimiter.wideNetworkKey(null));
+        assertEquals("v6:20010db800010002/64", RequestRateLimiter.networkKey("2001:db8:1:2::1"), "Khoa /64 giu nguyen");
+    }
 }

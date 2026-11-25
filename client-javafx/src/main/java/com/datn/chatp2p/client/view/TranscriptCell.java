@@ -405,7 +405,8 @@ class TranscriptCell extends ListCell<TranscriptEntry> {
         }
         ChatMessage original = messageContext.findMessage(message.getReplyToId());
         String author = original == null ? "" : displayNameResolver.apply(original.getAuthorId());
-        String snippet = original == null ? "(tin nhắn không còn trong phiên này)" : MessageTexts.snippet(original.getText());
+        String snippet = MessageTexts.quoteSnippet(original == null ? null : original.getText(),
+                original != null && messageContext.isDeleted(original));
         Label who = new Label(author.isEmpty() ? "Trả lời" : "Trả lời " + author, new FontIcon(Feather.CORNER_UP_LEFT));
         who.getStyleClass().add("reply-quote-author");
         Label text = new Label(snippet);

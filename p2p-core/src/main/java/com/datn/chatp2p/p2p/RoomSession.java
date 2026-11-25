@@ -89,6 +89,13 @@ public final class RoomSession {
      * peer khac gui (server da xoa cac truong nay khi chuyen tiep).
      */
     private final Map<String, SignalMessage.PeerInfo> announcedPeers = new ConcurrentHashMap<>();
+    /**
+     * Peer da bi tang tren chu dong ngat ({@link #disconnectPeer}) - vd khong co bang chung mat khau phong,
+     * hoac chu ky danh tinh sai. Giu trong SUOT phien (khong xoa khi PEER_LEFT): neu khong, peer do chi can
+     * gui lai OFFER (hoac signaling bi chiem gui OFFER mang peerId cua ho) la mo duoc duong moi. Kich thuoc
+     * bi chan boi so nguoi tung bi ngat trong 1 phien, rat nho.
+     */
+    private final java.util.Set<String> blockedPeers = ConcurrentHashMap.newKeySet();
 
     private final Map<EnvelopeType, List<BiConsumer<String, Envelope>>> envelopeHandlers =
             new EnumMap<>(EnvelopeType.class);
@@ -236,6 +243,50 @@ public final class RoomSession {
         signalingClient.disconnect();
     }
 
+    /**
+     * Ngat HAN ket noi voi {@code peerId} va chan peer nay trong suot phien: dong {@link PeerConnection},
+     * giai phong Agent ICE (cong UDP), huy phien ICE dang cho, va tu nay bo qua moi OFFER / PEER_LIST /
+     * ICE hoan tat tre lien quan toi peerId nay. KHONG goi {@link #onPeerLeft} - lop goi tu biet minh vua
+     * ngat ai va tu don trang thai cua no. Peer van con trong phong tren server (server khong biet mat khau
+     * phong), chi la khong con duong P2P nao toi minh.
+     */
+    public void disconnectPeer(String peerId) {
+        if (peerId == null) {
+            return;
+        }
+        blockedPeers.add(peerId);
+        LOG.info(() -> "Ngat va chan peer=" + peerId + " trong phien nay");
+        IceP2pConnectionEstablisher pending = pendingEstablishers.remove(peerId);
+        if (pending != null) {
+            disposeQuietly(pending);
+        }
+        PeerConnection connection = peers.remove(peerId);
+        if (connection != null) {
+            try {
+                connection.close();
+            } catch (RuntimeException e) {
+                // Van phai giai phong establisher ben duoi.
+            }
+        }
+        IceP2pConnectionEstablisher established = connectedEstablishers.remove(peerId);
+        if (established != null) {
+            disposeQuietly(established);
+        }
+    }
+
+    /** {@code true} neu {@code peerId} da bi {@link #disconnectPeer} trong phien nay. */
+    public boolean isBlocked(String peerId) {
+        return peerId != null && blockedPeers.contains(peerId);
+    }
+
+    private static void disposeQuietly(IceP2pConnectionEstablisher establisher) {
+        try {
+            establisher.dispose();
+        } catch (RuntimeException e) {
+            // Giai phong 1 establisher loi khong duoc lam hong viec ngat ket noi.
+        }
+    }
+
     /** Goi khi 1 peer moi da hoan tat CA ICE lan trao khoa ECDH - {@code connection.send(...)} dung duoc ngay. */
     public void onPeerJoined(Consumer<PeerConnection> handler) {
         this.onPeerJoinedHandler = handler;
@@ -331,6 +382,11 @@ public final class RoomSession {
             if (info.getPeerId() != null) {
                 announcedPeers.put(info.getPeerId(), info);
             }
+            if (isBlocked(info.getPeerId())) {
+                // PEER_LIST lai den sau khi signaling tu ket noi lai va gui lai JOIN.
+                LOG.info(() -> "Bo qua peer da bi chan trong PEER_LIST: " + info.getPeerId());
+                continue;
+            }
             try {
                 connectAsOfferer(info.getPeerId(), info.getUserName());
             } catch (RuntimeException e) {
@@ -419,6 +475,10 @@ public final class RoomSession {
 
     private void handleOffer(SignalMessage message) {
         String peerId = message.getFromPeerId();
+        if (isBlocked(peerId)) {
+            LOG.warning("ICE signaling: bo qua OFFER tu peer da bi chan=" + peerId);
+            return;
+        }
         try {
             var offer = fromJson(message.getPayload(), IceOfferPayload.class);
             LOG.info(() -> "ICE signaling: OFFER received from peer=" + peerId
@@ -501,6 +561,12 @@ public final class RoomSession {
             establisher.dispose();
             return;
         }
+        if (isBlocked(peerId)) {
+            // ICE cua peer vua bi ngat hoan tat tre - khong duoc mo lai duong.
+            channel.close();
+            establisher.dispose();
+            return;
+        }
 
         KeyPair ecdhKeyPair = KeyExchangeService.generateKeyPair();
         PeerConnection connection = new PeerConnection(
@@ -538,6 +604,11 @@ public final class RoomSession {
         IceP2pConnectionEstablisher previousEstablisher = connectedEstablishers.put(peerId, establisher);
         if (previousEstablisher != null) {
             previousEstablisher.dispose();
+        }
+        if (isBlocked(peerId)) {
+            // disconnectPeer() chay xen giua luc kiem tra o tren va luc put() - dong lai ngay.
+            disconnectPeer(peerId);
+            return;
         }
         if (previous != null) {
             // BAO MAT: ket noi moi duoi CUNG peerId la 1 phien ECDH MOI, chua chung minh gi ca. Tang tren

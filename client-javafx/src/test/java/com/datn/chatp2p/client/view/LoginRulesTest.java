@@ -30,4 +30,14 @@ class LoginRulesTest {
         assertEquals("Mật khẩu nhập lại không khớp.", LoginRules.validateRegistration("khoi", "matkhau123", "matkhau124"));
         assertNull(LoginRules.validateRegistration("khoi", "matkhau123", "matkhau123"));
     }
+
+    @Test
+    void passwordChangeNeedsCurrentLengthDifferenceAndConfirmation() {
+        assertEquals("Vui lòng nhập mật khẩu hiện tại.", LoginRules.validatePasswordChange("", "matkhau123", "matkhau123"));
+        assertEquals("Mật khẩu mới cần ít nhất 8 ký tự.", LoginRules.validatePasswordChange("cu-123456", "ngan", "ngan"));
+        assertEquals("Mật khẩu mới phải khác mật khẩu hiện tại.",
+                LoginRules.validatePasswordChange("matkhau123", "matkhau123", "matkhau123"));
+        assertEquals("Mật khẩu nhập lại không khớp.", LoginRules.validatePasswordChange("cu-123456", "matkhau123", "matkhau124"));
+        assertNull(LoginRules.validatePasswordChange("cu-123456", "matkhau123", "matkhau123"));
+    }
 }

@@ -48,6 +48,24 @@ public final class AuthClient {
         }
     }
 
+    /**
+     * Doi mat khau tai khoan ({@code POST /auth/change-password}). Server thu hoi moi token cu cua tai khoan
+     * (moi may khac bi dang xuat) va tra token moi cho may nay - nguoi goi phai thay token dang giu.
+     */
+    public AuthResult changePassword(String serverUri, String token, String currentPassword, String newPassword) {
+        LOG.info(() -> "Doi mat khau qua " + httpBase(serverUri) + ", mat khau cu=" + SecretLogging.reveal(currentPassword)
+                + ", mat khau moi=" + SecretLogging.reveal(newPassword));
+        try {
+            AuthResult result = post(serverUri, "/auth/change-password", token,
+                    new PasswordChange(currentPassword, newPassword), AuthResult.class);
+            LOG.info(() -> "Doi mat khau thanh cong, token moi=" + SecretLogging.reveal(result.token()));
+            return result;
+        } catch (RuntimeException e) {
+            LOG.warning(() -> "Doi mat khau that bai: " + e.getMessage());
+            throw e;
+        }
+    }
+
     public void logout(String serverUri, String token) {
         try {
             HttpRequest request = HttpRequest.newBuilder(URI.create(httpBase(serverUri) + "/auth/logout"))
@@ -127,12 +145,19 @@ public final class AuthClient {
     }
 
     private <T> T post(String serverUri, String path, Object body, Class<T> responseType) {
+        return post(serverUri, path, null, body, responseType);
+    }
+
+    private <T> T post(String serverUri, String path, String bearerToken, Object body, Class<T> responseType) {
         try {
-            HttpRequest request = HttpRequest.newBuilder(URI.create(httpBase(serverUri) + path))
+            HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(httpBase(serverUri) + path))
                     .timeout(Duration.ofSeconds(10))
                     .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(JSON.writeValueAsString(body)))
-                    .build();
+                    .POST(HttpRequest.BodyPublishers.ofString(JSON.writeValueAsString(body)));
+            if (bearerToken != null) {
+                builder.header("Authorization", "Bearer " + bearerToken);
+            }
+            HttpRequest request = builder.build();
             HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() / 100 != 2) {
                 ErrorResponse error = JSON.readValue(response.body(), ErrorResponse.class);
@@ -155,6 +180,8 @@ public final class AuthClient {
     }
 
     private record Credentials(String username, String password, String publicKey) {
+    }
+    private record PasswordChange(String currentPassword, String newPassword) {
     }
     public record AuthResult(String token, String username, String expiresAt) {
     }

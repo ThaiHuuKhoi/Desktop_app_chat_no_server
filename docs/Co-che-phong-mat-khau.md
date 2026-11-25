@@ -126,8 +126,13 @@ Nhân vật:
 **Làm gì:**
 - Sau khi An và người mới làm xong chìa chung, mỗi bên viết một tờ giấy: "Tôi là người này, phần nguyên liệu tôi gửi đi có số hiệu thế này, phần tôi nhận được có số hiệu thế kia". Rồi mỗi bên đóng lên tờ giấy một dấu được tạo từ mật khẩu nhóm.
 - Chỉ ai biết mật khẩu mới đóng được dấu đó. Bên nhận cũng tự đóng thử một dấu với nội dung mình đang thấy để so, nên không cần ai nói ra mật khẩu.
-- Dấu không khớp thì không cho người mới vào nhóm. Trước khi có dấu hợp lệ, mọi thư của người mới đều bị bỏ qua.
+- Trước khi có dấu hợp lệ, người mới không hiện trong danh sách và mọi thư của họ đều bị bỏ qua.
 - Minh được bưu điện đưa vào phòng cũng không đóng được dấu, vì không biết mật khẩu. Minh chép được tờ giấy của Bình cũng vô ích, vì số hiệu nguyên liệu trên đó là của buổi trao chìa giữa Bình và An, không khớp với buổi giữa Minh và An.
+- Chỉ bỏ qua thư thì chưa đủ: đường liên lạc với Minh vẫn mở, Minh vẫn ngồi đó chiếm chỗ. Vì vậy An **mời Minh ra hẳn**:
+  - Minh đưa dấu sai thì An cắt đường liên lạc với Minh ngay.
+  - Minh ngồi im không đưa dấu thì An chờ mười giây rồi cũng cắt. Người biết mật khẩu thật đưa dấu ngay từ đầu, còn gửi lại vài lần cho chắc, nên mười giây là quá đủ cho họ.
+  - Cắt xong, An ghi Minh vào sổ đen cho tới khi An rời phòng. Minh có nhờ bưu điện nối lại bao nhiêu lần, An cũng không nhận.
+  - Mỗi lần mời ai ra, máy An hiện lý do để An biết chuyện gì vừa xảy ra.
 
 **Về kỹ thuật:**
 - Bằng chứng là HMAC-SHA256 tính bằng khoá con thứ hai ở Bước 1, trên nội dung:
@@ -142,17 +147,21 @@ Nhân vật:
 
 **Trong code:**
 - Tính và kiểm tra bằng chứng: [RoomSecret.java:77-90](../crypto/src/main/java/com/datn/chatp2p/crypto/RoomSecret.java#L77-L90).
-- Phòng công khai thì cho vào ngay. Phòng có mật khẩu thì gửi `ROOM_PROOF`, gửi lại sau 400, 1200 và 2500 ms phòng khi mất gói UDP ([P2pChatSession.java:351-371](../client-javafx/src/main/java/com/datn/chatp2p/client/session/P2pChatSession.java#L351-L371)).
-- Kiểm tra `ROOM_PROOF`: [P2pChatSession.java:373-398](../client-javafx/src/main/java/com/datn/chatp2p/client/session/P2pChatSession.java#L373-L398).
+- Phòng công khai thì cho vào ngay. Phòng có mật khẩu thì gửi `ROOM_PROOF`, gửi lại sau 400, 1200 và 2500 ms phòng khi mất gói UDP, đồng thời hẹn giờ `ROOM_PROOF_TIMEOUT_MILLIS` = 10 giây ([P2pChatSession.java:366-400](../client-javafx/src/main/java/com/datn/chatp2p/client/session/P2pChatSession.java#L366-L400)).
+- Kiểm tra `ROOM_PROOF`: [P2pChatSession.java:402-425](../client-javafx/src/main/java/com/datn/chatp2p/client/session/P2pChatSession.java#L402-L425).
   - Hợp lệ thì gọi `admit`, người đó hiện lên giao diện.
-  - Sai thì đưa vào `rejectedPeers` và báo "người này không có đúng mật khẩu phòng".
-- Mọi loại bản tin khác (tin nhắn, ACK, lịch sử, đang gõ, danh tính, reaction, sửa tin, file) chỉ được xử lý khi người gửi đã có trong `admittedPeers` ([P2pChatSession.java:170-182](../client-javafx/src/main/java/com/datn/chatp2p/client/session/P2pChatSession.java#L170-L182), [455-463](../client-javafx/src/main/java/com/datn/chatp2p/client/session/P2pChatSession.java#L455-L463)).
-- Tin của mình cũng chỉ gửi cho người đã có trong `admittedPeers` ([P2pChatSession.java:344-346](../client-javafx/src/main/java/com/datn/chatp2p/client/session/P2pChatSession.java#L344-L346)).
+  - Sai, hoặc hết 10 giây mà chưa có bằng chứng hợp lệ, thì gọi `expel` ([P2pChatSession.java:433-447](../client-javafx/src/main/java/com/datn/chatp2p/client/session/P2pChatSession.java#L433-L447)): ghi vào `expelledPeers`, xoá mọi trạng thái của người đó, và báo "… – đã ngắt kết nối" lên giao diện.
+- `expel` gọi `RoomSession.disconnectPeer` ([RoomSession.java:253-280](../p2p-core/src/main/java/com/datn/chatp2p/p2p/RoomSession.java#L253-L280)): đóng `PeerConnection`, giải phóng Agent ICE để trả cổng UDP, huỷ phiên ICE đang chờ, rồi đưa `peerId` vào danh sách chặn của cả phiên.
+- Với người bị chặn, `RoomSession` bỏ qua `OFFER` mới, bỏ qua họ trong `PEER_LIST` gửi lại sau khi signaling tự kết nối lại, và đóng ngay phiên ICE nào của họ hoàn tất muộn.
+- Mọi loại bản tin khác (tin nhắn, ACK, lịch sử, đang gõ, danh tính, reaction, sửa tin, file) chỉ được xử lý khi người gửi đã có trong `admittedPeers` ([P2pChatSession.java:185-198](../client-javafx/src/main/java/com/datn/chatp2p/client/session/P2pChatSession.java#L185-L198), [515-522](../client-javafx/src/main/java/com/datn/chatp2p/client/session/P2pChatSession.java#L515-L522)).
+- Tin của mình cũng chỉ gửi cho người đã có trong `admittedPeers` ([P2pChatSession.java:359-361](../client-javafx/src/main/java/com/datn/chatp2p/client/session/P2pChatSession.java#L359-L361)).
+- Test: [P2pChatSessionExpelTest.java](../client-javafx/src/test/java/com/datn/chatp2p/client/session/P2pChatSessionExpelTest.java) dựng một kẻ lạ vào đúng `tên~thẻ` của phòng, giống bưu điện bị chiếm nhét người vào, rồi kiểm tra ba trường hợp: bằng chứng sai thì bị ngắt, im lặng thì bị ngắt sau thời hạn, đúng mật khẩu thì vẫn vào bình thường. [RoomSessionDisconnectPeerTest.java](../p2p-core/src/test/java/com/datn/chatp2p/p2p/RoomSessionDisconnectPeerTest.java) kiểm tra đường bị đóng, cổng UDP được trả lại, và `OFFER` mới từ người bị chặn không được trả lời.
 
 **Đáp ứng yêu cầu:**
 - **R5:** mỗi máy tự kiểm tra, server có ghép sai thì người lạ cũng không được nhận vào.
 - **R6:** trên đường truyền chỉ có HMAC, không có mật khẩu.
 - **R7:** bằng chứng gắn với khoá ECDH của đúng phiên, chép sang phiên khác là hỏng.
+- Người không có bằng chứng không chỉ bị bỏ qua mà bị ngắt hẳn, không giữ được đường liên lạc hay cổng UDP nào.
 
 **→ Lỗ hổng:** thẻ phòng ở Bước 1 là **một giá trị tính ra từ mật khẩu**, và server nhìn thấy nó.
 
@@ -195,6 +204,7 @@ Nhân vật:
 |---|---|
 | Mật khẩu chỉ dùng để **cho vào phòng**, không trộn vào khoá mã hoá tin nhắn | Không cần: khoá tin nhắn đã đến từ ECDH riêng cho từng cặp, và `ROOM_PROOF` gắn với chính khoá ECDH đó. Người đứng giữa không qua được bước kiểm tra mật khẩu. |
 | Không đuổi được người đã biết mật khẩu | Ai biết mật khẩu thì luôn vào lại được. Muốn loại một người thì phải lập phòng mới với mật khẩu mới. |
+| Người không có bằng chứng bị ngắt khỏi máy mình, nhưng vẫn đứng tên trong phòng trên server | Trường hợp này chỉ xảy ra khi chính bưu điện là kẻ xấu, vì bưu điện trung thực đã từ chối người sai mật khẩu ngay ở cửa (Bước 2), còn thẻ đúng không bao giờ được đưa cho ai. Khi bưu điện là kẻ xấu, An chỉ cắt được đường liên lạc của chính mình. An không bắt được bưu điện xoá tên Minh khỏi sổ, nên số người ở sảnh có thể tính cả Minh, và Minh có thể xin vào lại dưới một lượt mới. Mỗi lần như vậy, Minh vẫn không đọc được gì, không ai thấy Minh, và bị ngắt sau tối đa 10 giây. Muốn bưu điện tự kiểm tra bằng chứng thì bưu điện phải biết mật khẩu, mà như vậy là phá nguyên tắc mật khẩu không rời máy. |
 | Tên phòng vẫn hiện ở sảnh | Có chủ đích, để người được mời tìm thấy phòng. Chỉ phần thẻ bị giấu đi. |
 | Server vẫn biết ai đang ở trong phòng nào | Server cần biết điều này để xếp phòng và chuyển tín hiệu kết nối. Nội dung tin nhắn thì server không bao giờ thấy. |
 
@@ -207,7 +217,7 @@ Nhân vật:
 | 0 | Phòng không mật khẩu | — | Ai biết tên phòng cũng vào được |
 | 1 | Thẻ phòng từ PBKDF2, `roomId = tên~thẻ` | Sai mật khẩu rơi vào phòng khác; server không thấy mật khẩu | Người sai không biết mình sai |
 | 2 | Báo `WRONG_PASSWORD`, giới hạn 5 lần mỗi phút theo IP | Báo ngay khi sai, chặn dò mật khẩu qua server | Tất cả vẫn phải tin server |
-| 3 | `ROOM_PROOF`: HMAC gắn với khoá ECDH, cổng `admittedOnly` | Thành viên tự kiểm tra, server ghép sai cũng không lọt | Thẻ phòng vẫn cho phép đoán mật khẩu ngoại tuyến |
+| 3 | `ROOM_PROOF`: HMAC gắn với khoá ECDH, cổng `admittedOnly`; sai hoặc quá 10 giây thì ngắt hẳn và chặn cả phiên | Thành viên tự kiểm tra, server ghép sai cũng không lọt, người lạ không giữ được đường liên lạc | Thẻ phòng vẫn cho phép đoán mật khẩu ngoại tuyến |
 | 4 *(đề xuất)* | Argon2id, mật khẩu ngẫu nhiên | Đoán thử đắt hơn nhiều | — |
 
 ```

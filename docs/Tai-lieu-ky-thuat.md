@@ -325,7 +325,7 @@ Thư mục `~/.chat-p2p-java/`:
 | `identity.properties` | Khoá danh tính (mã hoá DPAPI trên Windows) |
 | `settings.properties` | Giao diện (Primer, Nord, Cupertino sáng/tối, Dracula), âm báo, thông báo, lưu lịch sử, tài khoản gần nhất |
 | `trusted-peers.properties` | Tên → vân tay đã tin cậy |
-| `history/*.dat` | Lịch sử nhóm (tuỳ chọn, mặc định tắt, mã hoá DPAPI, tối đa 500 tin) |
+| `history/*.dat` | Lịch sử nhóm (tuỳ chọn, mặc định tắt, mã hoá DPAPI, tối đa 500 tin). Từ 25/11 kèm tên phòng, cờ có mật khẩu, tài khoản và thời điểm lưu, đều nằm trong phần mã hoá, cho mục "Đã lưu trên máy" ở sảnh |
 | `client.properties` | Cấu hình TURN cố định (tuỳ chọn) |
 | `logs/client-*.log` | Log, xoay vòng |
 
@@ -344,11 +344,13 @@ Thư mục `~/.chat-p2p-java/`:
 | 3% | 0,12 MB/s | 18,0 MB/s (lần chậm nhất 4,7) |
 | 5% | 0,09 MB/s | 5,5 MB/s (lần chậm nhất 2,2) |
 
-Qua Internet, tốc độ bị giới hạn bởi cửa sổ cố định 32 KB mỗi RTT (khoảng 0,37 MB/s qua TURN với RTT ~86 ms). Chưa đo trên Internet thật.
+Qua mạng thật, tốc độ bị giới hạn bởi cửa sổ cố định 32 KB mỗi RTT. **Đo 25/11 giữa hai máy thật** (mục I.3, [Ket-qua-do-xuyen-NAT.md](Ket-qua-do-xuyen-NAT.md)): file 14,37 MB đạt 0,56–0,66 MB/s trong cùng Wi-Fi trường, 0,16–0,29 MB/s qua TURN với một bên dùng 4G; file nhỏ qua TURN giữa hai mạng 4G đạt 0,09–0,30 MB/s. Số đo khớp công thức 32 KB / RTT.
 
 **Kết nối qua TURN thật** (20/11/2026, mạng 4G): thiết lập ICE 354 ms; cấp cổng relay 221 ms; RTT trung vị 86 ms (p95 191 ms); 200 tin × 1 KB mất 1,5% tính cả hai chiều. Chi tiết và bảng "khi nào đi thẳng, khi nào qua TURN" ở mục I.3.
 
-**Mục tiêu chưa đo:** thời gian thiết lập kết nối giữa hai mạng khác nhau (Wi-Fi ↔ Wi-Fi, 4G ↔ Wi-Fi); tỉ lệ kết nối trực tiếp / qua relay / thất bại trên nhiều kịch bản mạng (mục F.5.3).
+**Kết nối giữa hai máy thật** (25/11/2026): thời gian ICE 335–582 ms khi đi thẳng trong cùng Wi-Fi, 627–918 ms khi phải qua TURN; 7/7 lần kết nối thành công ở ba kịch bản mạng. Chi tiết ở mục I.3.
+
+**Mục tiêu chưa đo:** Wi-Fi nhà ↔ Wi-Fi nhà khác; mạng chặn UDP.
 
 ## F.2 Bảo mật
 
@@ -417,7 +419,28 @@ Một lần chạy toàn bộ, `PeerConnectionBurstThroughputTest` fail đúng l
 - **20/11/2026, server thật `wss://chat.zingme.fun`:** đạt. Đã thử chat nhóm / riêng, phòng có mật khẩu (kể cả nhập sai), gửi / nhận / từ chối / huỷ file, trạng thái giao tin, so vân tay, kết nối qua TLS. Giao diện còn được kiểm tra bằng cách dựng màn hình với dữ liệu giả và chụp ảnh.
 - **20/11/2026, đo xuyên NAT và TURN thật:** xem mục I.3.
 - **22/11/2026, sau khi deploy server mới:** service khởi động bình thường, `/turn-credentials` trả 200 qua Caddy. **Chưa thử lại bằng tay với hai client bản mới.**
-- **Cần đo thêm:** hai máy khác mạng (Wi-Fi ↔ Wi-Fi, 4G ↔ Wi-Fi, 4G ↔ 4G), mạng chặn UDP; ghi tỉ lệ đi thẳng / relay / thất bại để đưa vào chương "Kiểm thử và đánh giá".
+- **25/11/2026, hai máy thật, hai người dùng:** đạt. Đo ba kịch bản mạng (cùng Wi-Fi trường; Wi-Fi trường ↔ 4G Viettel; 4G Vinaphone ↔ 4G Viettel), 7/7 lần kết nối thành công, chat và gửi file hai chiều, 9/9 file đúng SHA-256. Kết quả tóm tắt ở mục I.3, chi tiết ở [Ket-qua-do-xuyen-NAT.md](Ket-qua-do-xuyen-NAT.md). Bản client dùng để đo có thêm dòng log tổng kết mỗi lần truyền file (dung lượng, thời gian, tốc độ, số mảnh gửi lại; không ghi tên file).
+- **Cần đo thêm:** Wi-Fi nhà ↔ Wi-Fi nhà khác; mạng chặn UDP.
+
+**Kiểm thử chức năng trên hai máy thật, hai người ngồi cạnh nhau (25/11/2026)**
+
+| # | Kiểm thử | Kết quả mong đợi | Kết quả |
+|---|---|---|---|
+| 1 | So vân tay: đặt hai màn hình cạnh nhau, so mã an toàn 60 chữ số, bấm "Khớp" | Hai mã giống hệt nhau; cạnh tên hiện "Đã xác minh" kèm khiên; vào lại phòng vẫn còn | **Đạt** |
+| 2 | Khoá danh tính đổi: máy 2 dùng khoá danh tính khác rồi vào lại phòng | Máy 1 hiện "Khoá danh tính đã đổi" và cảnh báo trong khung chat | **Đạt** |
+| 3 | Đăng nhập tài khoản của máy 1 trên máy 2 | Bị từ chối: "Khóa identity không khớp tài khoản này" | **Đạt** |
+| 4 | Máy 2 vào chế độ khách, đặt tên trùng tài khoản của máy 1 | Tên đó hiện nhãn đỏ "Khách" và cảnh báo trùng tên | **Đạt** |
+| 5 | Phòng có mật khẩu: nhập sai, nhập sai quá 5 lần trong 1 phút, nhập đúng | Báo sai ngay; bị chặn 1 phút kể cả khi nhập đúng; sau đó nhập đúng thì vào được | **Đạt** |
+| 6 | Trạng thái tin: đang gửi / đã nhận / đã xem, đang gõ, trả lời, cảm xúc, sửa, xoá | Đúng như mục I.6 | **Đạt, có 1 lỗi đã sửa:** máy 2 trả lời một tin, máy 1 xoá tin gốc; tin gốc hiện "đã xoá" nhưng **khung trích dẫn trong tin trả lời vẫn hiện nội dung cũ**. Đã sửa cùng ngày (mục I.6) |
+| 7 | Thông báo màn hình khi app thu nhỏ | Chỉ hiện tên người gửi, không hiện nội dung | **Đạt** |
+| 8 | Máy 2 tắt Wi-Fi khi đang nhận file và nhắn tin, rồi bật lại | Truyền file chịu được mất mạng ngắn; app tự kết nối lại | **Đạt một phần**, xem ghi chú dưới bảng |
+
+**Ghi chú mục 8** (mốc giờ từ log máy 1, phòng có mật khẩu, kết nối qua TURN):
+- **Đạt:** truyền file **tạm dừng** khi máy 2 mất Wi-Fi và **gửi tiếp** khi có mạng lại, không phải gửi lại từ đầu (bên gửi chờ tối đa ~30 s, gửi lại thưa dần 0,5 → 4 s).
+- **Đạt:** khi máy 2 có mạng lại, app **tự kết nối lại signaling và tự vào lại phòng** với cùng `peerId`, ICE mới qua TURN, rồi làm lại `ROOM_PROOF` và `PEER_IDENTITY` từ đầu, đồng bộ lịch sử. Tin nhắn qua lại bình thường sau đó.
+- **Hạn chế:** tin máy 2 gửi lúc mất mạng chỉ được thử lại 6 lần × 0,5 s (~3 s), rồi bị đánh dấu "Chưa tới nơi" kèm thông báo "Không kết nối được với khoi (tin nhắn chưa tới nơi)", và **không bao giờ được gửi lại**, kể cả sau khi đã kết nối lại. **Đã sửa cùng ngày:** tin chưa có ACK được giữ lại và tự gửi lại khi người đó kết nối lại với cùng vân tay danh tính (mục I.6). Chưa thử lại trên hai máy.
+- **Hạn chế:** server chỉ biết máy 2 đã mất sau **~4–5 phút** (tắt Wi-Fi lúc ~16:35, `PEER_LEFT` lúc 16:39:45), vì tắt Wi-Fi đột ngột không đóng kết nối WebSocket. Trong khoảng đó máy 2 vẫn nằm trong danh sách người dù không liên lạc được. **Đã sửa cùng ngày:** server Ping mỗi 15 s, quá 35 s không phản hồi thì báo `PEER_LEFT` (mục I.13). Cần deploy server mới; chưa thử lại trên hai máy.
+- Log hiện chỉ ghi khi truyền file **thành công**, nên phần tạm dừng / gửi tiếp dựa trên quan sát trên giao diện.
 
 ### F.5.4 Kiểm thử bảo mật
 
@@ -457,6 +480,7 @@ powershell -ExecutionPolicy Bypass -File packaging\build-windows.ps1   # đóng 
 | `CHAT_P2P_AUTH_REQUIRED` | `true` | `false` cho phép khách vào phòng không cần đăng nhập. Production đặt `false` để giữ chế độ "Khách tự do" |
 | `CHAT_P2P_TURN_SECRET`, `CHAT_P2P_TURN_HOST`, `CHAT_P2P_TURN_PORT` (3478), `CHAT_P2P_TURN_TTL_SECONDS` (21600) | trống | Cấp TURN tạm thời (coturn `use-auth-secret`). Để trống secret / host thì không cấp |
 | `CHAT_P2P_WS_MAX_CONNECTIONS_PER_ADDRESS` | `32` | Số kết nối WebSocket đồng thời tối đa mỗi IP (IPv6 gộp /64) |
+| `CHAT_P2P_WS_HEARTBEAT_INTERVAL_MS`, `CHAT_P2P_WS_HEARTBEAT_TIMEOUT_MS` | `15000`, `35000` | Chu kỳ gửi WebSocket Ping và thời gian không phản hồi trước khi coi là mất kết nối (báo `PEER_LEFT`). Đặt chu kỳ `0` để tắt |
 
 - `server.forward-headers-strategy: native`: đọc IP thật của client từ `X-Forwarded-For` khi request đến từ địa chỉ nội bộ. **Bắt buộc đúng** thì mọi giới hạn theo IP mới hoạt động đúng (thử sai mật khẩu, 32 kết nối, 10 lần `/auth`, 20 lần `/turn-credentials`). Caddy gửi header này mặc định.
 - Giới hạn cố định trong code: `JOIN` trong 30 s; tên phòng ≤ 200 ký tự, `peerId` ≤ 100, tên khách ≤ 64; tối đa 5.000 phòng, 8 người mỗi phòng; hàng đợi gửi mỗi kết nối 10 s / 512 KB.
@@ -639,9 +663,10 @@ curl -s -o /dev/null -w "%{http_code}\n" https://chat.zingme.fun/turn-credential
 | ICE hoàn tất **sau khi** người dùng đã rời phòng | Phát hiện và đóng ngay, không "hồi sinh" kết nối | ✅ | |
 | Rời phòng mà cổng UDP không được giải phóng | Khi rời phòng, giải phóng toàn bộ phiên ICE, kể cả những phiên đã kết nối | ✅ | |
 | NAT xoá ánh xạ cổng khi chat im lặng lâu | ice4j tự gửi gói STUN giữ kết nối (keepalive) trên cặp địa chỉ đã chọn | ✅ | |
-| Hai bên **đều chỉ** đi được qua TURN (relay ↔ relay) | Đo thực tế: ICE thất bại (xem kết quả đo bên dưới). Thường không ảnh hưởng vì ICE vẫn còn cặp relay ↔ địa chỉ public của bên kia | ⚠️ | Kiểm tra log coturn (`403 Forbidden IP` khi chuyển tiếp giữa hai cổng relay của chính nó), mở `allowed-peer-ip` cho IP của VPS |
-| Mạng chặn UDP ra ngoài (Wi-Fi trường học, công ty) | TURN hiện chỉ chạy UDP cổng 3478 nên **không kết nối được** | ❌ | Bật TURN qua TCP/TLS cổng 443 ở coturn và khai báo ở client |
-| Giao diện không cho biết kết nối đi thẳng hay qua relay | Luôn hiện "trực tiếp" (`ConnectionKind.DIRECT` gán cứng trong `P2pChatSession`), dù `IceConnectionStats.usingRelay()` đã tính đúng | ❌ | Đưa `usingRelay` lên danh sách người trong phòng (biểu tượng "qua relay" đã có sẵn ở giao diện) |
+| Hai bên **đều chỉ** đi được qua TURN (relay ↔ relay) | Ngày 20/11 đo thực tế: ICE thất bại. *(25/11)* Đo lại giữa hai máy thật: kiểm tra cặp relay ↔ relay **thành công**. Trong thực tế không cần tới, vì ICE luôn còn cặp relay ↔ địa chỉ public của bên kia, và cặp đó được chọn ở mọi lần đo | ✅ | Kiểm tra cấu hình coturn hiện tại để ghi chính xác lý do thay đổi |
+| Mạng chặn UDP ra ngoài (Wi-Fi trường học, công ty) | TURN hiện chỉ chạy UDP cổng 3478 nên **không kết nối được**. Wi-Fi trường PTIT **không** chặn UDP (đo 25/11) | ❌ | Bật TURN qua TCP/TLS cổng 443 ở coturn và khai báo ở client |
+| Giao diện không cho biết kết nối đi thẳng hay qua relay | Danh sách người trong phòng hiện **"· Trực tiếp"** hoặc **"· Qua relay"** theo `IceConnectionStats.usingRelay()`, kèm tooltip giải thích TURN không đọc được nội dung (`PeerListCell.connectionLabel`). Log ghi `Duong truyen toi X: truc tiep / qua TURN relay` | ✅ | |
+| Một máy có lúc không lấy được cổng relay | *(đo 25/11)* Máy có card mạng ảo WSL lấy được relay ở 4/7 lần. Chưa gây lỗi vì chỉ cần một bên có relay; nếu cả hai bên cùng thiếu ở mạng 4G ↔ 4G thì sẽ không kết nối được | ⚠️ | Điều tra: nghi ice4j bỏ bộ thu thập TURN khi gửi qua card ảo `172.26.112.1` thất bại; thử loại card ảo khỏi danh sách giao diện ICE |
 
 **Kết quả đo xuyên NAT thực tế (20/11/2026)**
 
@@ -663,21 +688,37 @@ curl -s -o /dev/null -w "%{http_code}\n" https://chat.zingme.fun/turn-credential
 
 Trước lần đo này, test TURN tự động chỉ kiểm tra rằng một TURN **không tới được** không làm hỏng ICE; chưa có gì chứng minh dữ liệu thật sự đi qua relay. Nay đã chứng minh được với TURN thật.
 
+**Kết quả đo giữa hai máy thật (25/11/2026)**
+
+Hai laptop, mỗi máy một người, vào cùng phòng qua server thật `wss://chat.zingme.fun`. Số liệu lấy từ log của máy 1; chi tiết từng lần, loại NAT và phân tích ở [Ket-qua-do-xuyen-NAT.md](Ket-qua-do-xuyen-NAT.md).
+
+| Trường hợp | Số lần | Đường được chọn | Thành công | Thời gian ICE | Truyền file |
+|---|---|---|---|---|---|
+| Cùng Wi-Fi trường PTIT | 3 | Đi thẳng, `typ host` | 3/3 | 335–582 ms | 0,56–0,66 MB/s |
+| Wi-Fi trường ↔ 4G Viettel | 3 | Qua TURN | 3/3 | 627–696 ms | 0,13–0,29 MB/s |
+| 4G Vinaphone ↔ 4G Viettel | 1 | Qua TURN | 1/1 | 918 ms | 0,09–0,30 MB/s |
+
+- Khi app đã mở sẵn, từ lúc người thứ hai vào phòng tới lúc hai bên thấy nhau và đã trao khoá ECDH mất khoảng 1–1,5 s. Lần đầu mở app cộng thêm 1–9 s để ice4j khởi động.
+- 9/9 file tới đủ và đúng SHA-256.
+- Tốc độ truyền file khớp giới hạn **32 KB mỗi vòng khứ hồi** (cửa sổ 8 mảnh × 4 KB): ~0,6 MB/s ở Wi-Fi có RTT ~52 ms, 0,1–0,3 MB/s qua TURN và 4G.
+- Chiều gửi **tới** máy dùng 4G Viettel phải gửi lại 85–108% số mảnh, lặp lại ở cả 3 lần đo. Nghi do thời gian chờ cố định 500 ms ngắn hơn độ trễ khi đường 4G chiều xuống bị nghẽn; chưa kiểm chứng.
+- Vinaphone cấp IPv6 công khai, nhưng app chỉ quảng bá IPv4 nên chưa tận dụng được.
+
 **Khi nào đi thẳng, khi nào phải qua TURN** (ICE luôn thử theo thứ tự: IP nội bộ → địa chỉ public qua STUN → relay qua TURN):
 
 | Bên A | Bên B | Kết quả | Căn cứ |
 |---|---|---|---|
-| Cùng LAN / Wi-Fi | Cùng LAN / Wi-Fi | Đi thẳng qua IP nội bộ | Test tự động: 2 đầu ICE trên **cùng một máy**, cùng cơ chế candidate `host`. **Chưa thử 2 máy thật** |
+| Cùng LAN / Wi-Fi | Cùng LAN / Wi-Fi | Đi thẳng qua IP nội bộ | **Đã đo 25/11 trên hai máy thật** ở Wi-Fi trường PTIT: 3/3 đi thẳng. Điều kiện: Wi-Fi không cách ly máy khách (PTIT không cách ly) |
 | Wi-Fi nhà | Wi-Fi nhà khác | Thường đi thẳng (đa số router gia đình là NAT "dễ") | Lý thuyết, **chưa thử** |
-| 4G (NAT đối xứng) | Wi-Fi nhà | Đi thẳng nếu router bên kia dễ tính, nếu không thì qua TURN | Lý thuyết, **chưa thử** |
-| 4G | 4G | **Bắt buộc qua TURN** | **Suy ra** từ loại NAT đã đo (bước đo 1 ở trên); **chưa thử với 2 máy 4G** |
+| 4G (NAT đối xứng) | Wi-Fi | Đi thẳng nếu NAT bên Wi-Fi dễ tính, nếu không thì qua TURN | **Đã đo 25/11** với Wi-Fi trường PTIT ↔ 4G Viettel: **3/3 qua TURN**, kết nối tự động. Chưa thử với Wi-Fi nhà |
+| 4G | 4G | **Bắt buộc qua TURN** | **Đã đo 25/11** với 4G Vinaphone ↔ 4G Viettel: 1/1 qua TURN, kết nối tự động |
 | Bất kỳ | Mạng chặn UDP | **Không kết nối được** | **Suy ra** từ cấu hình (TURN chỉ có UDP); chưa thử trên mạng chặn UDP |
 
 Đi qua TURN **vẫn là mã hoá đầu-cuối**: TURN chỉ chuyển tiếp gói UDP đã mã hoá, khoá AES chỉ hai máy biết, sửa gói thì AES-GCM phát hiện, và chữ ký `PEER_IDENTITY` gắn với khoá ECDH nên TURN không đóng vai kẻ đứng giữa được. TURN chỉ thấy **siêu dữ liệu**: IP hai bên, thời điểm, kích thước và số lượng gói. Qua TURN vẫn là mesh: mỗi cặp người có kết nối và khoá riêng, TURN không nhân bản tin như máy chủ trung gian.
 
 **Cách kiểm tra một kết nối cụ thể:** trong `~/.chat-p2p-java/logs/client-0.log`, dòng `ICE selected pair` ghi loại candidate được chọn: `typ host` / `srflx` / `prflx` là đi thẳng (xuyên NAT thành công), `typ relay` là qua TURN.
 
-**Chưa thử:** mọi kết nối giữa **hai máy thật** ở hai mạng khác nhau (Wi-Fi ↔ Wi-Fi, 4G ↔ Wi-Fi, 4G ↔ 4G). Các phép đo ở trên chạy trên một máy; các dòng "lý thuyết" / "suy ra" ở bảng là dự đoán, cần kiểm chứng bằng cách cho 2 máy vào cùng phòng và xem dòng `ICE selected pair` trong log.
+**Chưa thử:** Wi-Fi nhà ↔ Wi-Fi nhà khác, là trường hợp có thể đi thẳng xuyên NAT qua địa chỉ public (`srflx` / `prflx`); mạng chặn UDP.
 
 ---
 
@@ -752,12 +793,15 @@ Trước lần đo này, test TURN tự động chỉ kiểm tra rằng một TU
 | Tin bị mất trên đường truyền | Không nhận ACK thì gửi lại, tối đa 6 lần, mỗi lần cách 0,5 s | ✅ | |
 | ACK bị mất nên người nhận nhận cùng một tin 2 lần | Người nhận loại bản trùng theo `id` của tin, vẫn trả ACK lại | ✅ | |
 | Gửi lại 6 lần vẫn không có ACK | Giao diện cảnh báo "tin nhắn chưa tới nơi" cho đúng người đó, và tin đó hiện "Chưa tới nơi" | ✅ | |
+| Mất mạng vài giây rồi có lại: tin gửi trong lúc mất mạng | *(phát hiện khi test hai máy 25/11, sửa cùng ngày)* Trước đây tin bỏ cuộc sau ~3 s (6 × 0,5 s) và không bao giờ được gửi lại. Nay tin chưa có ACK được **giữ lại** (tối đa 200 tin mỗi người, `UndeliveredMessages`) và **tự gửi lại khi người đó kết nối lại** với cùng `peerId` và **cùng vân tay danh tính** đã xác thực; tin chuyển từ "Chưa tới nơi" sang "Đã nhận" khi ACK tới. Bên nhận loại trùng theo id (giữ sổ "đã nhận" qua lần kết nối lại; tin nhóm đã có qua gói lịch sử thì không hiện lại) | ✅ | Nút "Gửi lại" cho trường hợp người kia tắt hẳn app rồi mở lại (đổi `peerId`, không tự gửi lại được) |
+| Kẻ khác vào lại phòng bằng `peerId` của người vừa rời để nhận tin gửi lại | Chỉ gửi lại khi người kết nối lại có **cùng vân tay danh tính** với lúc gửi tin; tin gửi lúc chưa xác thực danh tính người nhận thì không bao giờ gửi lại (test `UndeliveredMessagesTest`) | ✅ | |
 | Gửi lỗi với một người trong phòng | Vẫn gửi bình thường cho những người còn lại | ✅ | |
 | Người nhận rời phòng giữa lúc đang gửi | Huỷ việc gửi lại tới người đó, không báo lỗi thừa | ✅ | |
 | Tin đến sai thứ tự (UDP có thể đảo gói) | Hiển thị theo thứ tự nhận | ⚠️ | Sắp xếp theo thời điểm gửi khi chênh lệch nhỏ |
 | Tin quá dài | Kênh UDP tự chia mảnh tin tới 1 MB. *(sửa 22/11, vấn đề 8)* Người nhận **bỏ qua tin dài hơn 12.000 ký tự** (vẫn trả ACK để bên gửi không gửi lại); trước đây một tin rất dài được chế tạo đặc biệt có thể làm treo giao diện người nhận | ⚠️ | Giới hạn độ dài ô nhập ở bên gửi và báo rõ cho người dùng |
 | Đồng hồ máy người gửi bị lệch về tương lai | Thời gian tin bị giới hạn không vượt quá thời điểm nhận | ✅ | |
 | Một người gửi tin trùng `id` với tin của người khác để sửa / xoá tin đó | *(sửa 22/11, vấn đề 6)* Sửa và xoá tin giờ xác định theo **cặp (id, tác giả)**: chỉ tác giả thật sửa / xoá được đúng tin của mình, tin trùng id của người khác không bị ảnh hưởng | ✅ | |
+| Tin gốc bị xoá nhưng tin trả lời vẫn trích dẫn nội dung cũ | *(phát hiện khi test hai máy, sửa 25/11)* Xoá tin chỉ đánh dấu "đã xoá", nội dung vẫn còn trong bộ nhớ; khung trích dẫn của tin trả lời trước đây đọc thẳng nội dung đó. Nay khung trích dẫn hiện **"Tin nhắn đã bị xoá"** (`MessageTexts.quoteSnippet`, test `MessageExtrasTest.replyQuoteHidesTextOfDeletedOriginal`) | ✅ | Xoá hẳn nội dung khỏi bộ nhớ khi tin bị xoá, thay vì chỉ đánh dấu |
 
 ---
 
@@ -861,6 +905,7 @@ Trước lần đo này, test TURN tự động chỉ kiểm tra rằng một TU
 | Lịch sử giả mạo **chính người nhận** là tác giả, để tin giả hiện như tin mình viết | *(sửa 22/11, vấn đề 5)* Bỏ qua mọi mục lịch sử ghi tác giả là chính người nhận. Khi bật "lưu lịch sử trên máy", tin đến từ lịch sử người khác chia sẻ **không bao giờ** được lưu thành "tin của tôi" (trước đây có thể bị lưu như vậy và mất nhãn "không xác minh" ở lần mở sau) | ✅ | |
 | Tin nhắn riêng bị lộ qua lịch sử | Lịch sử **chỉ** gồm tin nhóm | ✅ | |
 | Đồng hồ các máy lệch nhau | Không cho thời gian ở tương lai; sắp xếp theo thời điểm gửi | ⚠️ | |
+| Đã lưu tin trên máy nhưng mọi người rời phòng, phòng biến mất khỏi server, người dùng phải tự nhớ tên phòng để vào lại | *(thêm 25/11)* Sảnh có mục **"ĐÃ LƯU TRÊN MÁY"** (chỉ chế độ tài khoản): các phòng có lịch sử do **chính tài khoản đang đăng nhập** lưu, mới nhất trước, kèm số tin và số người nếu phòng đang hoạt động. Bấm vào thì mở khung xem trước như phòng trong danh sách: số tin đã lưu, lần lưu cuối, phòng hiện có ai không, ô mật khẩu nếu phòng có mật khẩu, nút "Vào phòng" và nút "Xoá lịch sử đã lưu của phòng này". Tên phòng, cờ có mật khẩu, tài khoản và thời điểm lưu được ghi **bên trong file đã mã hoá DPAPI**; tên file vẫn là SHA-256 nên không lộ tên phòng; **không lưu mật khẩu phòng** (vào lại phòng có mật khẩu phải nhập lại). File lưu trước 25/11 vẫn đọc được nhưng không có tên phòng nên không hiện trong mục này (`LocalHistoryStore.listRooms`, test `LocalHistoryStoreTest`, `LobbyRulesTest`) | ✅ | Xem tin đã lưu mà không cần vào phòng |
 
 ---
 
@@ -889,8 +934,9 @@ Trước lần đo này, test TURN tự động chỉ kiểm tra rằng một TU
 | Nhập sai mật khẩu | Server từ chối ngay (`WRONG_PASSWORD`); client quay về sảnh, báo "Sai mật khẩu phòng" và mở lại hộp nhập mật khẩu | ✅ | |
 | Thử sai mật khẩu nhiều lần liên tiếp | Quá 5 lần/phút từ cùng IP thì bị chặn (`RATE_LIMITED`) trong 1 phút | ✅ | |
 | Mật khẩu quá ngắn khi tạo phòng | Không cho tạo, yêu cầu tối thiểu 6 ký tự; phải nhập lại trùng khớp | ✅ | |
-| Server bị chiếm và cố ghép người lạ vào phòng | Người lạ không có bằng chứng hợp lệ nên bị bỏ qua; giao diện cảnh báo "người này không có đúng mật khẩu phòng" | ✅ | |
-| Người sai mật khẩu vẫn giữ kết nối P2P | Mọi bản tin của họ bị lọc, nhưng kết nối chưa bị chủ động ngắt | ⚠️ | Thêm chức năng ngắt kết nối một người trong `RoomSession` |
+| Server bị chiếm và cố ghép người lạ vào phòng | Người lạ không có bằng chứng hợp lệ nên không được nhận vào; giao diện cảnh báo "người này không có đúng mật khẩu phòng – đã ngắt kết nối" | ✅ | |
+| Người không có bằng chứng hợp lệ vẫn giữ kết nối P2P | *(sửa 24/11)* Bằng chứng sai, hoặc **quá 10 giây** sau khi trao khoá mà chưa có bằng chứng, thì bị **ngắt hẳn**: đóng kết nối, trả cổng UDP, và chặn người đó trong cả phiên (`OFFER` mới, `PEER_LIST` gửi lại, ICE hoàn tất muộn đều bị bỏ qua). Trước đây chỉ lọc bản tin, kết nối vẫn mở | ✅ | |
+| Người bị ngắt vẫn đứng tên trong phòng trên server, có thể xin vào lại dưới lượt mới | Chỉ xảy ra khi chính server là kẻ xấu, vì server trung thực đã từ chối người sai mật khẩu ngay lúc JOIN. Client chỉ cắt được kết nối của chính mình; mỗi lượt vào lại vẫn không đọc được gì, không hiện trên giao diện, và bị ngắt sau tối đa 10 giây | ⚠️ | Giới hạn vốn có: muốn server tự kiểm tra bằng chứng thì server phải biết mật khẩu |
 | Dùng lại bằng chứng của phiên khác | Không được, vì bằng chứng gắn với khoá ECDH riêng của từng phiên | ✅ | |
 | Người quản trị server (hoặc kẻ chiếm server) đoán mật khẩu từ thẻ phòng | Phải dò PBKDF2 120.000 vòng cho mỗi lần đoán; mật khẩu tối thiểu 6 ký tự | ⚠️ | Người dùng nên đặt mật khẩu dài |
 | Người xem danh sách phòng muốn dò mật khẩu | Không được: danh sách chỉ có tên, số người và cờ có mật khẩu, không có thẻ | ✅ | |
@@ -911,6 +957,7 @@ Trước lần đo này, test TURN tự động chỉ kiểm tra rằng một TU
 | Tình huống | Hệ thống xử lý | TT |
 |---|---|---|
 | Tắt app đột ngột, không kịp gửi `LEAVE` | Server phát hiện WebSocket đóng và tự báo `PEER_LEFT` | ✅ |
+| Mất mạng đột ngột (tắt Wi-Fi), kết nối không được đóng | *(đo 25/11: server chỉ báo `PEER_LEFT` sau ~4–5 phút; sửa cùng ngày)* Server gửi **WebSocket Ping mỗi 15 s** tới mọi kết nối; quá **35 s** không có Pong hay bản tin nào thì báo `PEER_LEFT` cho phòng ngay và đóng kết nối. Client Java tự trả Pong, kể cả client cũ, nên không phải sửa client. Chỉnh được bằng `chat-p2p.ws.heartbeat-interval-ms` / `heartbeat-timeout-ms`. Test `HeartbeatTest`, `HeartbeatRealConnectionTest` (server thật + client JDK). Khi có mạng lại, client tự kết nối lại, tự vào lại phòng và chứng minh lại từ đầu. **Cần deploy lại server để có hiệu lực** | ✅ |
 | Lỗi khi đóng một kết nối | Vẫn tiếp tục đóng các kết nối còn lại, không rò rỉ | ✅ |
 | Callback mạng đến sau khi đã rời phòng | Bị bỏ qua, không cập nhật giao diện cũ | ✅ |
 | Đã rời phòng nhưng vẫn gửi được OFFER/ICE vào phòng cũ qua server | *(sửa 22/11, vấn đề 4)* Server xoá thông tin phòng gắn với kết nối ngay khi rời phòng; sau đó mọi bản tin chuyển tiếp từ kết nối đó bị từ chối | ✅ |
@@ -1032,7 +1079,7 @@ Một số nhận xét từ lần đo:
 | 8 | Double-encrypt cho `FILE_CHUNK` (mã hoá chunk rồi mã hoá cả Envelope) tốn CPU thừa | Rất thấp | Chấp nhận được, ưu tiên đơn giản hoá code hơn tối ưu vi mô (đã ghi chú ở mục E.3.3) |
 | 9 | **Signaling dùng `ws://` không mã hoá** — token đăng nhập (JOIN), mật khẩu khi gọi REST `/auth/*`, tên phòng và ICE candidate (địa chỉ IP) đi dạng rõ giữa client và signaling server | **Cao** khi chạy qua Internet công khai | Nội dung chat **không** bị ảnh hưởng (đã mã hoá đầu-cuối trên kênh P2P), nhưng kẻ nghe lén đường truyền có thể lấy token để mạo danh tài khoản và biết ai đang vào phòng nào. **Đã giảm thiểu (2026-11-20):** signaling và REST đi qua TLS tại `chat.zingme.fun` (Caddy + Let's Encrypt), server chỉ nghe `127.0.0.1:8080` (mục J.1) |
 | 10 | Lịch sử chat cho người mới vào (`MESSAGE_TRANSCRIPT`) không xác minh được người viết từng tin | Trung bình | Chỉ nhận lịch sử từ peer đã xác thực danh tính, tối đa 200 tin/peer; giao diện gắn nhãn "lịch sử · X chia sẻ". Muốn xác minh tuyệt đối phải ký từng tin bằng khoá danh tính của người viết (hướng phát triển) |
-| 11 | Phòng có mật khẩu: peer gửi bằng chứng sai chỉ bị **bỏ qua**, kết nối P2P với họ vẫn mở tới khi họ rời phòng | Thấp | Họ không thấy/không gửi được gì (mọi bản tin bị lọc). Nên bổ sung API chủ động ngắt 1 peer trong `RoomSession` |
+| 11 | Phòng có mật khẩu: peer gửi bằng chứng sai chỉ bị **bỏ qua**, kết nối P2P với họ vẫn mở tới khi họ rời phòng | Đã xử lý | **Đã xử lý (2026-11-24):** `RoomSession.disconnectPeer` ngắt hẳn và chặn peer trong cả phiên; client gọi khi bằng chứng sai hoặc quá 10 giây chưa có bằng chứng (mục I.12). Còn lại: server bị chiếm vẫn giữ tên người đó trong phòng và cho vào lại dưới lượt mới, mỗi lượt bị ngắt sau tối đa 10 giây |
 | 12 | Mật khẩu TURN cũ từng nằm trong lịch sử git (commit `fa173d1`) | Đã xử lý | Đã chuyển credential ra khỏi jar (biến môi trường / `~/.chat-p2p-java/client.properties`); **coturn chuyển sang tài khoản tạm thời do server cấp (TURN REST API, 2026-11-20)**: không còn mật khẩu cố định, mật khẩu cũ vô hiệu |
 | 13 | **Nhập sai mật khẩu phòng không được báo ngay**: client JOIN vào `tên~thẻ-khác`, tức một phòng trống khác; chỉ có gợi ý sau 20 s ở một mình. Server cũng chưa báo lý do khi từ chối JOIN (token hết hạn, phòng đầy) | Trung bình (trải nghiệm, không phải lỗ hổng: mật khẩu sai không lọt vào phòng thật) | **Đã giảm thiểu (2026-11-20):** server kiểm tra lúc JOIN và gửi `JOIN_REJECTED` kèm lý do, giới hạn 5 lần sai/phút/IP; thẻ phòng vẫn không bao giờ gửi về client (mục J.2) |
 | 14 | **13 vấn đề bảo mật tìm được khi kiểm định mã nguồn**: lộ token qua relay, kết nối thay thế thừa hưởng trạng thái xác thực, token gửi nhầm server, relay sau khi rời phòng, giả mạo lịch sử, sửa / xoá tin người khác, vân tay bị xoá khi chọn "Không khớp", treo giao diện vì Markdown, và các điểm chống quá tải ở server | Cao nhất ở 2 vấn đề đầu (phá vỡ cam kết "server bị chiếm cũng không đọc được tin") | **Đã xử lý (2026-11-22)**, đã deploy server, có test hồi quy (mục J.3) |
@@ -1048,7 +1095,7 @@ Một số nhận xét từ lần đo:
 | 24 | Không có tin nhắn offline: người nhận phải đang ở trong phòng | Thấp (đánh đổi của thiết kế không lưu nội dung trên server) | Chấp nhận theo thiết kế |
 | 25 | Xuyên NAT trên 4G phụ thuộc TURN (4G đo được là NAT đối xứng); TURN chỉ có UDP nên mạng chặn UDP không kết nối được; relay ↔ relay thất bại với cấu hình coturn hiện tại | Trung bình | Bật TURN qua TCP/TLS cổng 443; kiểm tra cấu hình coturn (mục I.3) |
 | 26 | Giao diện luôn hiện kết nối "trực tiếp", không cho biết đang đi qua TURN | Thấp | Hiển thị `IceConnectionStats.usingRelay()` đã có sẵn |
-| 27 | Chưa đo kết nối giữa hai mạng khác nhau và chưa đo truyền file qua Internet thật | Trung bình (thiếu số liệu đánh giá) | Đo theo mục F.5.3 |
+| 27 | Chưa đo kết nối giữa hai mạng khác nhau và chưa đo truyền file qua Internet thật | Thấp (đã giảm thiểu) | **Đã đo 25/11/2026** trên hai máy thật ở ba kịch bản mạng (mục I.3, F.1). Còn thiếu: Wi-Fi nhà ↔ Wi-Fi nhà khác, mạng chặn UDP |
 
 ## J.1 Kế hoạch chuyển signaling sang `wss://` (đã triển khai 2026-11-20)
 
@@ -1302,6 +1349,10 @@ Mỗi vấn đề dưới đây đã được **hai lượt kiểm chứng độ
 
 | Ngày | Thay đổi |
 |---|---|
+| 2026-11-25 | Thêm mục "Đã lưu trên máy" ở sảnh để vào lại phòng có lịch sử đã lưu khi phòng đã biến mất khỏi server (mục I.11, E.8.6). |
+| 2026-11-25 | Kiểm thử chức năng trên hai máy thật (bảng ở F.5.3); sửa lỗi khung trích dẫn vẫn hiện nội dung tin đã xoá (mục I.6); hai hạn chế phát hiện khi tắt Wi-Fi và đã sửa cùng ngày: tin chưa tới nơi nay tự gửi lại khi người đó kết nối lại với cùng vân tay (mục I.6); server Ping mỗi 15 s để phát hiện mất kết nối trong ~35 s thay vì ~4–5 phút (mục I.13, G.3). |
+| 2026-11-25 | Đo xuyên NAT giữa hai máy thật: cập nhật mục I.3 (bảng kết quả, bảng "khi nào đi thẳng, khi nào qua TURN", sửa dòng giao diện relay đã có, thêm dòng thiếu relay), F.1, F.5.3, rủi ro 27; thêm `Ket-qua-do-xuyen-NAT.md`. |
+| 2026-11-24 | Ngắt hẳn người không có bằng chứng mật khẩu phòng (sai, hoặc quá 10 giây): cập nhật bảng lỗi mục I.12 và rủi ro 11; thêm test `RoomSessionDisconnectPeerTest`, `P2pChatSessionExpelTest`. |
 | 2026-11-22 | **Gộp tài liệu:** `Bao-cao-chuc-nang-da-lam.md` thành Phần I, `Bao-cao-bao-mat-13-van-de.md` thành mục J.3; viết lại Phần A–H theo code hiện tại (Phần D rút gọn thành so sánh với chitchatter; Phần E mô tả thiết kế đã cài đặt thay cho bản thi công giai đoạn đầu; thêm quy trình deploy ở mục G.6); gộp mục "Hạn chế" vào bảng rủi ro (rủi ro 20–27). |
 | 2026-11-22 | Kiểm định bảo mật mã nguồn: thêm mục J.3 và rủi ro 14–19; cập nhật F.2 (gia cố signaling), F.5.1 (283 test thay cho bảng 8 test cũ), F.5.2, F.5.4, G.3 (bảng biến môi trường), G.4 (client đã nối mạng thật, ô server khoá theo tài khoản), H.2 (client đã có log). |
 | 2026-08-21 | Tạo `Tai-lieu-ky-thuat-Chitchatter.md` (phân tích bản gốc) và `Thiet-ke-ky-thuat-chat-p2p-java.md` (thiết kế thi công) riêng biệt. |

@@ -125,6 +125,40 @@ final class RoomDialogs {
         return dialog.showAndWait();
     }
 
+    // ------------------------------------------------------------ doi mat khau tai khoan
+
+    /** Ket qua hop doi mat khau. */
+    record PasswordChange(String currentPassword, String newPassword) {
+    }
+
+    /** Hop doi mat khau tai khoan (o sanh, che do tai khoan). */
+    static Optional<PasswordChange> showChangePassword(Window owner) {
+        PasswordField current = new PasswordField();
+        current.setPromptText("Mật khẩu đang dùng");
+        PasswordField next = new PasswordField();
+        next.setPromptText("Ít nhất " + LoginRules.MIN_ACCOUNT_PASSWORD_LENGTH + " ký tự");
+        PasswordField confirm = new PasswordField();
+        confirm.setPromptText("Nhập lại mật khẩu mới");
+        Label error = errorLabel();
+        VBox content = new VBox(10,
+                fieldLabel("Mật khẩu hiện tại"), current,
+                fieldLabel("Mật khẩu mới"), next,
+                fieldLabel("Nhập lại mật khẩu mới"), confirm,
+                hint("Sau khi đổi, tài khoản sẽ bị đăng xuất trên mọi máy khác. Máy này vẫn giữ đăng nhập."),
+                error);
+        content.setPrefWidth(400);
+
+        ButtonType change = new ButtonType("Đổi mật khẩu", ButtonBar.ButtonData.OK_DONE);
+        Dialog<PasswordChange> dialog = dialog(owner, "Đổi mật khẩu", "Đổi mật khẩu tài khoản", content, change);
+        validateOnOk(dialog, change, error,
+                () -> LoginRules.validatePasswordChange(current.getText(), next.getText(), confirm.getText()));
+        dialog.setResultConverter(button -> button == change
+                ? new PasswordChange(current.getText(), next.getText())
+                : null);
+        Platform.runLater(current::requestFocus);
+        return dialog.showAndWait();
+    }
+
     // ------------------------------------------------------------ tien ich
 
     private static <T> Dialog<T> dialog(Window owner, String title, String header, Node content, ButtonType ok) {

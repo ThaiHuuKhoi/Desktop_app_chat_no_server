@@ -67,6 +67,22 @@ class MessageDeliveryTrackerTest {
     }
 
     @Test
+    void cancelPendingKeepsReceivedIdsSoResendAfterReconnectIsNotShownTwice() throws Exception {
+        MessageDeliveryTracker tracker = new MessageDeliveryTracker(scheduler, 2, 20,
+                (peer, id) -> { throw new AssertionError("peer da roi phong, khong bao loi"); });
+        assertTrue(tracker.markReceived("bob", "m1"));
+        tracker.track("bob", "m2", () -> { });
+
+        tracker.cancelPending("bob"); // bob roi phong, co the vao lai voi cung peerId
+        Thread.sleep(150);
+
+        assertEquals(0, tracker.pendingCount());
+        assertFalse(tracker.markReceived("bob", "m1"), "Tin da nhan truoc khi bob mat mang khong duoc hien lai");
+        tracker.forgetPeer("bob"); // bi ngat han thi moi quen
+        assertTrue(tracker.markReceived("bob", "m1"));
+    }
+
+    @Test
     void duplicateMessagesAreDetectedPerPeer() {
         MessageDeliveryTracker tracker = new MessageDeliveryTracker(scheduler, 1, 1000, (p, i) -> { });
 

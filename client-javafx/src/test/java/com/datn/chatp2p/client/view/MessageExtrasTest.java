@@ -17,6 +17,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class MessageExtrasTest {
 
     @Test
+    void replyQuoteHidesTextOfDeletedOriginal() {
+        // Loi phat hien khi test 2 may 25/11: xoa tin goc nhung khung trich dan cua tin tra loi van hien noi dung.
+        assertEquals(MessageTexts.DELETED_QUOTE, MessageTexts.quoteSnippet("bi mat can xoa", true));
+        assertFalse(MessageTexts.quoteSnippet("bi mat can xoa", true).contains("bi mat"));
+        assertEquals("noi dung **dam**".replace("**", ""), MessageTexts.quoteSnippet("noi dung **dam**", false));
+        assertEquals(MessageTexts.MISSING_QUOTE, MessageTexts.quoteSnippet(null, false));
+    }
+
+    @Test
     void reactionsToggleCountAndIgnoreUnknownEmoji() {
         ReactionStore store = new ReactionStore();
         assertTrue(store.apply("m1", "a", "👍", true));

@@ -15,6 +15,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.socket.CloseStatus;
+import org.springframework.web.socket.PingMessage;
+import org.springframework.web.socket.PongMessage;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
@@ -84,6 +86,15 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
     /** Gioi han hang doi gui cho 1 session cham: qua thoi gian/kich thuoc thi dong session do. */
     static final int SEND_TIME_LIMIT_MILLIS = 10_000;
     static final int SEND_BUFFER_LIMIT_BYTES = 512 * 1024;
+    /**
+     * Phat hien ket noi chet: moi {@value} ms gui 1 WebSocket Ping toi moi session. Truoc day mat mang dot
+     * ngot (tat Wi-Fi) khong dong TCP, server chi biet sau ~4-5 phut (do 25/11) - trong luc do nguoi kia van
+     * nam trong danh sach phong. Client Java ({@code java.net.http.WebSocket}) tu tra Pong, ke ca client cu.
+     */
+    static final long HEARTBEAT_INTERVAL_MILLIS = 15_000;
+    /** Khong co Pong / ban tin nao trong khoang nay thi coi la da mat ket noi: bao PEER_LEFT va dong session. */
+    static final long HEARTBEAT_TIMEOUT_MILLIS = 35_000;
+    static final String LAST_SEEN_ATTR = "lastSeenMillis";
 
     private final RoomRegistry roomRegistry;
     private final ObjectMapper objectMapper;
@@ -94,6 +105,9 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
     /** Moi session co 1 decorator gui an toan da luong, co gioi han hang doi (xem {@link #send}). */
     private final Map<String, WebSocketSession> outboundSessions = new ConcurrentHashMap<>();
     private final Map<String, AtomicInteger> connectionsByAddress = new ConcurrentHashMap<>();
+    /** Moi session dang mo - de gui Ping dinh ky va tim ket noi chet. */
+    private final Map<String, WebSocketSession> openSessions = new ConcurrentHashMap<>();
+    private final long heartbeatTimeoutMillis;
     private final ScheduledExecutorService joinDeadlines = Executors.newSingleThreadScheduledExecutor(runnable -> {
         Thread thread = new Thread(runnable, "ws-join-deadline");
         thread.setDaemon(true);
@@ -104,12 +118,25 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
     public SignalingWebSocketHandler(RoomRegistry roomRegistry, ObjectMapper objectMapper, AuthService authService,
                                      @Value("${chat-p2p.auth.required:true}") boolean authenticationRequired,
                                      @Value("${chat-p2p.ws.max-connections-per-address:" + MAX_CONNECTIONS_PER_ADDRESS + "}")
-                                     int maxConnectionsPerAddress) {
+                                     int maxConnectionsPerAddress,
+                                     @Value("${chat-p2p.ws.heartbeat-interval-ms:" + HEARTBEAT_INTERVAL_MILLIS + "}")
+                                     long heartbeatIntervalMillis,
+                                     @Value("${chat-p2p.ws.heartbeat-timeout-ms:" + HEARTBEAT_TIMEOUT_MILLIS + "}")
+                                     long heartbeatTimeoutMillis) {
         this.roomRegistry = roomRegistry;
         this.objectMapper = omitNulls(objectMapper);
         this.authService = authService;
         this.authenticationRequired = authenticationRequired;
         this.maxConnectionsPerAddress = maxConnectionsPerAddress;
+        this.heartbeatTimeoutMillis = heartbeatTimeoutMillis;
+        startHeartbeat(heartbeatIntervalMillis);
+    }
+
+    /** Cho test dung auth that: khong chay lich heartbeat nen (test goi {@link #checkHeartbeats} neu can). */
+    public SignalingWebSocketHandler(RoomRegistry roomRegistry, ObjectMapper objectMapper, AuthService authService,
+                                     boolean authenticationRequired, int maxConnectionsPerAddress) {
+        this(roomRegistry, objectMapper, authService, authenticationRequired, maxConnectionsPerAddress,
+                0, HEARTBEAT_TIMEOUT_MILLIS);
     }
 
     /** Compatibility constructor for low-level relay tests that do not boot auth storage. */
@@ -119,6 +146,68 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
         this.authService = null;
         this.authenticationRequired = false;
         this.maxConnectionsPerAddress = MAX_CONNECTIONS_PER_ADDRESS;
+        // Test cap thap goi checkHeartbeats(now) truc tiep, khong chay lich nen.
+        this.heartbeatTimeoutMillis = HEARTBEAT_TIMEOUT_MILLIS;
+    }
+
+    private void startHeartbeat(long intervalMillis) {
+        if (intervalMillis <= 0) {
+            return;
+        }
+        joinDeadlines.scheduleWithFixedDelay(() -> {
+            try {
+                checkHeartbeats(System.currentTimeMillis());
+            } catch (RuntimeException e) {
+                log.warn("Kiem tra heartbeat loi: {}", e.getMessage()); // khong duoc lam dung lich
+            }
+        }, intervalMillis, intervalMillis, TimeUnit.MILLISECONDS);
+    }
+
+    /**
+     * 1 vong heartbeat: session nao qua {@code heartbeatTimeoutMillis} khong co Pong / ban tin thi coi la da mat
+     * (bao PEER_LEFT cho phong ngay, roi dong); con lai gui Ping. Package-private de test goi voi dong ho gia.
+     */
+    void checkHeartbeats(long nowMillis) {
+        for (WebSocketSession session : openSessions.values()) {
+            long lastSeen = lastSeen(session);
+            if (nowMillis - lastSeen > heartbeatTimeoutMillis) {
+                log.info("Dong ket noi {}: khong phan hoi Ping trong {} ms (mat mang?)", session.getId(),
+                        nowMillis - lastSeen);
+                // Bao PEER_LEFT ngay: voi ket noi chet, close() co the khong kip goi afterConnectionClosed.
+                removeAndNotify(session);
+                openSessions.remove(session.getId());
+                closeQuietly(session, CloseStatus.SESSION_NOT_RELIABLE);
+                continue;
+            }
+            sendPing(session);
+        }
+    }
+
+    private static long lastSeen(WebSocketSession session) {
+        Object value = session.getAttributes().get(LAST_SEEN_ATTR);
+        return value instanceof Long millis ? millis : Long.MAX_VALUE / 2;
+    }
+
+    private static void markSeen(WebSocketSession session) {
+        session.getAttributes().put(LAST_SEEN_ATTR, System.currentTimeMillis());
+    }
+
+    private void sendPing(WebSocketSession session) {
+        if (!session.isOpen()) {
+            return;
+        }
+        WebSocketSession outbound = outboundSessions.computeIfAbsent(session.getId(),
+                ignored -> new ConcurrentWebSocketSessionDecorator(session, SEND_TIME_LIMIT_MILLIS, SEND_BUFFER_LIMIT_BYTES));
+        try {
+            outbound.sendMessage(new PingMessage());
+        } catch (IOException | RuntimeException e) {
+            log.debug("Gui Ping toi session {} that bai: {}", session.getId(), e.getMessage());
+        }
+    }
+
+    @Override
+    protected void handlePongMessage(WebSocketSession session, PongMessage message) {
+        markSeen(session);
     }
 
     /**
@@ -145,6 +234,8 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
     public void afterConnectionEstablished(WebSocketSession session) {
         String address = addressKey(session);
         session.getAttributes().put(ADDRESS_ATTR, address);
+        markSeen(session);
+        openSessions.put(session.getId(), session);
         int open = connectionsByAddress.computeIfAbsent(address, ignored -> new AtomicInteger()).incrementAndGet();
         if (open > maxConnectionsPerAddress) {
             log.warn("Dong ket noi {} tu {}: vuot {} ket noi dong thoi", session.getId(), address,
@@ -167,6 +258,7 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
 
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) {
+        markSeen(session); // co ban tin la con song, ke ca khi Pong chua toi
         SignalMessage signal;
         try {
             signal = objectMapper.readValue(message.getPayload(), SignalMessage.class);
@@ -292,6 +384,7 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
         removeAndNotify(session);
+        openSessions.remove(session.getId());
         outboundSessions.remove(session.getId());
         Object address = session.getAttributes().get(ADDRESS_ATTR);
         if (address instanceof String key) {
@@ -324,9 +417,20 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
     }
 
     private void relayToTargetPeer(WebSocketSession sender, SignalMessage signal) {
-        if (!isAuthorized(sender, signal)) {
+        if (!isMember(sender, signal)) {
             log.warn("Tu choi relay {} tu session {} do sender identity khong hop le",
                     signal.getType(), sender.getId());
+            return;
+        }
+        if (!hasValidSession(sender)) {
+            // Ve het han (12 gio) hoac bi thu hoi (dang xuat / doi mat khau) trong luc dang o phong. Truoc
+            // day chi bo ban tin va ghi log: nguoi dung khong biet gi, nguoi moi vao khong noi duoc toi ho.
+            // Nay bao AUTH_EXPIRED (client quay ve man hinh dang nhap) va dua ra khoi phong.
+            log.warn("Phien dang nhap cua peer {} trong phong {} da het han / bi thu hoi - moi ra khoi phong",
+                    signal.getFromPeerId(), signal.getRoomId());
+            String roomId = signal.getRoomId();
+            removeAndNotify(sender);
+            sendJoinRejected(sender, roomId, JoinRejectReason.AUTH_EXPIRED);
             return;
         }
         if (signal.getRoomId() == null || signal.getToPeerId() == null) {
@@ -353,7 +457,8 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
         send(target.get().getWebSocketSession(), signal);
     }
 
-    private boolean isAuthorized(WebSocketSession session, SignalMessage signal) {
+    /** Nguoi gui dung la peer da JOIN phong nay tren chinh session nay. */
+    private boolean isMember(WebSocketSession session, SignalMessage signal) {
         Object joinedRoom = session.getAttributes().get(ROOM_ID_ATTR);
         Object joinedPeer = session.getAttributes().get(PEER_ID_ATTR);
         if (signal.getRoomId() == null || signal.getFromPeerId() == null
@@ -361,9 +466,11 @@ public class SignalingWebSocketHandler extends TextWebSocketHandler {
             return false;
         }
         // Rang buoc theo so phong hien tai, khong chi theo thuoc tinh session.
-        if (!roomRegistry.isMember(session, signal.getRoomId(), signal.getFromPeerId())) {
-            return false;
-        }
+        return roomRegistry.isMember(session, signal.getRoomId(), signal.getFromPeerId());
+    }
+
+    /** Server bat buoc dang nhap thi ve da dung luc JOIN phai van con han va chua bi thu hoi. */
+    private boolean hasValidSession(WebSocketSession session) {
         if (!authenticationRequired || authService == null) {
             return true;
         }

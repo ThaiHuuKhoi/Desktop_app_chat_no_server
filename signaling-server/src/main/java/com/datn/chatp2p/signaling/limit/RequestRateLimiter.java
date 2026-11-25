@@ -96,8 +96,27 @@ public final class RequestRateLimiter {
         if (address == null || address.isBlank()) {
             return "unknown";
         }
+        String prefix = ipv6Prefix(address, 64);
+        return prefix != null ? prefix : address;
+    }
+
+    /**
+     * Khoa cho tang gioi han RONG: dai IPv6 /48 (6 byte dau), hoac {@code null} voi IPv4 / chuoi khong phai IP.
+     * Mot VPS IPv6 thuong duoc cap ca dai /48, tuc ~65 nghin dai /64 - neu chi gioi han theo /64 thi ke
+     * tan cong co ~65 nghin suat, va xoay vong du nhieu /64 la lap day {@link #DEFAULT_MAX_KEYS} khoa, chan
+     * luon nguoi dung that (fail closed). Kiem tra tang /48 TRUOC tang /64 thi moi /48 chi tao duoc so
+     * khoa /64 bang han muc cua /48 moi cua so.
+     */
+    public static String wideNetworkKey(String address) {
+        if (address == null || address.isBlank()) {
+            return null;
+        }
+        return ipv6Prefix(address, 48);
+    }
+
+    private static String ipv6Prefix(String address, int bits) {
         if (address.indexOf(':') < 0) {
-            return address;
+            return null;
         }
         try {
             String literal = address.startsWith("[") && address.endsWith("]")
@@ -108,15 +127,15 @@ public final class RequestRateLimiter {
             }
             byte[] bytes = InetAddress.getByName(literal).getAddress();
             if (bytes.length != 16) {
-                return address;
+                return null;
             }
             StringBuilder prefix = new StringBuilder("v6:");
-            for (int i = 0; i < 8; i++) {
+            for (int i = 0; i < bits / 8; i++) {
                 prefix.append(String.format("%02x", bytes[i] & 0xff));
             }
-            return prefix.append("/64").toString();
+            return prefix.append('/').append(bits).toString();
         } catch (UnknownHostException e) {
-            return address;
+            return null;
         }
     }
 }

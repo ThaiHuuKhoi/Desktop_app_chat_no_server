@@ -54,6 +54,28 @@ class LobbyRulesTest {
     }
 
     @Test
+    void savedRoomTextsDescribeHistoryActivityAndPassword() {
+        com.datn.chatp2p.client.util.LocalHistoryStore.SavedRoom saved =
+                new com.datn.chatp2p.client.util.LocalHistoryStore.SavedRoom("rieng~abc", "rieng", true, "khoi",
+                        java.time.LocalDateTime.of(2026, 11, 25, 16, 40).atZone(java.time.ZoneOffset.UTC)
+                                .toInstant().toEpochMilli(), 42);
+        List<RoomSummary> active = List.of(new RoomSummary("rieng", 2, "An", true),
+                new RoomSummary("cong-khai", 1, "An", false));
+
+        assertEquals(active.get(0), LobbyRules.activeMatch(saved, active));
+        assertNull(LobbyRules.activeMatch(saved, List.of(new RoomSummary("rieng", 2, "An", false))),
+                "Phong cong khai cung ten khong phai phong co mat khau da luu");
+
+        String meta = LobbyRules.savedRoomMeta(saved, active.get(0), java.time.ZoneOffset.UTC);
+        assertTrue(meta.contains("42 tin") && meta.contains("16:40 25/11/2026") && meta.contains("2/8 người"), meta);
+        assertTrue(LobbyRules.savedRoomMeta(saved, null, java.time.ZoneOffset.UTC).contains("không có ai"));
+
+        assertTrue(LobbyRules.savedRoomHint(true, true, true).contains("mật khẩu đã dùng lần trước"));
+        assertTrue(LobbyRules.savedRoomHint(false, false, true).contains("mở lại phòng"));
+        assertTrue(LobbyRules.savedRoomHint(false, true, false).contains("đang tắt"));
+    }
+
+    @Test
     void oldServerRoomIdsWithTagAreNormalized() {
         RoomSummary fromOldServer = new RoomSummary("rieng~3f9c0a1b2c3d4e5f60718293", 2, "An", false).normalized();
         assertEquals(new RoomSummary("rieng", 2, "An", true), fromOldServer);

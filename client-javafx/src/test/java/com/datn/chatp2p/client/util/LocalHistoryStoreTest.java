@@ -57,6 +57,54 @@ class LocalHistoryStoreTest {
     }
 
     @Test
+    void savedRoomsAreListedPerAccountNewestFirstWithoutLeakingNameOrPassword() throws Exception {
+        LocalHistoryStore store = new LocalHistoryStore(dir, REVERSE);
+        List<LocalHistoryStore.SavedMessage> one = List.of(
+                new LocalHistoryStore.SavedMessage("m1", true, "khoi", "xin chao", 1, null));
+        store.save("nhom-do-an", "nhom-do-an", false, "khoi", one);
+        Thread.sleep(5);
+        store.save("phong-rieng~aaaaaaaaaaaaaaaaaaaaaaaa", "phong-rieng", true, "khoi",
+                List.of(one.get(0), new LocalHistoryStore.SavedMessage("m2", false, "Huy", "ok", 2, null)));
+        store.save("phong-cua-huy", "phong-cua-huy", false, "huy", one);
+        store.save("phong-khach", "phong-khach", false, "", one);
+        store.save("phong-khong-ten", one); // luu kieu cu, khong co ten phong
+
+        List<LocalHistoryStore.SavedRoom> rooms = store.listRooms("khoi");
+
+        assertEquals(List.of("phong-rieng", "nhom-do-an"), rooms.stream().map(LocalHistoryStore.SavedRoom::roomName).toList(),
+                "Chi phong cua tai khoan khoi, moi luu nhat truoc");
+        assertTrue(rooms.get(0).passwordProtected());
+        assertEquals(2, rooms.get(0).messageCount());
+        assertEquals("phong-rieng~aaaaaaaaaaaaaaaaaaaaaaaa", rooms.get(0).roomKey());
+        assertTrue(store.listRooms("").isEmpty(), "Khach khong co muc phong da luu");
+        assertEquals(one, store.load("nhom-do-an"), "Tin van nap lai binh thuong");
+
+        Path file = store.fileFor("phong-rieng~aaaaaaaaaaaaaaaaaaaaaaaa");
+        assertFalse(file.getFileName().toString().contains("phong"), "Ten file van khong lo ten phong");
+        assertFalse(new String(Files.readAllBytes(file)).contains("phong-rieng"), "Ten phong nam trong phan ma hoa");
+    }
+
+    @Test
+    void oldFormatFilesStillLoadAndSingleRoomCanBeDeleted() throws Exception {
+        LocalHistoryStore store = new LocalHistoryStore(dir, REVERSE);
+        List<LocalHistoryStore.SavedMessage> messages = List.of(
+                new LocalHistoryStore.SavedMessage("m1", true, "Toi", "tin cu", 1, null));
+        // File dinh dang cu: chi la danh sach tin (truoc 25/11).
+        Files.createDirectories(dir);
+        Files.write(store.fileFor("phong-cu"), REVERSE.protect(
+                new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsBytes(messages)));
+
+        assertEquals(messages, store.load("phong-cu"));
+        assertTrue(store.listRooms("khoi").isEmpty(), "File cu khong co ten phong nen khong hien trong danh sach");
+
+        store.save("a", "a", false, "khoi", messages);
+        assertTrue(store.delete("a"));
+        assertTrue(store.load("a").isEmpty());
+        assertFalse(store.delete("a"));
+        assertEquals(messages, store.load("phong-cu"), "Xoa 1 phong khong anh huong phong khac");
+    }
+
+    @Test
     void keepsOnlyTheMostRecentMessages() {
         LocalHistoryStore store = new LocalHistoryStore(dir, REVERSE);
         List<LocalHistoryStore.SavedMessage> many = new ArrayList<>();

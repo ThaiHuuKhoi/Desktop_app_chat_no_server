@@ -51,6 +51,14 @@
                 </Button>
             </HBox>
             <ListView fx:id="roomListView" styleClass="lobby-room-list, edge-to-edge" VBox.vgrow="ALWAYS"/>
+            <!-- Phong co lich su luu tren may (chi tai khoan, chi khi co it nhat 1 phong) -->
+            <VBox fx:id="savedRoomsBox" visible="false" managed="false">
+                <HBox styleClass="lobby-section-row" alignment="CENTER_LEFT">
+                    <Label fx:id="savedSectionLabel" text="ĐÃ LƯU TRÊN MÁY" styleClass="section-title"
+                           maxWidth="Infinity" HBox.hgrow="ALWAYS"/>
+                </HBox>
+                <ListView fx:id="savedRoomListView" styleClass="lobby-room-list, edge-to-edge" prefHeight="150"/>
+            </VBox>
             <Label fx:id="sidebarHint" styleClass="lobby-sidebar-hint" wrapText="true" minHeight="-Infinity"
                    text="Không thấy phòng? Phòng có mật khẩu vẫn vào được: gõ đúng tên ở ô tìm kiếm rồi nhấn Enter."/>
 
@@ -68,6 +76,11 @@
                 <Button fx:id="loginButton" text="Đăng nhập" onAction="#onBackToLogin" styleClass="small">
                     <graphic><FontIcon iconLiteral="fth-log-in"/></graphic>
                     <tooltip><Tooltip text="Quay lại màn hình đăng nhập"/></tooltip>
+                </Button>
+                <!-- Tai khoan: doi mat khau (server thu hoi moi token cu, cap token moi cho may nay) -->
+                <Button fx:id="changePasswordButton" onAction="#onChangePassword" styleClass="small, flat">
+                    <graphic><FontIcon iconLiteral="fth-key"/></graphic>
+                    <tooltip><Tooltip text="Đổi mật khẩu (đăng xuất mọi máy khác)"/></tooltip>
                 </Button>
                 <!-- Tai khoan: dang xuat (server thu hoi token) roi ve man hinh dang nhap -->
                 <Button fx:id="logoutButton" onAction="#onLogout" styleClass="small, flat">
@@ -147,6 +160,11 @@
                                     styleClass="accent, lobby-join-button" maxWidth="Infinity" defaultButton="true"/>
                             <Label fx:id="previewHint" styleClass="field-hint" wrapText="true" minHeight="-Infinity"/>
                         </VBox>
+                        <!-- Chi hien khi xem truoc 1 phong trong muc "Đã lưu trên máy" -->
+                        <Button fx:id="deleteSavedButton" text="Xoá lịch sử đã lưu của phòng này"
+                                onAction="#onDeleteSavedRoom" styleClass="flat, danger" visible="false" managed="false">
+                            <graphic><FontIcon iconLiteral="fth-trash-2"/></graphic>
+                        </Button>
                         <Button text="Quay lại" onAction="#onBackToWelcome" styleClass="flat">
                             <graphic><FontIcon iconLiteral="fth-arrow-left"/></graphic>
                         </Button>

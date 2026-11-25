@@ -43,4 +43,21 @@ final class LoginRules {
         }
         return null;
     }
+
+    /** Kiem tra form doi mat khau phia client (server van kiem tra lai). @return loi, hoac null neu hop le. */
+    static String validatePasswordChange(String current, String next, String confirm) {
+        if (current.isEmpty()) {
+            return "Vui lòng nhập mật khẩu hiện tại.";
+        }
+        if (next.length() < MIN_ACCOUNT_PASSWORD_LENGTH) {
+            return "Mật khẩu mới cần ít nhất " + MIN_ACCOUNT_PASSWORD_LENGTH + " ký tự.";
+        }
+        if (next.equals(current)) {
+            return "Mật khẩu mới phải khác mật khẩu hiện tại.";
+        }
+        if (!next.equals(confirm)) {
+            return "Mật khẩu nhập lại không khớp.";
+        }
+        return null;
+    }
 }
