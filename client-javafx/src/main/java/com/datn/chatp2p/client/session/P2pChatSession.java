@@ -75,6 +75,16 @@ public final class P2pChatSession implements ChatSession {
      * du rong cho mang cham ma van khong de nguoi khong co mat khau giu duong UDP mo mai.
      */
     static final long ROOM_PROOF_TIMEOUT_MILLIS = 10_000;
+    /**
+     * Tin chua co ACK (het 6 luot gui lai nhanh) duoc thu gui lai moi khoang nay, chung nao nguoi nhan con trong
+     * phong - de mat mang vai giay roi duong cu tu thong lai (khong co lan "ket noi lai" nao) van gui duoc.
+     */
+    static final long UNDELIVERED_RETRY_MILLIS = 5_000;
+    /**
+     * Chi bao "Chua toi noi" sau khoang nay ke tu lan gui dau (giong cac app lon: hien "Dang gui" lau roi moi bao
+     * that bai). Truoc day bao sau ~3 s (6 x 0,5 s). Da bao roi van tiep tuc thu gui lai.
+     */
+    static final long DELIVERY_FAILED_AFTER_MILLIS = 60_000;
 
     private final RoomConfig config;
     private final WebSocketSignalingClient signalingClient;
@@ -110,6 +120,13 @@ public final class P2pChatSession implements ChatSession {
     private final MessageDeliveryTracker deliveryTracker = new MessageDeliveryTracker(
             retryExecutor, MESSAGE_MAX_RETRIES, MESSAGE_RETRY_INTERVAL_MILLIS,
             (peerId, messageId) -> {
+                if (undelivered.contains(peerId, messageId)) {
+                    // Tin nhan: chua bao that bai - retryUndelivered() tiep tuc gui lai moi
+                    // UNDELIVERED_RETRY_MILLIS va chi bao "Chua toi noi" sau DELIVERY_FAILED_AFTER_MILLIS.
+                    LOG.info(() -> "Chua co ACK sau " + MESSAGE_MAX_RETRIES + " lan: id=" + shortId(messageId)
+                            + " toi " + who(peerId) + " - giu lai, se thu gui lai dinh ky");
+                    return;
+                }
                 LOG.warning(() -> "Het luot gui lai: id=" + shortId(messageId) + " toi " + who(peerId)
                         + " khong nhan duoc ACK sau " + MESSAGE_MAX_RETRIES + " lan");
                 notifyDeliveryFailed(messageId, peerId);
@@ -199,6 +216,12 @@ public final class P2pChatSession implements ChatSession {
             roomSession.onEnvelope(type, admittedOnly(fileTransfers::handleEnvelope));
         }
 
+        try {
+            retryExecutor.scheduleWithFixedDelay(this::retryUndeliveredSafely,
+                    UNDELIVERED_RETRY_MILLIS, UNDELIVERED_RETRY_MILLIS, TimeUnit.MILLISECONDS);
+        } catch (RejectedExecutionException ignored) {
+            // da roi phong
+        }
         try {
             roomSession.join(config.serverUri());
         } catch (RuntimeException error) {
@@ -335,6 +358,62 @@ public final class P2pChatSession implements ChatSession {
         undelivered.remember(peerId, namespace, payload, verifiedRemoteFingerprints.get(peerId));
         sendReliably(peerId, payload.id(),
                 () -> roomSession.sendTo(peerId, EnvelopeType.MESSAGE, namespace, payload));
+    }
+
+    private void retryUndeliveredSafely() {
+        try {
+            retryUndelivered(System.currentTimeMillis());
+        } catch (RuntimeException error) {
+            LOG.fine(() -> "Vong gui lai tin chua toi noi loi: " + error.getMessage()); // khong lam dung lich
+        }
+    }
+
+    /**
+     * Chay moi {@link #UNDELIVERED_RETRY_MILLIS}: voi moi nguoi con trong phong va da xac thuc danh tinh, gui lai
+     * cac tin chua co ACK ma dang khong trong luot gui lai nhanh (vd mat mang vai giay, duong cu tu thong lai -
+     * khong co lan ket noi lai nao de kich hoat {@link #resendUndelivered}). Tin qua
+     * {@link #DELIVERY_FAILED_AFTER_MILLIS} van chua co ACK thi bao "Chua toi noi" 1 lan, nhung van tiep tuc gui lai;
+     * ACK toi muon thi giao dien tu chuyen sang "Da nhan". Package-private de test goi voi dong ho gia.
+     */
+    void retryUndelivered(long nowMillis) {
+        if (left) {
+            return;
+        }
+        for (String peerId : admittedPeerIds()) {
+            String fingerprint = verifiedRemoteFingerprints.get(peerId);
+            int resent = 0;
+            int newlyFailed = 0;
+            for (UndeliveredMessages.Entry entry : undelivered.pending(peerId)) {
+                String id = entry.payload().id();
+                // Cung ket noi nay (chua thay doi): tin gui luc chua xac thuc (van tay null) cung gui lai duoc.
+                boolean sameIdentity = entry.recipientFingerprint() == null
+                        || entry.recipientFingerprint().equals(fingerprint);
+                if (fingerprint != null && sameIdentity && !deliveryTracker.isPending(peerId, id)) {
+                    try {
+                        sendReliably(peerId, id,
+                                () -> roomSession.sendTo(peerId, EnvelopeType.MESSAGE, entry.namespace(), entry.payload()));
+                        resent++;
+                    } catch (RuntimeException error) {
+                        // ket noi dang loi - lan sau thu lai
+                    }
+                }
+                if (nowMillis - entry.firstSentAtMillis() >= DELIVERY_FAILED_AFTER_MILLIS
+                        && undelivered.markFailureReported(peerId, id)) {
+                    notifyDeliveryFailed(id, peerId);
+                    newlyFailed++;
+                }
+            }
+            if (resent > 0) {
+                int count = resent;
+                LOG.info(() -> "Thu gui lai " + count + " tin chua co ACK toi " + who(peerId));
+            }
+            if (newlyFailed > 0) {
+                LOG.warning("Chua toi noi sau " + DELIVERY_FAILED_AFTER_MILLIS / 1000 + " s: " + newlyFailed
+                        + " tin toi " + who(peerId) + " - van tiep tuc thu gui lai");
+                notifyConnectionFailed(peerId, new IOException("tin nhắn chưa tới nơi sau "
+                        + DELIVERY_FAILED_AFTER_MILLIS / 1000 + " giây; app vẫn tiếp tục thử gửi lại"));
+            }
+        }
     }
 
     /**

@@ -46,7 +46,12 @@ public final class WebSocketSignalingClient implements SignalingClient {
 
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
     private static final Duration INITIAL_RECONNECT_DELAY = Duration.ofSeconds(1);
-    private static final Duration MAX_RECONNECT_DELAY = Duration.ofSeconds(30);
+    /**
+     * Cho toi da giua 2 lan thu ket noi lai (1, 2, 4, 8, 10, 10... s). Truoc day 30 s: mat mang lau thi co mang lai
+     * van co the phai cho toi 30 s moi vao lai phong (va moi gui lai duoc tin chua toi noi). 10 s van du thua de
+     * khong don server khi server khoi dong lai (moi client chi 1 lan thu / 10 s).
+     */
+    private static final Duration MAX_RECONNECT_DELAY = Duration.ofSeconds(10);
 
     /** Trang thai ket noi toi signaling server - dung cho {@link #onConnectionStateChanged}. */
     public enum ConnectionState {

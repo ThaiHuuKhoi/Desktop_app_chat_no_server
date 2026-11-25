@@ -131,6 +131,11 @@ final class MessageDeliveryTracker {
         });
     }
 
+    /** {@code true} neu tin nay dang trong luot gui lai (chua ACK, chua het luot). */
+    boolean isPending(String peerId, String messageId) {
+        return pending.containsKey(new Key(peerId, messageId));
+    }
+
     int pendingCount() {
         return pending.size();
     }

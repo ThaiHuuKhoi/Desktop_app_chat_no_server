@@ -736,6 +736,21 @@ public class RoomController implements ChatSessionListener {
         }
 
         @Override
+        public void resend(ChatMessage message) {
+            String directPeerId = transcriptManager.selectedDirectPeerId();
+            try {
+                // Cung id voi tin cu: nguoi da nhan roi thi tu loai trung (van ACK), nguoi chua nhan thi hien tin.
+                if (directPeerId == null) {
+                    session.sendGroupMessage(message);
+                } else {
+                    session.sendDirectMessage(directPeerId, message);
+                }
+            } catch (RuntimeException e) {
+                notice(NoticeKind.WARNING, "Gửi lại thất bại: " + e.getMessage());
+            }
+        }
+
+        @Override
         public boolean isEdited(ChatMessage message) {
             return Boolean.FALSE.equals(editedOrDeleted.get(editKey(message)));
         }

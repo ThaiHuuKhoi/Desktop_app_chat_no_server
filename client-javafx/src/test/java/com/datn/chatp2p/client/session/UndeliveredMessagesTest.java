@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -53,6 +54,26 @@ class UndeliveredMessagesTest {
 
         assertTrue(store.forReconnected("huy", HUY_KEY).isEmpty());
         assertTrue(store.forReconnected("huy", null).isEmpty());
+    }
+
+    @Test
+    void failureIsReportedOnlyOnceAndResetWhenUserResends() {
+        UndeliveredMessages store = new UndeliveredMessages();
+        store.remember("huy", null, payload("m1"), HUY_KEY, 1_000L);
+
+        assertEquals(1, store.pending("huy").size(), "pending() khong xoa tin");
+        assertEquals(1_000L, store.pending("huy").get(0).firstSentAtMillis());
+        assertTrue(store.contains("huy", "m1"));
+        assertTrue(store.markFailureReported("huy", "m1"), "Lan dau phai bao giao dien");
+        assertFalse(store.markFailureReported("huy", "m1"), "Chi bao 1 lan du van tiep tuc gui lai");
+
+        store.remember("huy", null, payload("m1"), HUY_KEY, 9_000L); // nguoi dung bam "Gui lai"
+        assertEquals(9_000L, store.pending("huy").get(0).firstSentAtMillis());
+        assertTrue(store.markFailureReported("huy", "m1"), "Gui lai tay thi dem lai tu dau");
+
+        store.acknowledge("huy", "m1");
+        assertFalse(store.contains("huy", "m1"));
+        assertFalse(store.markFailureReported("huy", "m1"), "Da co ACK thi khong bao that bai");
     }
 
     @Test

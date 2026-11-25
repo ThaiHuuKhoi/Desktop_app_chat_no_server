@@ -486,6 +486,14 @@ class TranscriptCell extends ListCell<TranscriptEntry> {
             edit.setOnAction(event -> messageContext.edit(message));
             javafx.scene.control.MenuItem delete = new javafx.scene.control.MenuItem("Xoá", new FontIcon(Feather.TRASH_2));
             delete.setOnAction(event -> messageContext.delete(message));
+            DeliveryStatuses.Status status = messageContext.delivery(message.getId());
+            if (status != null && status.failed() > 0) {
+                // Tin co nguoi nhan chua nhan duoc: gui lai tay (vd nguoi do da vao lai phong voi phien moi).
+                javafx.scene.control.MenuItem resend = new javafx.scene.control.MenuItem("Gửi lại",
+                        new FontIcon(Feather.REFRESH_CW));
+                resend.setOnAction(event -> messageContext.resend(message));
+                menu.getItems().add(resend);
+            }
             menu.getItems().addAll(edit, delete);
         }
         bubble.setOnContextMenuRequested(event -> menu.show(bubble, event.getScreenX(), event.getScreenY()));

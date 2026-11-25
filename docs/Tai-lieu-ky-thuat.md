@@ -288,7 +288,7 @@ Gửi / nhận datagram trên socket ice4j đã chọn; chỉ nhận gói từ �
 
 ### E.6.4 `WebSocketSignalingClient`
 
-Kết nối `serverUri + "/ws"`. Mất kết nối thì tự kết nối lại với thời gian chờ tăng dần (1 s … 30 s) và gửi lại `JOIN`; các kết nối P2P đã có vẫn chạy. Token phiên được gắn vào `JOIN` (và các bản tin khác để server kiểm tra lại). Client chỉ gửi token tới đúng server đã đăng nhập (*sửa 22/11, vấn đề 3*, mục G.4).
+Kết nối `serverUri + "/ws"`. Mất kết nối thì tự kết nối lại với thời gian chờ tăng dần (1 s … 10 s; trước 25/11 là tối đa 30 s) và gửi lại `JOIN`; các kết nối P2P đã có vẫn chạy. Token phiên được gắn vào `JOIN` (và các bản tin khác để server kiểm tra lại). Client chỉ gửi token tới đúng server đã đăng nhập (*sửa 22/11, vấn đề 3*, mục G.4).
 
 ## E.7 Mesh nhiều người
 
@@ -419,6 +419,7 @@ Một lần chạy toàn bộ, `PeerConnectionBurstThroughputTest` fail đúng l
 - **20/11/2026, server thật `wss://chat.zingme.fun`:** đạt. Đã thử chat nhóm / riêng, phòng có mật khẩu (kể cả nhập sai), gửi / nhận / từ chối / huỷ file, trạng thái giao tin, so vân tay, kết nối qua TLS. Giao diện còn được kiểm tra bằng cách dựng màn hình với dữ liệu giả và chụp ảnh.
 - **20/11/2026, đo xuyên NAT và TURN thật:** xem mục I.3.
 - **22/11/2026, sau khi deploy server mới:** service khởi động bình thường, `/turn-credentials` trả 200 qua Caddy. **Chưa thử lại bằng tay với hai client bản mới.**
+- **25/11/2026, deploy commit `cd9960f` (heartbeat Ping 15 s / hết hạn 35 s):** khởi động trong 6,3 s, không có lỗi trong log, `/turn-credentials` trả 200. Lưu ý: kiểm tra `curl` ngay sau `systemctl restart` sẽ ra `502` vì server chưa khởi động xong; chờ khoảng 10–20 s rồi kiểm tra lại.
 - **25/11/2026, hai máy thật, hai người dùng:** đạt. Đo ba kịch bản mạng (cùng Wi-Fi trường; Wi-Fi trường ↔ 4G Viettel; 4G Vinaphone ↔ 4G Viettel), 7/7 lần kết nối thành công, chat và gửi file hai chiều, 9/9 file đúng SHA-256. Kết quả tóm tắt ở mục I.3, chi tiết ở [Ket-qua-do-xuyen-NAT.md](Ket-qua-do-xuyen-NAT.md). Bản client dùng để đo có thêm dòng log tổng kết mỗi lần truyền file (dung lượng, thời gian, tốc độ, số mảnh gửi lại; không ghi tên file).
 - **Cần đo thêm:** Wi-Fi nhà ↔ Wi-Fi nhà khác; mạng chặn UDP.
 
@@ -433,13 +434,14 @@ Một lần chạy toàn bộ, `PeerConnectionBurstThroughputTest` fail đúng l
 | 5 | Phòng có mật khẩu: nhập sai, nhập sai quá 5 lần trong 1 phút, nhập đúng | Báo sai ngay; bị chặn 1 phút kể cả khi nhập đúng; sau đó nhập đúng thì vào được | **Đạt** |
 | 6 | Trạng thái tin: đang gửi / đã nhận / đã xem, đang gõ, trả lời, cảm xúc, sửa, xoá | Đúng như mục I.6 | **Đạt, có 1 lỗi đã sửa:** máy 2 trả lời một tin, máy 1 xoá tin gốc; tin gốc hiện "đã xoá" nhưng **khung trích dẫn trong tin trả lời vẫn hiện nội dung cũ**. Đã sửa cùng ngày (mục I.6) |
 | 7 | Thông báo màn hình khi app thu nhỏ | Chỉ hiện tên người gửi, không hiện nội dung | **Đạt** |
-| 8 | Máy 2 tắt Wi-Fi khi đang nhận file và nhắn tin, rồi bật lại | Truyền file chịu được mất mạng ngắn; app tự kết nối lại | **Đạt một phần**, xem ghi chú dưới bảng |
+| 8 | Máy 2 tắt Wi-Fi khi đang nhận file và nhắn tin, rồi bật lại | Truyền file chịu được mất mạng ngắn; app tự kết nối lại | **Đạt một phần** lần đầu; hai hạn chế đã sửa và **thử lại đạt** cùng ngày, xem ghi chú dưới bảng |
+| 9 | Mục "Đã lưu trên máy" ở sảnh: bật lưu lịch sử, chat rồi rời phòng cho phòng biến mất khỏi server, quay lại sảnh và bấm vào phòng đã lưu | Phòng hiện trong mục, bấm vào thì xem trước được; vào lại thì tin đã lưu hiện lại | **Đạt** |
 
 **Ghi chú mục 8** (mốc giờ từ log máy 1, phòng có mật khẩu, kết nối qua TURN):
 - **Đạt:** truyền file **tạm dừng** khi máy 2 mất Wi-Fi và **gửi tiếp** khi có mạng lại, không phải gửi lại từ đầu (bên gửi chờ tối đa ~30 s, gửi lại thưa dần 0,5 → 4 s).
 - **Đạt:** khi máy 2 có mạng lại, app **tự kết nối lại signaling và tự vào lại phòng** với cùng `peerId`, ICE mới qua TURN, rồi làm lại `ROOM_PROOF` và `PEER_IDENTITY` từ đầu, đồng bộ lịch sử. Tin nhắn qua lại bình thường sau đó.
-- **Hạn chế:** tin máy 2 gửi lúc mất mạng chỉ được thử lại 6 lần × 0,5 s (~3 s), rồi bị đánh dấu "Chưa tới nơi" kèm thông báo "Không kết nối được với khoi (tin nhắn chưa tới nơi)", và **không bao giờ được gửi lại**, kể cả sau khi đã kết nối lại. **Đã sửa cùng ngày:** tin chưa có ACK được giữ lại và tự gửi lại khi người đó kết nối lại với cùng vân tay danh tính (mục I.6). Chưa thử lại trên hai máy.
-- **Hạn chế:** server chỉ biết máy 2 đã mất sau **~4–5 phút** (tắt Wi-Fi lúc ~16:35, `PEER_LEFT` lúc 16:39:45), vì tắt Wi-Fi đột ngột không đóng kết nối WebSocket. Trong khoảng đó máy 2 vẫn nằm trong danh sách người dù không liên lạc được. **Đã sửa cùng ngày:** server Ping mỗi 15 s, quá 35 s không phản hồi thì báo `PEER_LEFT` (mục I.13). Cần deploy server mới; chưa thử lại trên hai máy.
+- **Hạn chế:** tin máy 2 gửi lúc mất mạng chỉ được thử lại 6 lần × 0,5 s (~3 s), rồi bị đánh dấu "Chưa tới nơi" kèm thông báo "Không kết nối được với khoi (tin nhắn chưa tới nơi)", và **không bao giờ được gửi lại**, kể cả sau khi đã kết nối lại. **Đã sửa cùng ngày:** tin chưa có ACK được giữ lại, thử gửi lại mỗi 5 giây khi người đó còn trong phòng, và gửi lại ngay khi người đó kết nối lại với cùng vân tay danh tính (mục I.6). **Thử lại trên hai máy, đạt:** máy 2 tắt Wi-Fi, máy 1 gửi tin lúc 17:51:34; sau 6 lượt thử nhanh tin được giữ lại ở trạng thái "Đang gửi" (17:51:37); máy 2 bật lại Wi-Fi sau khoảng 10 giây, vòng thử định kỳ gửi lại lúc 17:51:42 và tin chuyển sang "Đã nhận", tổng cộng ~8 giây từ lúc gửi, không cần vào lại phòng.
+- **Hạn chế:** server chỉ biết máy 2 đã mất sau **~4–5 phút** (tắt Wi-Fi lúc ~16:35, `PEER_LEFT` lúc 16:39:45), vì tắt Wi-Fi đột ngột không đóng kết nối WebSocket. Trong khoảng đó máy 2 vẫn nằm trong danh sách người dù không liên lạc được. **Đã sửa cùng ngày:** server Ping mỗi 15 s, quá 35 s không phản hồi thì báo `PEER_LEFT` (mục I.13). **Đã deploy và thử lại trên hai máy, đạt:** máy 2 tắt Wi-Fi thì khoảng 35–40 s sau biến khỏi danh sách người của máy 1; bật lại Wi-Fi thì app tự vào lại phòng (ví dụ log máy 1: `PEER_LEFT` lúc 17:28:14, vào lại và xác thực xong lúc 17:28:26).
 - Log hiện chỉ ghi khi truyền file **thành công**, nên phần tạm dừng / gửi tiếp dựa trên quan sát trên giao diện.
 
 ### F.5.4 Kiểm thử bảo mật
@@ -539,7 +541,7 @@ curl -s -o /dev/null -w "%{http_code}\n" https://chat.zingme.fun/turn-credential
 
 | Kịch bản | Xử lý |
 |---|---|
-| Mất WebSocket tới signaling server | Tự kết nối lại (1 s … 30 s), gửi lại `JOIN`; kết nối P2P vẫn chạy |
+| Mất WebSocket tới signaling server | Tự kết nối lại (1 s … 10 s), gửi lại `JOIN`; kết nối P2P vẫn chạy |
 | ICE thất bại (kể cả qua TURN) | Hết thời gian chờ thì báo "Không kết nối được với X"; không thử lại vô hạn |
 | Mất gói UDP | ACK + gửi lại cho tin nhắn (6 lần × 500 ms), lịch sử, file (cửa sổ trượt, gửi lại nhanh) |
 | Peer rời phòng khi đang gửi file | Huỷ truyền, xoá file tạm `.part`, thẻ file chuyển sang thất bại |
@@ -628,7 +630,7 @@ curl -s -o /dev/null -w "%{http_code}\n" https://chat.zingme.fun/turn-credential
 | Ở một mình trong phòng quá lâu (sai tên phòng, hoặc bạn bè chưa vào) | Sau 20 s hiện gợi ý kiểm tra lại tên phòng (phân biệt hoa thường). Sai mật khẩu thì đã được báo ngay | ⚠️ | |
 | Tên phòng phân biệt hoa thường (`Phong-A` khác `phong-a`) | Ghi rõ trong gợi ý ở sảnh và trong hộp thoại | ⚠️ | Chuẩn hoá tên phòng về chữ thường |
 | Không kết nối được tới server khi vào phòng | Báo lỗi lên giao diện: "Không thể kết nối tới signaling server", mở lại các nút ở sảnh | ✅ | |
-| Mất kết nối với server khi đang trong phòng | Client tự kết nối lại với thời gian chờ tăng dần (1 s, 2 s, 4 s… tối đa 30 s) và tự gửi lại `JOIN`. Các kết nối P2P đã có **vẫn hoạt động** vì không đi qua server | ✅ | Hiện trạng thái "Đang kết nối lại…" trên giao diện |
+| Mất kết nối với server khi đang trong phòng | Client tự kết nối lại với thời gian chờ tăng dần (1 s, 2 s, 4 s, 8 s, rồi 10 s một lần; *trước 25/11 tối đa 30 s*) và tự gửi lại `JOIN`. Các kết nối P2P đã có **vẫn hoạt động** vì không đi qua server | ✅ | Hiện trạng thái "Đang kết nối lại…" trên giao diện |
 | Phòng đã đủ 8 người, hoặc trùng `peerId` | Server gửi `JOIN_REJECTED(ROOM_FULL / DUPLICATE_PEER)`; client quay về sảnh và hiện lý do | ✅ | |
 | Bản tin JSON hỏng hoặc thiếu trường | Server bỏ qua bản tin đó, không ảnh hưởng người khác | ✅ | |
 | Một client cố giả mạo người khác khi gửi OFFER/ANSWER | Server chỉ chuyển tiếp nếu người gửi đã `JOIN` đúng phòng và đúng `peerId`, và **hiện vẫn đang ở trong phòng** (kiểm tra với danh sách phòng của server) | ✅ | |
@@ -792,8 +794,8 @@ Hai laptop, mỗi máy một người, vào cùng phòng qua server thật `wss:
 |---|---|---|---|
 | Tin bị mất trên đường truyền | Không nhận ACK thì gửi lại, tối đa 6 lần, mỗi lần cách 0,5 s | ✅ | |
 | ACK bị mất nên người nhận nhận cùng một tin 2 lần | Người nhận loại bản trùng theo `id` của tin, vẫn trả ACK lại | ✅ | |
-| Gửi lại 6 lần vẫn không có ACK | Giao diện cảnh báo "tin nhắn chưa tới nơi" cho đúng người đó, và tin đó hiện "Chưa tới nơi" | ✅ | |
-| Mất mạng vài giây rồi có lại: tin gửi trong lúc mất mạng | *(phát hiện khi test hai máy 25/11, sửa cùng ngày)* Trước đây tin bỏ cuộc sau ~3 s (6 × 0,5 s) và không bao giờ được gửi lại. Nay tin chưa có ACK được **giữ lại** (tối đa 200 tin mỗi người, `UndeliveredMessages`) và **tự gửi lại khi người đó kết nối lại** với cùng `peerId` và **cùng vân tay danh tính** đã xác thực; tin chuyển từ "Chưa tới nơi" sang "Đã nhận" khi ACK tới. Bên nhận loại trùng theo id (giữ sổ "đã nhận" qua lần kết nối lại; tin nhóm đã có qua gói lịch sử thì không hiện lại) | ✅ | Nút "Gửi lại" cho trường hợp người kia tắt hẳn app rồi mở lại (đổi `peerId`, không tự gửi lại được) |
+| Gửi lại 6 lần vẫn không có ACK | *(đổi 25/11)* Tin vẫn hiện "Đang gửi" và được thử lại mỗi 5 giây; chỉ sau 60 giây mới cảnh báo "tin nhắn chưa tới nơi" cho đúng người đó và hiện "Chưa tới nơi" (xem dòng mất mạng bên dưới) | ✅ | |
+| Mất mạng vài giây rồi có lại: tin gửi trong lúc mất mạng | *(phát hiện khi test hai máy 25/11, sửa cùng ngày)* Trước đây tin bỏ cuộc sau ~3 s (6 × 0,5 s) và không bao giờ được gửi lại. Nay tin chưa có ACK được **giữ lại** (tối đa 200 tin mỗi người, `UndeliveredMessages`) và được gửi lại theo ba cách: (1) **ngay khi người đó kết nối lại** với cùng `peerId` và **cùng vân tay danh tính** đã xác thực; (2) **thử lại mỗi 5 giây** chừng nào người đó còn trong phòng, để mất mạng vài giây rồi đường cũ tự thông lại (không có lần kết nối lại nào) vẫn gửi được; (3) mục **"Gửi lại"** trong menu chuột phải của tin có người chưa nhận, dùng khi người đó đã vào lại phòng với phiên mới. Tin hiện "Đang gửi" và chỉ báo "Chưa tới nơi" **sau 60 giây** (trước đây sau ~3 giây); đã báo vẫn tiếp tục thử, ACK tới muộn thì chuyển sang "Đã nhận". Bên nhận loại trùng theo id (giữ sổ "đã nhận" qua lần kết nối lại; tin nhóm đã có qua gói lịch sử thì không hiện lại) | ✅ | Lưu hộp thư đi xuống ổ đĩa (mã hoá) và nhận diện người nhận bằng vân tay thay cho `peerId`, để tắt app hay vào phòng lần sau vẫn gửi được |
 | Kẻ khác vào lại phòng bằng `peerId` của người vừa rời để nhận tin gửi lại | Chỉ gửi lại khi người kết nối lại có **cùng vân tay danh tính** với lúc gửi tin; tin gửi lúc chưa xác thực danh tính người nhận thì không bao giờ gửi lại (test `UndeliveredMessagesTest`) | ✅ | |
 | Gửi lỗi với một người trong phòng | Vẫn gửi bình thường cho những người còn lại | ✅ | |
 | Người nhận rời phòng giữa lúc đang gửi | Huỷ việc gửi lại tới người đó, không báo lỗi thừa | ✅ | |
@@ -1349,6 +1351,7 @@ Mỗi vấn đề dưới đây đã được **hai lượt kiểm chứng độ
 
 | Ngày | Thay đổi |
 |---|---|
+| 2026-11-25 | Gửi lại tin chưa tới nơi: thử lại mỗi 5 giây khi người nhận còn trong phòng, chỉ báo "Chưa tới nơi" sau 60 giây, thêm mục "Gửi lại" ở menu tin; giảm thời gian chờ kết nối lại tối đa từ 30 s xuống 10 s (mục I.6, I.2, E.6.4). |
 | 2026-11-25 | Thêm mục "Đã lưu trên máy" ở sảnh để vào lại phòng có lịch sử đã lưu khi phòng đã biến mất khỏi server (mục I.11, E.8.6). |
 | 2026-11-25 | Kiểm thử chức năng trên hai máy thật (bảng ở F.5.3); sửa lỗi khung trích dẫn vẫn hiện nội dung tin đã xoá (mục I.6); hai hạn chế phát hiện khi tắt Wi-Fi và đã sửa cùng ngày: tin chưa tới nơi nay tự gửi lại khi người đó kết nối lại với cùng vân tay (mục I.6); server Ping mỗi 15 s để phát hiện mất kết nối trong ~35 s thay vì ~4–5 phút (mục I.13, G.3). |
 | 2026-11-25 | Đo xuyên NAT giữa hai máy thật: cập nhật mục I.3 (bảng kết quả, bảng "khi nào đi thẳng, khi nào qua TURN", sửa dòng giao diện relay đã có, thêm dòng thiếu relay), F.1, F.5.3, rủi ro 27; thêm `Ket-qua-do-xuyen-NAT.md`. |

@@ -46,6 +46,10 @@ interface MessageContext {
     default void delete(ChatMessage message) {
     }
 
+    /** Gui lai tin cua minh dang "Chua toi noi" toi nhung nguoi dang o trong phong (cung id - ben nhan loai trung). */
+    default void resend(ChatMessage message) {
+    }
+
     /** Dung cho test / noi khong can tuong tac. */
     MessageContext NONE = new MessageContext() {
         @Override
